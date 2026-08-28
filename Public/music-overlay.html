@@ -118,13 +118,20 @@ body{font-family:Inter,Segoe UI,Arial,sans-serif;color:#fff;display:grid;place-i
    const structureChanged=!sameTrack||queueSig(incoming.queue)!==queueSig(old.queue)||String(incoming.previous?.sourceId||'')!==String(old.previous?.sourceId||'');
    realState=incoming;
    if(!realState.current){try{player?.stopVideo?.()}catch{};currentVideoId='';displayTrackId='';displayElapsed=0;displayPlaying=false;clockTrackId='';clockAnchorPerf=0;clockAnchorElapsed=0;render();return;}
-   const target=Math.max(0,Number(realState.elapsed||0)+(realState.playing&&!realState.paused&&Number(realState.serverNow||0)?Math.max(0,Math.min(1,(Date.now()-Number(realState.serverNow))/1000)):0));
+   const target=(()=>{
+     const base=Math.max(0,Number(realState.elapsed||0));
+     if(realState.paused||!realState.playing) return base;
+     const startedAt=Number(realState.startedAt||0);
+     if(startedAt>0) return Math.max(0,(Date.now()-startedAt)/1000);
+     const serverNow=Number(realState.serverNow||0);
+     return serverNow>0 ? Math.max(0,base+(Date.now()-serverNow)/1000) : base;
+   })();
    lastStateServerAt=Date.now();
    if(structureChanged){ clockTrackId=String(realState.current.id||realState.current.sourceId||''); clockAnchorElapsed=target; clockAnchorPerf=performance.now(); displayTrackId=clockTrackId; displayElapsed=target; render(); playTrack(realState.current,Boolean(realState.playing&&!realState.paused),target).catch(()=>{}); return; }
    dynamic();
    try{
      const local=Number(player?.getCurrentTime?.()||0);
-     if(Math.abs(local-target)>1.20){player?.seekTo?.(target,true);clockAnchorElapsed=target;clockAnchorPerf=performance.now();displayElapsed=target;const vinyl=stage.querySelector('.sf-music-vinyl');if(vinyl){vinyl.style.animationDelay=`-${Math.max(0,target%9).toFixed(3)}s`;vinyl.dataset.phaseReady='1';}}
+     if(Math.abs(local-target)>0.35){player?.seekTo?.(target,true);clockAnchorElapsed=target;clockAnchorPerf=performance.now();displayElapsed=target;const vinyl=stage.querySelector('.sf-music-vinyl');if(vinyl){vinyl.style.animationDelay=`-${Math.max(0,target%9).toFixed(3)}s`;vinyl.dataset.phaseReady='1';}}
    }catch{}
    try{
      const want=Boolean(realState.playing&&!realState.paused),ps=player?.getPlayerState?.();

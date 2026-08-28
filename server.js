@@ -1362,9 +1362,16 @@ app.get("/api/music/diagnostics", requireUser, async (req,res)=>{
     const runtime=music.getMusicRuntimeStatus();
     let ytmusicapi=false; let version='';
     try {
-      const { execFile } = await import('node:child_process');
+      const { spawn } = await import('node:child_process');
+      const py=String(process.env.PYTHON_BIN||runtime.pythonCommand||'python3');
       const result=await new Promise((resolve,reject)=>{
-        const child=execFile('python3',['-c','import ytmusicapi; print(getattr(ytmusicapi,"__version__","installed"))'],{timeout:5000},(err,stdout,stderr)=>err?reject(err):resolve({stdout,stderr}));
+        const child=spawn(py,['-c','import ytmusicapi; print(getattr(ytmusicapi,"__version__","installed"))'],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+        let stdout=''; let stderr='';
+        const timer=setTimeout(()=>{try{child.kill('SIGKILL')}catch{};reject(new Error('Python tardó demasiado en responder.'));},5000);
+        child.stdout.on('data',d=>stdout+=d.toString());
+        child.stderr.on('data',d=>stderr+=d.toString());
+        child.once('error',e=>{clearTimeout(timer);reject(e);});
+        child.once('close',code=>{clearTimeout(timer);code===0?resolve({stdout,stderr}):reject(new Error(stderr.trim()||`Python terminó con código ${code}`));});
       });
       ytmusicapi=true; version=String(result.stdout||'').trim();
     } catch {}
