@@ -1,0 +1,216 @@
+import crypto from 'node:crypto';
+
+const sessions = new Map();
+
+function key(ownerId, platform){
+  return `${String(ownerId||'').trim()}:${String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok'}`;
+}
+
+export function begin(ownerId, platform){
+  const k=key(ownerId,platform);
+  const existing=sessions.get(k);
+  if(existing?.active) return existing.liveId;
+  const liveId=`live-${Date.now()}-${crypto.randomUUID().slice(0,8)}`;
+  sessions.set(k,{liveId,active:true,startedAt:Date.now(),powerUsers:new Map(),activity:new Map(),viewers:new Set(),badges:new Map(),voiceAssignments:new Map(),lastEventByUser:new Map(),commentHistory:new Map()});
+  return liveId;
+}
+
+export function setLive(ownerId, platform, live){
+  return live ? begin(ownerId,platform) : end(ownerId,platform);
+}
+
+export function getLiveId(ownerId, platform){
+  return sessions.get(key(ownerId,platform))?.liveId || '';
+}
+
+export function allowCommentForVoice(ownerId, platform, identity, signature, limit=2){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  const sig=String(signature||'').trim();
+  if(!session?.active || !id || !sig) return true;
+  const previous=Array.isArray(session.commentHistory.get(id)) ? session.commentHistory.get(id) : [];
+  if(previous.includes(sig)) return false;
+  const next=[...previous,sig].slice(-Math.max(1,Number(limit)||2));
+  session.commentHistory.set(id,next);
+  return true;
+}
+
+
+export function recordLastActivity(ownerId, platform, identity, kind){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  const k=String(kind||'').trim().toLowerCase();
+  if(!session?.active || !id || !k) return null;
+  const value={ kind:k, updatedAt:Date.now() };
+  session.lastEventByUser.set(id,value);
+  return structuredClone(value);
+}
+
+export function getLastActivity(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return null;
+  const value=session.lastEventByUser.get(id);
+  return value ? structuredClone(value) : null;
+}
+
+export function recordViewerActivity(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  if(!session?.active) return false;
+  const id=String(identity||'').trim().toLowerCase();
+  if(!id) return false;
+  session.viewers.add(id);
+  return true;
+}
+
+
+function ensureBadgeEntry(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  if(!session?.active) return null;
+  const id=String(identity||'').trim().toLowerCase();
+  if(!id) return null;
+  let entry=session.badges.get(id);
+  if(!entry){ entry={joined:false,followed:false,liked:false,shared:false,donor:false,giftBadge:null,joinedAt:0,followedAt:0,likedAt:0,sharedAt:0}; session.badges.set(id,entry); }
+  return entry;
+}
+
+export function addBadge(ownerId, platform, identity, badge, meta={}){
+  const entry=ensureBadgeEntry(ownerId,platform,identity);
+  if(!entry) return null;
+  const b=String(badge||'').toLowerCase();
+  const now=Date.now();
+  if(b==='join' || b==='joined'){ entry.joined=true; entry.joinedAt=now; }
+  else if(b==='follow' || b==='followed'){ entry.followed=true; entry.followedAt=now; }
+  else if(b==='like' || b==='liked'){ entry.liked=true; entry.likedAt=now; }
+  else if(b==='share' || b==='shared'){ entry.shared=true; entry.sharedAt=now; }
+  else if(b==='donor' || b==='gift') entry.donor=true;
+  else if(b==='gift-image') entry.giftBadge={
+    image:String(meta.image||''), name:String(meta.name||'Regalo'), key:String(meta.key||''), id:String(meta.id||''), updatedAt:Date.now()
+  };
+  return structuredClone(entry);
+}
+
+export function getBadges(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return null;
+  const entry=session.badges.get(id);
+  return entry ? structuredClone(entry) : {joined:false,followed:false,liked:false,shared:false,donor:false,giftBadge:null,joinedAt:0,followedAt:0,likedAt:0,sharedAt:0};
+}
+
+export function hasViewerActivity(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  return Boolean(session?.active && id && session.viewers?.has(id));
+}
+
+export function isActive(ownerId, platform){
+  return Boolean(sessions.get(key(ownerId,platform))?.active);
+}
+
+
+export function addActivity(ownerId, platform, identity, amount=1){
+  const k=key(ownerId,platform); const session=sessions.get(k); if(!session?.active) return 0;
+  const id=String(identity||'').trim().toLowerCase(); if(!id) return 0;
+  const entry=session.activity.get(id)||{like:0,share:0};
+  if(Number(amount)>0){
+    entry.like += 0;
+  }
+  session.activity.set(id,entry);
+  return entry;
+}
+export function recordActivity(ownerId, platform, identity, type, amount=1){
+  const k=key(ownerId,platform); const session=sessions.get(k); if(!session?.active) return 0;
+  const id=String(identity||'').trim().toLowerCase(); if(!id) return 0;
+  const entry=session.activity.get(id)||{like:0,share:0};
+  const field=String(type||'').toLowerCase()==='share'?'share':'like';
+  entry[field]+=Math.max(0,Number(amount)||0); session.activity.set(id,entry); return entry[field];
+}
+export function getActivityCount(ownerId, platform, identity, type){
+  const k=key(ownerId,platform); const session=sessions.get(k); if(!session?.active) return 0;
+  const id=String(identity||'').trim().toLowerCase(); const entry=session.activity.get(id)||{}; return Number(entry[String(type||'like').toLowerCase()]||0);
+}
+
+export function grantPower(ownerId, platform, identity, entry){
+  const k=key(ownerId,platform);
+  let session=sessions.get(k);
+  if(!session?.active){ begin(ownerId,platform); session=sessions.get(k); }
+  const id=String(identity||'').trim().toLowerCase();
+  if(!id) return null;
+  const next={...entry,platform:String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok',liveId:session.liveId,active:true,updatedAt:Date.now()};
+  session.powerUsers.set(id,next);
+  return next;
+}
+
+
+export function revokePower(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return false;
+  return session.powerUsers.delete(id);
+}
+
+export function revokePowersByRule(ownerId, ruleId){
+  const rid=String(ruleId||'').trim();
+  if(!rid) return 0;
+  let count=0;
+  const prefix=`${String(ownerId||'').trim()}:`;
+  for(const [k,session] of sessions){
+    if(!k.startsWith(prefix) || !session?.active) continue;
+    for(const [id,entry] of session.powerUsers){
+      if(String(entry?.ruleId||'')===rid){ session.powerUsers.delete(id); count++; }
+    }
+  }
+  return count;
+}
+
+export function hasPower(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  return Boolean(session?.active && id && session.powerUsers.has(id));
+}
+
+export function getPowerUsers(ownerId, platform){
+  const session=sessions.get(key(ownerId,platform));
+  return session?.active ? [...session.powerUsers.values()] : [];
+}
+export function setVoiceAssignment(ownerId, platform, identity, assignment=null){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return null;
+  if(!assignment){ session.voiceAssignments.delete(id); return null; }
+  const next={...assignment, platform:String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', liveId:session.liveId, updatedAt:Date.now()};
+  session.voiceAssignments.set(id,next);
+  return structuredClone(next);
+}
+
+export function getVoiceAssignment(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return null;
+  const value=session.voiceAssignments.get(id);
+  return value ? structuredClone(value) : null;
+}
+
+export function clearVoiceAssignment(ownerId, platform, identity){
+  const session=sessions.get(key(ownerId,platform));
+  const id=String(identity||'').trim().toLowerCase();
+  if(!session?.active || !id) return false;
+  return session.voiceAssignments.delete(id);
+}
+
+export function end(ownerId, platform){
+  const k=key(ownerId,platform);
+  const session=sessions.get(k);
+  if(!session) return null;
+  const result={liveId:session.liveId,startedAt:session.startedAt,endedAt:Date.now(),powerUsers:[...session.powerUsers.values()]};
+  sessions.delete(k);
+  return result;
+}
+
+export function endAllForOwner(ownerId){
+  const prefix=`${String(ownerId||'').trim()}:`;
+  const closed=[];
+  for(const [k,v] of sessions){ if(k.startsWith(prefix)){ closed.push({platform:k.endsWith(':twitch')?'twitch':'tiktok', ...end(ownerId,k.endsWith(':twitch')?'twitch':'tiktok')}); } }
+  return closed;
+}

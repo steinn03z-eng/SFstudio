@@ -1,0 +1,291 @@
+  }
+
+  const ANNOUNCEMENT_FONTS = [
+    ['Inter','Inter'],['Bangers','Bangers'],['Impact','Impact'],['Anton','Anton'],['Bebas Neue','Bebas Neue'],['Oswald','Oswald'],
+    ['Roboto','Roboto'],['Montserrat','Montserrat'],['Poppins','Poppins'],['Playfair Display','Playfair Display'],['Press Start 2P','Press Start 2P'],
+    ['Permanent Marker','Permanent Marker'],['Righteous','Righteous'],['Orbitron','Orbitron'],['Russo One','Russo One'],['Lobster','Lobster'],
+    ['Pacifico','Pacifico'],['Abril Fatface','Abril Fatface'],['Luckiest Guy','Luckiest Guy'],['Teko','Teko']
+  ];
+  const ANNOUNCEMENT_FONT_LINK = 'https://fonts.googleapis.com/css2?family=Anton&family=Abril+Fatface&family=Bangers&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Luckiest+Guy&family=Lobster&family=Montserrat:wght@400;600;700;800;900&family=Orbitron:wght@500;700;900&family=Oswald:wght@400;600;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@600;700;800&family=Poppins:wght@400;500;600;700;800;900&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;500;700;900&family=Russo+One&family=Teko:wght@500;600;700&display=swap';
+  function ensureAnnouncementFonts(){
+    if(document.getElementById('sfAnnouncementFonts'))return;
+    const link=document.createElement('link'); link.id='sfAnnouncementFonts'; link.rel='stylesheet'; link.href=ANNOUNCEMENT_FONT_LINK; document.head.appendChild(link);
+  }
+  function announcementId(){return `ann_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;}
+  function announcementSlideId(){return `slide_${Date.now()}_${Math.random().toString(36).slice(2,9)}`;}
+  function defaultAnnouncementText(value='Escribe tu anuncio',x=38,y=50){return {id:`txt_${Date.now()}_${Math.random().toString(36).slice(2,8)}`,enabled:true,zIndex:20,value,x,y,width:58,height:30,fontFamily:'Inter',fontSize:52,fontWeight:800,fontStyle:'normal',color:'#ffffff',align:'center',shadow:true,shadowColor:'rgba(0,0,0,.55)',shadowBlur:16,shadowX:0,shadowY:4,outlineWidth:0,outlineColor:'#000000',letterSpacing:0,lineHeight:1.05,transform:'none'};}
+  function defaultAnnouncementSlide(){return {id:announcementSlideId(),showSeconds:8,texts:[defaultAnnouncementText()],image:{enabled:false,url:'',zIndex:10,x:70,y:50,width:28,height:42,opacity:1,radius:18,fit:'cover',shadow:true,shadowColor:'rgba(0,0,0,.42)',shadowBlur:18,shadowX:0,shadowY:8,borderWidth:0,borderColor:'rgba(255,255,255,.2)'}};}
+  function defaultAnnouncement(name='Anuncio'){return {id:announcementId(),name,enabled:true,repeatEvery:180,showImmediately:true,width:1280,height:720,slides:[defaultAnnouncementSlide()]};}
+  function ensureAnnouncementConfig(raw){
+    const base=defaultAnnouncement(raw?.name||'Anuncio');
+    const cfg=merge(base,raw||{});
+    cfg.id=String(raw?.id||base.id); cfg.name=String(cfg.name||'Anuncio').slice(0,120); cfg.enabled=cfg.enabled!==false; cfg.repeatEvery=Math.max(0,Math.min(86400,Number(cfg.repeatEvery)||0));
+    cfg.slides=(Array.isArray(cfg.slides)?cfg.slides:[]).slice(0,3).map((x)=>merge(defaultAnnouncementSlide(),x||{}));
+    if(!cfg.slides.length)cfg.slides=[defaultAnnouncementSlide()];
+    cfg.slides.forEach(sl=>{
+      sl.id=String(sl.id||announcementSlideId());
+      sl.showSeconds=Math.max(.5,Math.min(86400,Number(sl.showSeconds)||8));
+      delete sl.hideSeconds;delete sl.card;delete sl.cardBackground;delete sl.cardBorder;delete sl.cardRadius;delete sl.cardPadding;delete sl.cardShadow;
+      const legacy=sl.text && typeof sl.text==='object' ? sl.text : null;
+      let texts=Array.isArray(sl.texts)?sl.texts.slice(0,3):[];
+      if(!texts.length && legacy) texts=[legacy];
+      if(!texts.length) texts=[defaultAnnouncementText()];
+      sl.texts=texts.map((tx,i)=>merge(defaultAnnouncementText(i?`Texto ${i+1}`:'Escribe tu anuncio', i===0?38:50, i===0?50:50),tx||{}));
+      sl.texts.forEach((tx,i)=>{tx.id=String(tx.id||`txt_${Date.now()}_${Math.random().toString(36).slice(2,8)}`);tx.zIndex=Number.isFinite(Number(tx.zIndex))?Number(tx.zIndex):(20+i);});
+      delete sl.text;
+      sl.image=merge(defaultAnnouncementSlide().image,sl.image||{}); sl.image.zIndex=Number.isFinite(Number(sl.image.zIndex))?Number(sl.image.zIndex):10;
+      // La versión anterior tenía 'contain' como predeterminado y podía dejar bandas
+      // transparentes/blancas fuera de la imagen al pasar al overlay. La migración
+      // conserva la edición manual cuando ya usa cover/fill y normaliza el antiguo default.
+      if (String(sl.image.fit || '').toLowerCase() === 'contain') sl.image.fit='cover';
+    });
+    return cfg;
+  }
+  function annCqw(px, fallback=0){const n=Number(px);return `${(Number.isFinite(n)?n:fallback)/12.8}cqw`;}
+  function announcementStyleVars(slide){
+    const texts=Array.isArray(slide.texts)?slide.texts:[], im=slide.image||{};
+    const first=texts[0]||defaultAnnouncementText();
+    const shadow=first.shadow?`${Number(first.shadowX||0)}px ${Number(first.shadowY||4)}px ${Number(first.shadowBlur||16)}px ${first.shadowColor||'rgba(0,0,0,.55)'}`:'none';
+    const imgShadow=im.shadow?`${Number(im.shadowX||0)}px ${Number(im.shadowY||8)}px ${Number(im.shadowBlur||18)}px ${im.shadowColor||'rgba(0,0,0,.42)'}`:'none';
+    return {textShadow:shadow,imgShadow,border:`${Number(im.borderWidth||0)}px solid ${im.borderColor||'rgba(255,255,255,.2)'}`};
+  }
+  function announcementPreviewMarkup(cfg,slideIndex=0,{stageClass='sf-announcement-stage'}={}){
+    const sl=cfg?.slides?.[slideIndex]||defaultAnnouncementSlide();
+    const texts=Array.isArray(sl.texts)?sl.texts:[defaultAnnouncementText()]; const im=sl.image||{};
+    const textsMarkup=texts.slice(0,3).map((t,idx)=>{
+      if(!t?.enabled)return '';
+      const textShadow=t.shadow?`${annCqw(t.shadowX||0)} ${annCqw(t.shadowY||4)} ${annCqw(t.shadowBlur||16)} ${t.shadowColor||'rgba(0,0,0,.55)'}`:'none';
+      const textStyle=`left:${Number(t.x??50)}%;top:${Number(t.y??50)}%;width:${Number(t.width??58)}%;height:${Number(t.height??30)}%;transform:translate(-50%,-50%);font-family:${esc(t.fontFamily||'Inter')};font-size:${annCqw(t.fontSize||52)};font-weight:${Number(t.fontWeight||800)};font-style:${esc(t.fontStyle||'normal')};color:${esc(t.color||'#fff')};text-align:${esc(t.align||'center')};text-shadow:${textShadow};-webkit-text-stroke:${annCqw(Number(t.outlineWidth||0))} ${esc(t.outlineColor||'#000')};letter-spacing:${annCqw(Number(t.letterSpacing||0))};line-height:${Number(t.lineHeight||1.05)};text-transform:${esc(t.transform||'none')};z-index:${Number(t.zIndex??20)};`;
+      return `<div class="sf-announcement-text" data-ann-element="text" data-ann-text-index="${idx}" style="${textStyle}">${esc(t.value||'')}</div>`;
+    }).join('');
+    const imageShadow=im.shadow?`drop-shadow(${annCqw(im.shadowX||0)} ${annCqw(im.shadowY||8)} ${annCqw(im.shadowBlur||18)} ${im.shadowColor||'rgba(0,0,0,.42)'})`:'none';
+    const imageBoxStyle=`left:${Number(im.x??70)}%;top:${Number(im.y??50)}%;width:${Number(im.width??28)}%;height:${Number(im.height??42)}%;transform:translate(-50%,-50%);opacity:${Number(im.opacity??1)};z-index:${Number(im.zIndex??10)};background:transparent;border:0;border-radius:0;box-shadow:none;`;
+    const imageStyle=`width:100%;height:100%;display:block;background:transparent;border:0;border-radius:${annCqw(Number(im.radius||18))};object-fit:${esc(im.fit||'cover')};filter:${imageShadow};`;
+    return `<div class="${stageClass}"><div class="sf-announcement-card" style="background:transparent;border:0;box-shadow:none;padding:0"><div class="sf-announcement-safe-zone"></div>${textsMarkup}${im.enabled&&im.url?`<div class="sf-announcement-image" data-ann-element="image" style="${imageBoxStyle}"><img src="${esc(im.url)}" alt="" style="${imageStyle}"></div>`:''}</div></div>`;
+  }
+  function renderAnnouncementPreview(){
+    const host=$('announcementCanvas'); if(!host||!announcementDraft)return;
+    host.innerHTML=announcementPreviewMarkup(announcementDraft,announcementActiveSlide,{stageClass:'sf-announcement-stage sf-announcement-editor-stage'});
+    bindAnnouncementCanvas(host,announcementDraft,announcementActiveSlide);
+    const sl=announcementDraft.slides[announcementActiveSlide]; host.dataset.slideId=sl?.id||'';
+  }
+  function announcementElementTarget(el, slide){
+    if(!el) return null;
+    const kind=el.dataset.annElement;
+    if(kind==='image') return {kind:'image', index:null, target:slide.image};
+    if(kind==='text'){const index=Number(el.dataset.annTextIndex||0); return {kind:'text', index, target:slide.texts?.[index]||null};}
+    return null;
+  }
+  function closeAnnouncementContextMenu(){
+    const menu=document.getElementById('sf-ann-context-menu');
+    if(menu) menu.remove();
+  }
+  function showAnnouncementContextMenu(stage, el, ev, slide){
+    ev.preventDefault(); ev.stopPropagation();
+    closeAnnouncementContextMenu();
+    const info=announcementElementTarget(el,slide);
+    if(!info?.target) return;
+    const menu=document.createElement('div'); menu.id='sf-ann-context-menu'; menu.className='sf-ann-context-menu';
+    const current=Number(info.target.zIndex||0);
+    const elements=[...(slide.texts||[]).map(t=>({kind:'text',target:t})), ...(slide.image?.enabled&&slide.image?.url?[{kind:'image',target:slide.image}]:[])];
+    const ordered=elements.slice().sort((a,b)=>Number(a.target?.zIndex||0)-Number(b.target?.zIndex||0));
+    const pos=ordered.findIndex(item=>item.target===info.target);
+    menu.innerHTML=`<button type="button" data-ann-z="back" ${pos<=0?'disabled':''}>↙ Mover atrás</button><button type="button" data-ann-z="forward" ${pos===ordered.length-1?'disabled':''}>↗ Mover adelante</button>`;
+    document.body.appendChild(menu);
+    const pad=8, mw=180, mh=84;
+    const x=Math.min(window.innerWidth-mw-pad, Math.max(pad, ev.clientX));
+    const y=Math.min(window.innerHeight-mh-pad, Math.max(pad, ev.clientY));
+    menu.style.left=`${x}px`; menu.style.top=`${y}px`;
+    menu.querySelector('[data-ann-z=back]')?.addEventListener('click',()=>{
+      const i=ordered.findIndex(item=>item.target===info.target);
+      if(i<=0)return;
+      const other=ordered[i-1].target; const aZ=Number(info.target.zIndex||0); info.target.zIndex=Number(other.zIndex||0); other.zIndex=aZ;
+      closeAnnouncementContextMenu();renderAnnouncementPreview();persistAnnouncementDebounced(false);
+    });
+    menu.querySelector('[data-ann-z=forward]')?.addEventListener('click',()=>{
+      const i=ordered.findIndex(item=>item.target===info.target);
+      if(i<0||i>=ordered.length-1)return;
+      const other=ordered[i+1].target; const aZ=Number(info.target.zIndex||0); info.target.zIndex=Number(other.zIndex||0); other.zIndex=aZ;
+      closeAnnouncementContextMenu();renderAnnouncementPreview();persistAnnouncementDebounced(false);
+    });
+    setTimeout(()=>{
+      const outside=(e)=>{if(!menu.contains(e.target)){closeAnnouncementContextMenu();document.removeEventListener('pointerdown',outside,true);document.removeEventListener('scroll',outside,true);}};
+      document.addEventListener('pointerdown',outside,true); document.addEventListener('scroll',outside,true);
+    },0);
+  }
+  function bindAnnouncementCanvas(host,cfg,slideIndex){
+    const stage=host.querySelector('.sf-announcement-editor-stage'); if(!stage)return;
+    const sl=cfg.slides[slideIndex]; if(!sl)return;
+    stage.querySelectorAll('[data-ann-element]').forEach(el=>{
+      el.setAttribute('draggable','false');
+      el.addEventListener('contextmenu',ev=>showAnnouncementContextMenu(stage,el,ev,sl));
+      el.addEventListener('pointerdown',ev=>{
+        if(ev.button!==0)return; ev.preventDefault(); ev.stopPropagation();
+        const kind=el.dataset.annElement; const rect=stage.getBoundingClientRect(); const startX=ev.clientX,startY=ev.clientY;
+        const textIndex=Number(el.dataset.annTextIndex||0); const target=kind==='text'?(sl.texts?.[textIndex]||sl.texts?.[0]):sl.image; if(!target)return;
+        if(kind==='text')announcementActiveText=textIndex;
+        const x0=Number(target.x??50), y0=Number(target.y??50); el.setPointerCapture?.(ev.pointerId);
+        const move=e=>{const nx=Math.max(0,Math.min(100,x0+(e.clientX-startX)/rect.width*100));const ny=Math.max(0,Math.min(100,y0+(e.clientY-startY)/rect.height*100));target.x=Number(nx.toFixed(2));target.y=Number(ny.toFixed(2));el.style.left=`${nx}%`;el.style.top=`${ny}%`;};
+        const up=()=>{el.removeEventListener('pointermove',move);el.removeEventListener('pointerup',up);el.classList.remove('sf-ann-selected');persistAnnouncementDebounced(false);if(kind==='text')renderAnnouncementEditor();};
+        el.classList.add('sf-ann-selected'); el.addEventListener('pointermove',move); el.addEventListener('pointerup',up,{once:true});
+      });
+      if(el.dataset.annElement==='text'){
+        const handle=document.createElement('span'); handle.className='sf-ann-resize-handle sf-ann-text-resize-handle'; el.appendChild(handle);
+        handle.addEventListener('pointerdown',ev=>{
+          if(ev.button!==0)return; ev.preventDefault();ev.stopPropagation();
+          const rect=stage.getBoundingClientRect(); const sx=ev.clientX, sy=ev.clientY; const target=sl.texts?.[Number(el.dataset.annTextIndex||0)]; if(!target)return;
+          const w0=Number(target.width||58), h0=Number(target.height||30), font0=Number(target.fontSize||52); handle.setPointerCapture?.(ev.pointerId);
+          announcementActiveText=Number(el.dataset.annTextIndex||0);
+          const move=e=>{
+            const rawScale=1+((e.clientX-sx)/rect.width+(e.clientY-sy)/rect.height)*0.55;
+            const scale=Math.max(.35,Math.min(3,rawScale));
+            const w=Math.max(5,Math.min(90,w0*scale));
+            const h=Math.max(5,Math.min(90,h0*scale));
+            const fs=Math.max(10,Math.min(220,font0*scale));
+            target.width=Number(w.toFixed(2)); target.height=Number(h.toFixed(2)); target.fontSize=Number(fs.toFixed(1));
+            el.style.width=`${w}%`; el.style.height=`${h}%`; el.style.fontSize=annCqw(fs);
+          };
+          const up=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);persistAnnouncementDebounced(false);};
+          handle.addEventListener('pointermove',move); handle.addEventListener('pointerup',up,{once:true});
+        });
+      }
+      if(el.dataset.annElement==='image'){
+        const handle=document.createElement('span'); handle.className='sf-ann-resize-handle'; el.appendChild(handle);
+        handle.addEventListener('pointerdown',ev=>{
+          if(ev.button!==0)return;ev.preventDefault();ev.stopPropagation();
+          const rect=stage.getBoundingClientRect();const sx=ev.clientX,sy=ev.clientY;const w0=Number(sl.image.width||28),h0=Number(sl.image.height||42);handle.setPointerCapture?.(ev.pointerId);
+          const move=e=>{const w=Math.max(5,Math.min(90,w0+(e.clientX-sx)/rect.width*100));const h=Math.max(5,Math.min(90,h0+(e.clientY-sy)/rect.height*100));sl.image.width=Number(w.toFixed(2));sl.image.height=Number(h.toFixed(2));el.style.width=`${w}%`;el.style.height=`${h}%`;};
+          const up=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',up);persistAnnouncementDebounced(false);};
+          handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',up,{once:true});
+        });
+      }
+    });
+  }
+  let announcementPersistTimer=0;
+  async function loadAnnouncementDraft(){
+    if(announcementDraftLoaded)return null;
+    announcementDraftLoaded=true;
+    try{
+      const data=await api('/api/announcement-draft');
+      return data?.draft?ensureAnnouncementConfig(data.draft):null;
+    }catch(e){console.warn('[Announcements] draft load',e);return null;}
+  }
+  function persistAnnouncementDebounced(redraw=true){
+    announcementDraftApplied=false;
+    clearTimeout(announcementPersistTimer);
+    announcementPersistTimer=setTimeout(async()=>{
+      try{
+        if(announcementDraft){
+          await api('/api/announcement-draft',{method:'PUT',body:JSON.stringify({draft:structuredClone(announcementDraft)})});
+        }
+      }catch(e){console.warn('[Announcements] draft autosave',e);} 
+      if(redraw&&page==='widgets'&&window.__sfAnnouncementEditorOpen)renderAnnouncementEditor();
+    },350);
+  }
+  async function saveAnnouncementDraftNow(){
+    if(!announcementDraft)return;
+    await api('/api/announcement-draft',{method:'PUT',body:JSON.stringify({draft:structuredClone(announcementDraft)})});
+  }
+  async function clearAnnouncementDraft(){
+    clearTimeout(announcementPersistTimer);
+    try{await api('/api/announcement-draft',{method:'DELETE'});}catch(e){console.warn('[Announcements] draft clear',e);}
+  }
+  async function saveAnnouncements(){
+    const result=await api('/api/announcements',{method:'PUT',body:JSON.stringify({announcements:structuredClone(settings.announcements||[])})});
+    settings.announcements=Array.isArray(result.announcements)?result.announcements:[];
+    return settings.announcements;
+  }
+  function setAnnouncementField(path,value){
+    if(!announcementDraft)return; let target=announcementDraft; const parts=path.split('.'); for(let i=0;i<parts.length-1;i++)target=target[parts[i]]; target[parts.at(-1)]=value;
+    renderAnnouncementPreview(); persistAnnouncementDebounced(false);
+  }
+  function announcementControl(label,id,value,type='text',attrs=''){return `<label>${esc(label)}<input id="${id}" type="${type}" value="${esc(value)}" ${attrs}></label>`;}
+  function announcementSelect(label,id,value,options){return `<label>${esc(label)}<select id="${id}">${options.map(([v,t])=>`<option value="${esc(v)}" ${String(value)===String(v)?'selected':''}>${esc(t)}</option>`).join('')}</select></label>`;}
+  function announcementCheck(label,id,value){return `<label class="check-row"><input id="${id}" type="checkbox" ${value?'checked':''}><span>${esc(label)}</span></label>`;}
+  function announcementColor(label,id,value){return `<label>${esc(label)}<div class="sf-color-inline"><input id="${id}" type="color" value="${/^#[0-9a-f]{3,8}$/i.test(String(value||''))?esc(value):'#ffffff'}"><code id="${id}Value">${esc(value||'#ffffff')}</code></div></label>`;}
+  function announcementSlideTabs(cfg){return cfg.slides.map((sl,i)=>`<button type="button" class="sf-ann-slide-tab ${i===announcementActiveSlide?'active':''}" data-ann-slide="${i}"><span>${i+1}</span>Parte ${i+1}</button>`).join('');}
+  function renderAnnouncementEditor(){
+    ensureAnnouncementFonts();
+    if(!announcementDraft)return;
+    announcementDraft=ensureAnnouncementConfig(announcementDraft);
+    const sl=announcementDraft.slides[announcementActiveSlide]||announcementDraft.slides[0];
+    const texts=sl.texts||[]; announcementActiveText=Math.max(0,Math.min(announcementActiveText,texts.length-1));
+    const t=texts[announcementActiveText]||texts[0]||defaultAnnouncementText(); const im=sl.image;
+    const fontOptions=ANNOUNCEMENT_FONTS.map(([v,l])=>[v,l]);
+    const sequenceSummary=announcementDraft.slides.map((part,i)=>`<div class="sf-ann-seq-item ${i===announcementActiveSlide?'active':''}"><span>Parte ${i+1}</span><strong data-ann-seq-duration="${i}">${Number(part.showSeconds||0)} s</strong></div>`).join('');
+    const hasMultiple=announcementDraft.slides.length>1;
+    const textCards=texts.slice(0,3).map((tx,i)=>`<article class="sf-ann-text-card ${i===announcementActiveText?'active':''}" data-ann-text-card="${i}"><div class="sf-ann-text-card-head"><label class="check-row"><input type="checkbox" data-ann-text-enabled="${i}" ${tx.enabled?'checked':''}><span>Texto ${i+1}</span></label><div class="sf-ann-text-card-actions"><button type="button" class="sf-ann-text-edit" data-ann-text-select="${i}">${i===announcementActiveText?'Editando':'Editar'}</button>${texts.length>1?`<button type="button" class="sf-ann-text-remove" data-ann-text-remove="${i}" aria-label="Eliminar texto">×</button>`:''}</div></div><textarea class="sf-ann-textarea" data-ann-text-value="${i}" maxlength="1200" rows="2" placeholder="Escribe el texto…">${esc(tx.value||'')}</textarea></article>`).join('');
+    $('view').innerHTML=`<div class="intro split sf-ann-editor-intro"><div><div class="sf-ann-breadcrumb"><span>WIDGETS</span><b>›</b><strong>ANUNCIO</strong></div><h2>${esc(announcementDraft.name||'Anuncio')}</h2><p>Diseña cada parte en la vista previa. Las partes se muestran en orden y, al terminar la última, comienza el intervalo general.</p></div><button class="btn secondary widget-back-btn" id="backToWidgetsFromAnnouncement">← Volver a Widgets</button></div>
+      <div class="widget-editor-layout sf-ann-editor-layout"><section class="card widget-controls sf-ann-controls"><div class="widget-editor-topbar"><div><p class="eyebrow">EDITOR</p><h3>Configuración del anuncio</h3></div><div class="widget-header-actions"><button class="btn danger secondary" id="deleteAnnouncement">Eliminar anuncio</button><button class="btn secondary" id="applyAnnouncement">Aplicar cambios</button><button class="btn secondary" id="saveAnnouncement">Guardar</button><button class="btn primary" id="openAnnouncementOverlay">Generar Overlay</button></div></div>
+        <div class="sf-announcement-tabs"><div class="sf-ann-parts-label"><span>PARTES</span><small>${announcementDraft.slides.length}/3</small></div>${announcementSlideTabs(announcementDraft)}<div class="sf-ann-part-actions">${announcementDraft.slides.length<3?'<button type="button" class="sf-ann-add-part" id="addAnnouncementSlide">Agregar Parte <span>＋</span></button>':''}${announcementDraft.slides.length>1?'<button type="button" class="sf-ann-delete-part" id="deleteAnnouncementPart">Eliminar Parte <span>−</span></button>':''}</div></div>
+        <div class="sf-ann-general-grid"><article class="widget-subsection sf-ann-general-panel"><div class="sf-ann-panel-title"><div><p class="eyebrow">ANUNCIO GENERAL</p><h3>Configuración global</h3></div><span class="sf-ann-panel-badge">${announcementDraft.slides.length} parte${announcementDraft.slides.length===1?'':'s'}</span></div><div class="sf-ann-general-row"><div class="sf-ann-name-field">${announcementControl('Nombre de anuncio','anName',announcementDraft.name,'text','maxlength="120"')}</div><div class="sf-ann-active-field">${announcementCheck('Activo','anEnabled',announcementDraft.enabled)}</div></div><div class="sf-ann-general-row sf-ann-general-row-repeat"><div>${announcementControl('Mostrar anuncio cada (segundos)','anRepeat',announcementDraft.repeatEvery,'number','min="0" step="1"')}</div></div><div class="sf-ann-sequence"><div class="sf-ann-seq-head"><span>SECUENCIA</span><small>${announcementDraft.slides.length===1?'Se muestra esta parte y luego comienza el intervalo.':'Cada parte se muestra durante su propio tiempo. Al terminar la última comienza el intervalo general.'}</small></div>${sequenceSummary}</div></article></div>
+        <div class="sf-ann-section-title"><span>PARTE ${announcementActiveSlide+1}</span><small>${hasMultiple?'Configura el contenido y su duración.':'Configura el contenido; añade partes con “Agregar Parte”.'}</small></div>
+        <div class="settings-grid two compact-grid sf-ann-main-grid"><article class="widget-subsection sf-ann-panel"><div class="sf-ann-panel-title"><div><p class="eyebrow">TIEMPO</p><h3>Duración de esta parte</h3></div></div>${announcementControl('Mostrar durante (segundos)','anShow',sl.showSeconds,'number','min="0.5" step="0.5"')}<p class="sf-ann-field-note">Al terminar este tiempo, pasa automáticamente a la siguiente parte. ${announcementDraft.slides.length===1?'Después comienza el intervalo general.':''}</p></article><article class="widget-subsection sf-ann-panel sf-ann-content-panel"><div class="sf-ann-panel-title sf-ann-content-title"><div><p class="eyebrow">CONTENIDO</p><h3>Textos de esta parte</h3></div><div class="sf-ann-content-tools">${announcementCheck('Mostrar texto','anTextEnabled',texts.some(x=>x.enabled))}${texts.length<3?'<button type="button" class="sf-ann-add-text" id="addAnnouncementText" title="Agregar texto">＋</button>':''}</div></div><div class="sf-ann-text-list">${textCards}</div></article></div>
+        <div class="settings-grid two compact-grid sf-ann-content-grid"><article class="widget-subsection sf-ann-panel"><div class="sf-ann-panel-title"><div><p class="eyebrow">ESTILO DEL TEXTO</p><h3>Texto ${announcementActiveText+1} · Tipografía y acabado</h3></div></div>${announcementSelect('Fuente','anFont',t.fontFamily,fontOptions)}${announcementSelect('Peso','anWeight',t.fontWeight,[['400','Normal'],['500','Medium'],['600','Semibold'],['700','Bold'],['800','Extra Bold'],['900','Black']])}<div class="sf-ann-inline-grid">${announcementControl('Tamaño (px)','anFontSize',t.fontSize,'number','min="10" max="220"')}${announcementColor('Color','anTextColor',t.color)}</div><div class="sf-ann-style-row"><div class="sf-ann-toggle-inline">${announcementCheck('Sombra de texto','anTextShadow',t.shadow)}</div><div>${announcementControl('Desenfoque','anTextShadowBlur',t.shadowBlur,'number','min="0" max="80"')}</div></div><div class="sf-ann-inline-grid">${announcementControl('Contorno (px)','anOutline',t.outlineWidth,'number','min="0" max="20"')}${announcementColor('Color contorno','anOutlineColor',t.outlineColor)}</div></article><article class="widget-subsection sf-ann-panel"><div class="sf-ann-panel-title"><div><p class="eyebrow">IMAGEN</p><h3>Fuente y apariencia</h3></div></div>${announcementCheck('Usar imagen','anImageEnabled',im.enabled)}<div class="sf-ann-image-source"><div class="sf-ann-image-source-grid"><label><span>URL de imagen</span><input id="anImageUrl" type="url" value="${esc(im.url)}" maxlength="5000" placeholder="https://.../imagen.png"></label><label class="sf-ann-upload-label"><span class="sf-ann-upload-title">＋ Subir imagen o GIF</span><span class="sf-ann-upload-copy">Se guarda en tu cuenta y puedes reutilizarla</span><input id="anImageFile" type="file" accept="image/png,image/jpeg,image/webp,image/gif,image/avif,.gif"><small>PNG · JPG · WEBP · GIF · AVIF · máximo 8 MB</small></label></div><div class="sf-ann-image-upload-status" id="anImageUploadStatus">${im.url?.startsWith('/announcement-image/')?'✓ Imagen guardada en tu cuenta':'Pega una URL o sube una imagen.'}</div></div><div class="sf-ann-inline-grid">${announcementSelect('Ajuste de imagen','anImageFit',im.fit,[['cover','Rellenar · Cover'],['contain','Contener · Contain'],['fill','Estirar · Fill']])}${announcementControl('Opacidad','anImageOpacity',im.opacity,'number','min="0" max="1" step="0.05"')}</div><div class="sf-ann-style-row"><div>${announcementControl('Radio','anImageRadius',im.radius,'number','min="0" max="80"')}</div><div class="sf-ann-toggle-inline">${announcementCheck('Sombra de imagen','anImageShadow',im.shadow)}</div></div>${announcementControl('Desenfoque sombra','anImageShadowBlur',im.shadowBlur,'number','min="0" max="80"')}${announcementControl('Borde (px)','anImageBorder',im.borderWidth,'number','min="0" max="20"')}</article></div>
+        <div class="widget-subsection sf-ann-position-section"><div class="section-head"><div><p class="eyebrow">LIENZO</p><h3>Mueve y redimensiona directamente</h3></div><span class="muted">Arrastra textos o imagen. Usa la esquina de cada elemento para cambiar su tamaño.</span></div>${announcementControl(`Texto ${announcementActiveText+1} X %`,'anTextX',t.x,'number','min="0" max="100" step="0.1"')}${announcementControl(`Texto ${announcementActiveText+1} Y %`,'anTextY',t.y,'number','min="0" max="100" step="0.1"')}${announcementControl(`Texto ${announcementActiveText+1} ancho %`,'anTextW',t.width,'number','min="5" max="90" step="0.1"')}${announcementControl(`Texto ${announcementActiveText+1} alto %`,'anTextH',t.height,'number','min="5" max="90" step="0.1"')}${announcementControl('Imagen X %','anImageX',im.x,'number','min="0" max="100" step="0.1"')}${announcementControl('Imagen Y %','anImageY',im.y,'number','min="0" max="100" step="0.1"')}${announcementControl('Imagen ancho %','anImageW',im.width,'number','min="5" max="90" step="0.1"')}${announcementControl('Imagen alto %','anImageH',im.height,'number','min="5" max="90" step="0.1"')}</div>
+        <div class="sf-ann-actions sf-ann-config-actions"><span class="muted">Máximo 3 partes y 3 textos por parte.</span></div>
+        <div class="widget-preview-footer"><span class="muted">Este anuncio y su overlay pertenecen únicamente a tu cuenta.</span><code id="announcementOverlayLinkPreview">Genera el overlay para obtener tu enlace.</code></div>
+      </section><section class="card widget-preview-card sf-ann-preview-card"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA EN TIEMPO REAL</p><h3 id="announcementPreviewTitle">${esc(announcementDraft.name||'Anuncio')} · Parte ${announcementActiveSlide+1}</h3></div><span class="widget-status online"><i></i> SIMULACIÓN</span></div><div id="announcementCanvas" class="sf-announcement-canvas"></div><div class="sf-ann-preview-actions"><button class="btn primary" id="viewAnnouncement">▶ Simular anuncio</button></div><div class="sf-ann-preview-help">La simulación muestra cada parte durante sus segundos configurados, queda completamente oculta al terminar cada ciclo y luego espera el intervalo general antes de volver a empezar.</div></section></div>`;
+    renderAnnouncementPreview();
+    const bind=(id,fn,ev='input')=>{const el=$(id);if(!el)return;el.addEventListener(ev,fn);};
+    bind('anName',e=>{
+      announcementDraft.name=e.target.value;
+      const name=announcementDraft.name||'Anuncio';
+      const heading=document.querySelector('.sf-ann-editor-intro h2');
+      const previewTitle=$('announcementPreviewTitle');
+      if(heading) heading.textContent=name;
+      if(previewTitle) previewTitle.textContent=`${name} · Parte ${announcementActiveSlide+1}`;
+      persistAnnouncementDebounced(false);
+    });
+    bind('anEnabled',e=>{announcementDraft.enabled=e.target.checked;persistAnnouncementDebounced(false)},'change');
+    bind('anRepeat',e=>{announcementDraft.repeatEvery=Math.max(0,Math.min(86400,Number(e.target.value)||0));persistAnnouncementDebounced(false)});
+    bind('anShow',e=>{sl.showSeconds=Math.max(.5,Math.min(86400,Number(e.target.value)||.5));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anTextEnabled',e=>{texts.forEach(tx=>tx.enabled=e.target.checked);renderAnnouncementEditor();persistAnnouncementDebounced(false)},'change');
+    document.querySelectorAll('[data-ann-text-select]').forEach(btn=>btn.addEventListener('click',e=>{announcementActiveText=Number(e.currentTarget.dataset.annTextSelect||0);renderAnnouncementEditor();}));
+    document.querySelectorAll('[data-ann-text-enabled]').forEach(cb=>cb.addEventListener('change',e=>{const i=Number(e.currentTarget.dataset.annTextEnabled);if(texts[i])texts[i].enabled=e.currentTarget.checked;persistAnnouncementDebounced(false);renderAnnouncementPreview();}));
+    document.querySelectorAll('[data-ann-text-value]').forEach(el=>el.addEventListener('input',e=>{const i=Number(e.currentTarget.dataset.annTextValue);if(texts[i])texts[i].value=e.currentTarget.value;renderAnnouncementPreview();persistAnnouncementDebounced(false);}));
+    document.querySelectorAll('[data-ann-text-card]').forEach(card=>card.addEventListener('click',e=>{if(e.target.closest('button')||e.target.closest('input')||e.target.closest('textarea'))return;announcementActiveText=Number(card.dataset.annTextCard||0);renderAnnouncementEditor();}));
+    document.querySelectorAll('[data-ann-text-remove]').forEach(btn=>btn.addEventListener('click',e=>{e.preventDefault();const i=Number(e.currentTarget.dataset.annTextRemove);if(texts.length<=1)return;texts.splice(i,1);announcementActiveText=Math.max(0,Math.min(announcementActiveText,texts.length-1));renderAnnouncementEditor();persistAnnouncementDebounced(false);}));
+    $('addAnnouncementText')?.addEventListener('click',()=>{if(texts.length>=3)return;texts.push(defaultAnnouncementText(`Texto ${texts.length+1}`,50,35+texts.length*18));announcementActiveText=texts.length-1;renderAnnouncementEditor();persistAnnouncementDebounced(false);});
+    bind('anFont',e=>{t.fontFamily=e.target.value;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anWeight',e=>{t.fontWeight=Number(e.target.value)||800;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anFontSize',e=>{t.fontSize=Math.max(10,Math.min(220,Number(e.target.value)||52));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anTextColor',e=>{t.color=e.target.value;const c=$('anTextColorValue');if(c)c.textContent=t.color.toUpperCase();renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anTextShadow',e=>{t.shadow=e.target.checked;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anTextShadowBlur',e=>{t.shadowBlur=Math.max(0,Math.min(80,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anOutline',e=>{t.outlineWidth=Math.max(0,Math.min(20,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anOutlineColor',e=>{t.outlineColor=e.target.value;const c=$('anOutlineColorValue');if(c)c.textContent=t.outlineColor.toUpperCase();renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anImageEnabled',e=>{im.enabled=e.target.checked;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anImageUrl',e=>{im.url=e.target.value.trim();const st=$('anImageUploadStatus');if(st)st.textContent=im.url.startsWith('/announcement-image/')?'✓ Imagen guardada en tu cuenta.':'URL externa; también puedes subir un archivo.';renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    $('anImageFile')?.addEventListener('change',async e=>{const file=e.target.files?.[0];if(!file)return;const ext=/\.([a-z0-9]+)$/i.exec(file.name||'')?.[1]?.toLowerCase()||'';const mime=String(file.type||'').toLowerCase();const supportedMimes=/^image\/(png|jpe?g|webp|gif|avif)$/i.test(mime);const supportedExt=['png','jpg','jpeg','webp','gif','avif'].includes(ext);if(file.size>8*1024*1024){toast('Imagen demasiado grande','El máximo para anuncios es 8 MB.','err');e.target.value='';return;}if(!supportedMimes&&!supportedExt){toast('Formato no compatible','Usa PNG, JPG, WEBP, GIF o AVIF.','err');e.target.value='';return;}const st=$('anImageUploadStatus');if(st)st.textContent='Subiendo imagen…';const reader=new FileReader();reader.onload=async()=>{try{const dataUrl=String(reader.result||'');const d=await api('/api/announcement-image',{method:'POST',body:JSON.stringify({dataUrl})});im.url=String(d.url||'');im.enabled=true;if($('anImageEnabled'))$('anImageEnabled').checked=true;if(st)st.textContent='✓ Imagen o GIF subido y guardado en tu cuenta.';renderAnnouncementPreview();persistAnnouncementDebounced(false);toast('Archivo guardado','El archivo quedó almacenado en tu cuenta y se usará en este anuncio.');}catch(err){if(st)st.textContent='No se pudo subir la imagen o GIF.';toast('No se pudo subir',err.message||'El archivo no pudo guardarse.','err');}finally{e.target.value='';}};reader.readAsDataURL(file);});
+    bind('anImageFit',e=>{im.fit=e.target.value;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anImageOpacity',e=>{im.opacity=Math.max(0,Math.min(1,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anImageRadius',e=>{im.radius=Math.max(0,Math.min(80,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anImageShadow',e=>{im.shadow=e.target.checked;renderAnnouncementPreview();persistAnnouncementDebounced(false)},'change');
+    bind('anImageShadowBlur',e=>{im.shadowBlur=Math.max(0,Math.min(80,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    bind('anImageBorder',e=>{im.borderWidth=Math.max(0,Math.min(20,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)});
+    [['anTextX',t,'x'],['anTextY',t,'y'],['anTextW',t,'width'],['anTextH',t,'height'],['anImageX',im,'x'],['anImageY',im,'y'],['anImageW',im,'width'],['anImageH',im,'height']].forEach(([id,obj,k])=>bind(id,e=>{obj[k]=Math.max(k==='width'||k==='height'?5:0,Math.min(k==='width'||k==='height'?90:100,Number(e.target.value)||0));renderAnnouncementPreview();persistAnnouncementDebounced(false)}));
+    $('backToWidgetsFromAnnouncement').onclick=async()=>{try{await saveAnnouncementDraftNow();}catch(e){} stopAnnouncementPreview();window.__sfAnnouncementEditorOpen=false;announcementDraft=null;announcementEditingId='';announcementActiveSlide=0;announcementActiveText=0;window.__sfAnnouncementHubOpen=true;renderWidgets();};
+    $('addAnnouncementSlide')?.addEventListener('click',()=>{if(announcementDraft.slides.length>=3)return;announcementDraft.slides.push(defaultAnnouncementSlide());announcementActiveSlide=announcementDraft.slides.length-1;announcementActiveText=0;renderAnnouncementEditor();persistAnnouncementDebounced(false);});
+    document.querySelectorAll('.sf-ann-slide-tab').forEach(btn=>btn.onclick=()=>{announcementActiveSlide=Number(btn.dataset.annSlide||0);announcementActiveText=0;stopAnnouncementPreview();renderAnnouncementEditor();});
+    $('deleteAnnouncementPart')?.addEventListener('click',()=>{if(announcementDraft.slides.length<=1)return;announcementDraft.slides.splice(announcementActiveSlide,1);announcementActiveSlide=Math.max(0,Math.min(announcementActiveSlide,announcementDraft.slides.length-1));announcementActiveText=0;renderAnnouncementEditor();persistAnnouncementDebounced(false);});
+    $('deleteAnnouncement')?.addEventListener('click',async()=>{const a=announcementDraft;if(!a)return;const isSaved=(settings.announcements||[]).some(x=>String(x.id)===String(a.id));if(!window.confirm(isSaved?'¿Eliminar definitivamente este anuncio?':'¿Descartar este anuncio en creación?'))return;try{if(isSaved){settings.announcements=(settings.announcements||[]).filter(x=>String(x.id)!==String(a.id));await saveAnnouncements();}await clearAnnouncementDraft();stopAnnouncementPreview();window.__sfAnnouncementEditorOpen=false;announcementDraft=null;announcementEditingId='';announcementActiveSlide=0;announcementActiveText=0;window.__sfAnnouncementHubOpen=true;renderWidgets();toast(isSaved?'Anuncio eliminado':'Creación descartada',isSaved?'El anuncio y su overlay quedaron eliminados.':'La configuración temporal fue descartada.');}catch(e){toast('No se pudo eliminar',e.message||'Error','err');}});
+    $('viewAnnouncement').onclick=()=>{toggleAnnouncementPreview();};
+    $('applyAnnouncement').onclick=async()=>{try{await saveAnnouncementDraftNow();announcementDraftApplied=true;toast('Cambios aplicados','Tu configuración quedó guardada como borrador y ya puede usarse para el overlay. El anuncio seguirá sin aparecer como botón hasta que pulses Guardar.');}catch(e){toast('No se pudieron aplicar',e.message||'Error','err');}};
+    $('saveAnnouncement').onclick=async()=>{try{stopAnnouncementPreview();const idx=(settings.announcements||[]).findIndex(x=>String(x.id)===String(announcementDraft.id));announcementDraft.updatedAt=Date.now();if(idx>=0)settings.announcements[idx]=structuredClone(announcementDraft);else if((settings.announcements||[]).length<4)settings.announcements=[...(settings.announcements||[]),structuredClone(announcementDraft)];else throw new Error('Solo puedes crear 4 anuncios.');await saveAnnouncements();await clearAnnouncementDraft();window.__sfAnnouncementEditorOpen=false;const savedName=announcementDraft.name||'Anuncio';announcementDraft=null;announcementEditingId='';announcementActiveSlide=0;announcementActiveText=0;renderWidgets();toast('Anuncio guardado',`“${savedName}” quedó guardado en tu cuenta.`);}catch(e){toast('No se pudo guardar',e.message||'Error','err');}};
+    $('openAnnouncementOverlay').onclick=async()=>{try{
+      const saved= (settings.announcements||[]).some(x=>String(x.id)===String(announcementDraft.id));
+      if(!saved && !announcementDraftApplied){toast('Aplica los cambios primero','Pulsa “Aplicar cambios” para preparar el anuncio antes de generar su overlay.','err');return;}
+      if(!saved) await saveAnnouncementDraftNow();
+      const url=await buildOverlayUrl(`announcement-overlay.html?announcementId=${encodeURIComponent(announcementDraft.id)}&draft=1`);
+      announcementDraft.overlayUrl=url;
+      const link=$('announcementOverlayLinkPreview');if(link)link.textContent=url;
+      const popupName='streamfusionAnnouncement_'+String(announcementDraft.id);
+      const popup=window.open(url,popupName,'popup=yes,width=1280,height=720,resizable=yes,scrollbars=yes');
+      if(!popup){toast('Ventana bloqueada','Permite ventanas emergentes para abrir el overlay.','err');return;}
+      popupWindows.add(popup);
+      try{popup.focus();}catch{}
+      toast('Overlay listo','Este anuncio reutiliza siempre el mismo overlay; los cambios guardados se reflejan en tiempo real.');
+    }catch(e){toast('Overlay',e.message||'No se pudo generar el overlay.','err');}};
+  }
+  function hideAnnouncementPreviewCanvas(){const host=$('announcementCanvas');if(host)host.replaceChildren();}

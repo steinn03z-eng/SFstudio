@@ -1,0 +1,20 @@
+:root{font-family:Inter,system-ui,sans-serif;color:#fff;background:transparent}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}
+body{pointer-events:none}
+#announcementOverlay{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:transparent;overflow:hidden}
+/* Mantiene un lienzo lógico 16:9 y escala TODO de forma uniforme dentro de cualquier Browser Source.
+   Esto evita que OBS comprima, aplaste o deforme el anuncio cuando el ancho/alto no coinciden. */
+.sf-announcement-stage{position:relative;width:min(100vw,177.7777778vh);height:min(100vh,56.25vw);aspect-ratio:16/9;container-type:size;overflow:hidden;background:transparent;flex:0 0 auto}
+.sf-announcement-card{position:absolute;inset:0;overflow:visible;box-sizing:border-box;display:block;background:transparent!important;border:0!important;box-shadow:none!important;padding:0!important}
+.sf-announcement-safe-zone{position:absolute;inset:0;pointer-events:none}
+.sf-announcement-text{position:absolute;display:block;box-sizing:border-box;overflow:visible;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;user-select:none;pointer-events:none;paint-order:stroke fill;max-width:none;width:max-content;height:auto;min-height:0}
+.sf-announcement-image{position:absolute;display:block;box-sizing:border-box;user-select:none;pointer-events:none;max-width:none;width:auto;background:transparent!important;border:0!important;border-radius:0!important;box-shadow:none!important;overflow:visible}
+.sf-announcement-stage.is-hidden{opacity:0;visibility:hidden}
+.sf-announcement-stage.is-visible{opacity:1;visibility:visible}
+.sf-announcement-stage.is-transitioning{transition:opacity .22s ease,transform .22s ease}
+
+/* Announcement canvas is always transparent: no cardbox around media. */
+.sf-announcement-image{background:transparent!important;}
+.sf-announcement-image img{background:transparent!important;border:0!important;display:block;width:100%;height:auto;max-width:none;object-fit:contain;object-position:center;}
+.sf-announcement-text *{overflow:visible!important}
+

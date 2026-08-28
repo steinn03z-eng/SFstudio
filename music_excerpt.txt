@@ -1,0 +1,582 @@
+  }
+  function hideAnnouncementPreviewCanvas(){const host=$('announcementCanvas');if(host)host.replaceChildren();}
+  function stopAnnouncementPreview(){if(announcementPreviewTimer){clearTimeout(announcementPreviewTimer);announcementPreviewTimer=0;}announcementPreviewRunning=false;const btn=$('viewAnnouncement');if(btn)btn.textContent='▶ Simular anuncio';hideAnnouncementPreviewCanvas();renderAnnouncementPreview();}
+  function toggleAnnouncementPreview(){
+    if(!announcementDraft)return;
+    if(announcementPreviewRunning){stopAnnouncementPreview();return;}
+    announcementPreviewRunning=true;
+    const btn=$('viewAnnouncement');if(btn)btn.textContent='■ Detener simulación';
+    let index=0;
+    const run=()=>{
+      if(!announcementPreviewRunning)return;
+      if(index>=announcementDraft.slides.length){
+        hideAnnouncementPreviewCanvas();
+        const wait=Math.max(0,Number(announcementDraft.repeatEvery)||0)*1000;
+        announcementPreviewTimer=setTimeout(()=>{index=0;run();},wait);
+        return;
+      }
+      announcementActiveSlide=index;
+      renderAnnouncementPreview();
+      const sl=announcementDraft.slides[index];
+      announcementPreviewTimer=setTimeout(()=>{index+=1;run();},Math.max(.5,Number(sl.showSeconds)||.5)*1000);
+    };
+    run();
+  }
+  async function renderAnnouncementHub(){
+    ensureAnnouncementFonts();
+    const list=Array.isArray(settings.announcements)?settings.announcements:[];
+    const draft=await loadAnnouncementDraft();
+    if(draft){
+      announcementDraft=ensureAnnouncementConfig(structuredClone(draft));
+      announcementEditingId=(list.some(x=>String(x.id)===String(draft.id))?String(draft.id):'');
+      announcementActiveSlide=0; announcementActiveText=0;
+      window.__sfAnnouncementEditorOpen=true; window.__sfAnnouncementHubOpen=false;
+      renderWidgets();
+      return;
+    }
+    $('view').innerHTML=`<div class="intro split"><div><p class="eyebrow">WIDGET / ANUNCIO</p><h2>Anuncios</h2><p>Crea hasta 4 anuncios independientes. Cada anuncio tiene su propio overlay, pero todos pertenecen a tu cuenta.</p></div><button class="btn secondary widget-back-btn" id="backToWidgetsRootFromAnnouncements">← Volver a Widgets</button></div><div class="sf-ann-list">${list.map(a=>`<button type="button" class="card widget-launch-card widget-launch-card-announcement sf-ann-saved" data-ann-id="${esc(a.id)}"><span class="widget-launch-icon">📢</span><span class="widget-launch-copy"><span class="widget-launch-kicker">ANUNCIO</span><strong class="widget-launch-title">${esc(a.name||'Anuncio')}</strong><small class="widget-launch-desc">${Math.min(3,(a.slides||[]).length)} parte(s) · cada ${Number(a.repeatEvery||0)}s · ${a.enabled!==false?'Activo':'Pausado'}</small></span><span class="widget-launch-arrow">→</span></button>`).join('')}<button type="button" class="card widget-launch-card widget-launch-card-announcement sf-ann-create ${list.length>=4?'is-disabled':''}" id="createAnnouncement" ${list.length>=4?'disabled':''}><span class="widget-launch-icon">＋</span><span class="widget-launch-copy"><span class="widget-launch-kicker">CREAR</span><strong class="widget-launch-title">Crear Anuncio</strong><small class="widget-launch-desc">${list.length}/4 anuncios creados</small></span><span class="widget-launch-arrow">→</span></button></div>`;
+    document.querySelectorAll('.sf-ann-saved').forEach(btn=>btn.onclick=()=>{const id=btn.dataset.annId;const found=list.find(x=>String(x.id)===String(id));if(!found)return;announcementDraft=ensureAnnouncementConfig(structuredClone(found));announcementEditingId=String(found.id);announcementActiveSlide=0;window.__sfAnnouncementEditorOpen=true;window.__sfAnnouncementHubOpen=false;stopAnnouncementPreview();renderWidgets();});
+    $('createAnnouncement').onclick=async()=>{if(list.length>=4)return;await clearAnnouncementDraft();announcementDraft=defaultAnnouncement(`Anuncio ${list.length+1}`);announcementEditingId='';announcementActiveSlide=0;announcementActiveText=0;window.__sfAnnouncementEditorOpen=true;window.__sfAnnouncementHubOpen=false;stopAnnouncementPreview();renderWidgets();};
+    $('backToWidgetsRootFromAnnouncements').onclick=()=>{window.__sfAnnouncementHubOpen=false;renderWidgets();};
+  }
+
+  const MUSIC_PREFIX_OPTIONS = ['!','/','.','-'];
+  const MUSIC_REQUEST_OPTIONS = ['S','song','m','musica'];
+  const MUSIC_ADMIN_COMMANDS = { pause:['pausar','pausa','pause'], stop:['stop','detener'], skip:['skip','saltar','siguiente','next'], repeat:['repeat','repetir'], volume:['volumen','audio','vol','v'] };
+  function musicDefault(){return {enabled:true,commandPrefix:'!',requestCommand:'musica',requestCommandPreset:'musica',pointCost:100,maxDurationSeconds:300,maxQueue:10,showNext:true,showProgress:true,showRequester:true,allowModeratorCommands:false,adminCommandPrefixes:{pause:'!',stop:'!',skip:'!',repeat:'!',volume:'!'},adminCommands:{pause:'pausa',stop:'detener',skip:'siguiente',repeat:'repetir',volume:'vol'},style:{scale:1,accent:'#8b5cf6',accent2:'#ec4899',progressMode:'gradient2',progressColor:'#8b5cf6',progressColor2:'#ec4899',progressColor3:'#22d3ee',textColor:'#ffffff',secondaryTextColor:'#b9b9c8',titleFont:'Inter',artistFont:'Inter',titleSize:28,artistSize:15,vinylSize:170,design:'vinyl-glow',showVinyl:true}};}
+  const MUSIC_DESIGN_OPTIONS=[
+    ['vinyl-glow','Vinil Glow'],['minimal','Minimal'],['neon-ring','Neon Ring'],['retro','Retro'],['mono','Monocromo'],['glass','Glass Aura'],['cyber','Cyber Pulse'],['sunset','Sunset Wave'],['arcade','Arcade'],['arcade-glass','Arcade + Glass Aura'],['aurora','Aurora Bloom'],['synthwave','Synthwave 80s'],['hologram','Hologram'],['matrix','Matrix'],['oceanic','Oceanic'],['fire','Inferno'],['candy','Candy Pop'],['monochrome-glow','Mono Glow'],['blueprint','Blueprint'],['terminal','Terminal'],
+    ['crystal-glass','Crystal Glass'],['rose-aurora','Rose Aurora'],['midnight-luxe','Midnight Luxe'],['plasma-core','Plasma Core'],['mint-mist','Mint Mist'],['ice-chrome','Ice Chrome'],['golden-hour','Golden Hour'],['ruby-noir','Ruby Noir'],['vapor-dream','Vapor Dream'],['cosmic-bloom','Cosmic Bloom']
+  ];
+  function musicDesignOptions(selected){return MUSIC_DESIGN_OPTIONS.map(([v,l])=>`<option value="${esc(v)}" ${String(selected||'vinyl-glow')===v?'selected':''}>${esc(l)}</option>`).join('');}
+  let musicAutoSaveTimer=0;
+  function scheduleMusicAutoSave(cfg){
+    clearTimeout(musicAutoSaveTimer);
+    musicAutoSaveTimer=setTimeout(async()=>{
+      try{
+        const normalized=structuredClone(cfg);
+        const data=await api('/api/music/settings',{method:'PUT',body:JSON.stringify({music:normalized})});
+        settings.musicWidget=data.music;
+        if(window.__sfMusicWidgetEditorOpen) musicWidgetDraft=musicMerge(musicDefault(),musicWidgetDraft||data.music);
+        const note=$('musicAutoSaveStatus');
+        if(note){note.textContent='● Guardado automáticamente';note.classList.remove('is-saving');}
+      }catch(e){
+        const note=$('musicAutoSaveStatus');
+        if(note){note.textContent='● Cambios pendientes de guardar';note.classList.add('is-saving');}
+      }
+    },550);
+    const note=$('musicAutoSaveStatus');
+    if(note){note.textContent='● Guardando automáticamente…';note.classList.add('is-saving');}
+  }
+  function musicMerge(base,extra){return {...base,...(extra||{}),adminCommandPrefixes:{...base.adminCommandPrefixes,...(extra?.adminCommandPrefixes||{})},adminCommands:{...base.adminCommands,...(extra?.adminCommands||{})},style:{...base.style,...(extra?.style||{})}};}
+  function musicTime(sec){const n=Math.max(0,Math.floor(Number(sec)||0));return `${Math.floor(n/60)}:${String(n%60).padStart(2,'0')}`;}
+  function musicDemoThumb(){
+    const svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240"><defs><linearGradient id="g" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="#8b5cf6"/><stop offset=".55" stop-color="#ec4899"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect width="240" height="240" rx="120" fill="#111827"/><circle cx="120" cy="120" r="92" fill="url(#g)" opacity=".95"/><circle cx="120" cy="120" r="34" fill="#0b1020"/><circle cx="120" cy="120" r="8" fill="#fff" opacity=".9"/><path d="M35 70c55-43 119-43 170 4" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="9" stroke-linecap="round"/></svg>`;
+    return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
+  }
+  function musicDemoTrack(){
+    return {id:'music-preview-demo',title:'Tu canción aparecerá aquí',artist:'Artista / canal',thumbnail:musicDemoThumb(),duration:214,requester:'Vista previa',platform:'demo',url:''};
+  }
+  let musicPreviewVinylTrackKey='';
+  let musicPreviewVinylLastElapsed=0;
+  const MUSIC_VINYL_SPIN_SECONDS=9;
+  function musicPreviewVinylPhase(elapsed){ const e=Math.max(0,Number(elapsed)||0); return -(e%MUSIC_VINYL_SPIN_SECONDS); }
+  function syncMusicPreviewVinyl({force=false}={}){
+    const host=$('musicPreview'); const vinyl=host?.querySelector('.sf-music-vinyl'); if(!vinyl)return;
+    const st=musicPreviewState||{}, t=st.current||null;
+    const key=t?`${t.id||''}|${t.sourceId||''}`:'';
+    const elapsed=Math.max(0,Number(st.elapsed||0));
+    const playing=Boolean(st.playing&&!st.paused);
+    const trackChanged=key!==musicPreviewVinylTrackKey;
+    const correction=Math.abs(elapsed-musicPreviewVinylLastElapsed);
+    if(force||trackChanged||!playing||correction>1.25){ vinyl.style.animationDelay=`${musicPreviewVinylPhase(elapsed)}s`; musicPreviewVinylTrackKey=key; }
+    vinyl.classList.toggle('is-spinning',playing);
+    musicPreviewVinylLastElapsed=elapsed;
+  }
+  function musicProgressBackground(cfg){
+    const st=cfg.style||{}; const mode=['single','gradient2','gradient3'].includes(st.progressMode)?st.progressMode:'gradient2';
+    const c1=st.progressColor||st.accent||'#8b5cf6', c2=st.progressColor2||st.accent2||'#ec4899', c3=st.progressColor3||'#22d3ee';
+    if(mode==='single') return `linear-gradient(90deg,${c1},${c1})`;
+    if(mode==='gradient3') return `linear-gradient(90deg,${c1},${c2},${c3})`;
+    return `linear-gradient(90deg,${c1},${c2})`;
+  }
+  function musicPreviewMarkup(cfg,state={current:null,queue:[]} ,opts={}){
+    const t=state.current || (opts.demo!==false ? musicDemoTrack() : null); const q=state.queue||[]; if(!t)return `<div class="music-preview-empty"><span>♫</span><strong>Sin reproducción</strong><small>La reproducción aparecerá aquí cuando llegue una solicitud.</small></div>`;
+    const scale=Math.max(.45,Math.min(2,Number(cfg.style?.scale||1))); const a=cfg.style?.accent||'#8b5cf6', a2=cfg.style?.accent2||'#ec4899'; const text=cfg.style?.textColor||'#fff', secondary=cfg.style?.secondaryTextColor||'#b9b9c8'; const titleFont=cfg.style?.titleFont||'Inter', artistFont=cfg.style?.artistFont||'Inter'; const titleSize=Number(cfg.style?.titleSize||28), artistSize=Number(cfg.style?.artistSize||15), vinylSize=Number(cfg.style?.vinylSize||170); const elapsed=Number(state.elapsed||0); const duration=Math.max(1,Number(t.duration||214)); const progress=Math.max(0,Math.min(100,elapsed/duration*100)); const design=cfg.style?.design||'vinyl-glow'; const progressBg=musicProgressBackground(cfg); const isPlaying=Boolean(state.playing&&!state.paused); const toggleLabel=isPlaying?'Pausar':'Reproducir'; const toggleIcon=isPlaying?'Ⅱ':'▶';
+    return `<div class="sf-music-shell design-${esc(design)}" style="--music-accent:${esc(a)};--music-accent2:${esc(a2)};--music-text:${esc(text)};--music-secondary:${esc(secondary)};--music-title-font:${esc(titleFont)};--music-artist-font:${esc(artistFont)};--music-title-size:${titleSize}px;--music-artist-size:${artistSize}px;--music-vinyl-size:${vinylSize}px;--music-progress-bg:${esc(progressBg)};--music-scale:${scale}">
+      <div class="sf-music-orbit">
+        ${cfg.style?.showVinyl!==false?`<div class="sf-music-disc-glow"></div><div class="sf-music-vinyl ${isPlaying?'is-spinning':''}" style="animation-delay:${musicPreviewVinylPhase(elapsed)}s"><div class="sf-music-disc-art"><img src="${esc(t.thumbnail||'')}" alt=""></div><div class="sf-music-grooves"></div><span class="sf-music-reflection"></span><span class="sf-music-edge-glow"></span><span class="sf-music-hole"></span></div>`:''}
+        <div class="sf-music-info"><div class="sf-music-kicker"><span class="sf-music-live-dot"></span><span data-music-kicker>${state.paused?'PAUSADO':state.current?(isPlaying?'AHORA SONANDO':'LISTO PARA REPRODUCIR'):'VISTA PREVIA'}</span></div><h3 data-music-title>${esc(t.title||'Canción')}</h3><p data-music-artist>${esc(t.artist||'Artista')}</p>${cfg.showProgress!==false?`<div class="sf-music-progress"><span data-music-progress style="width:${progress}%;background:${esc(progressBg)};"></span></div><div class="sf-music-time-row"><span data-music-elapsed>${musicTime(elapsed)}</span><div class="sf-music-controls"><button type="button" class="sf-music-nav is-hidden" data-music-prev title="Retroceder" aria-label="Retroceder">‹</button><button type="button" class="sf-music-play" data-music-preview-toggle title="${toggleLabel}" aria-label="${toggleLabel}">${toggleIcon}</button><button type="button" class="sf-music-nav" data-music-next title="Siguiente" aria-label="Siguiente">›</button></div><span data-music-duration>${musicTime(duration)}</span></div>`:''}${cfg.showRequester!==false?`<small class="sf-music-requester" data-music-requester>Solicitada por ${esc(t.requester||'Usuario')}</small>`:''}</div>
+      </div>
+      ${cfg.showNext!==false&&q[0]?`<div class="sf-music-next"><span>SIGUIENTE</span><strong>${esc(q[0].title||'Siguiente canción')}</strong><small>${esc(q[0].artist||'Artista')}</small></div>`:''}
+    </div>`;
+  }
+  let musicPlaylistRenderKey='';
+  function renderMusicPlaylistPanel(){
+    const host=$('musicPlaylistList'), count=$('musicPlaylistCount'); if(!host)return;
+    const current=musicPreviewState?.current||null; const q=Array.isArray(musicPreviewState?.queue)?musicPreviewState.queue:[];
+    const key=`${current?.id||''}:${current?.sourceId||''}|${q.map(t=>`${t.id}:${t.sourceId||''}`).join('|')}`;
+    if(count)count.textContent=`${q.length} / 10`;
+    if(key===musicPlaylistRenderKey){ return; }
+    musicPlaylistRenderKey=key;
+    const rows=[];
+    if(current) rows.push(`<div class="music-playlist-item is-current" data-music-item="${esc(current.id)}" tabindex="0" role="button"><span class="music-playlist-index">▶</span><div class="music-playlist-thumb">${current.thumbnail?`<img src="${esc(current.thumbnail)}" alt="">`:'♫'}</div><div class="music-playlist-copy"><strong>${esc(current.title||'Canción')}</strong><small>${esc(current.artist||'Artista')} · AHORA</small></div><span></span></div>`);
+    rows.push(...q.map((t,i)=>`<div class="music-playlist-item" data-music-item="${esc(t.id)}" tabindex="0" role="button"><span class="music-playlist-index">${i+1}</span><div class="music-playlist-thumb">${t.thumbnail?`<img src="${esc(t.thumbnail)}" alt="">`:'♫'}</div><div class="music-playlist-copy"><strong>${esc(t.title||'Canción')}</strong><small>${esc(t.artist||'Artista')}</small></div><button class="music-playlist-remove" type="button" data-music-remove="${esc(t.id)}" title="Quitar">×</button></div>`));
+    if(!rows.length){host.innerHTML='<div class="music-playlist-empty">Agrega canciones para verlas aquí.</div>';return;}
+    host.innerHTML=rows.join('');
+    host.querySelectorAll('[data-music-remove]').forEach(btn=>btn.onclick=(ev)=>{ev.stopPropagation();removeMusicPlaylistTrack(btn.dataset.musicRemove);});
+    host.querySelectorAll('[data-music-item]').forEach(item=>{
+      const select=()=>{host.querySelectorAll('[data-music-item].is-selected').forEach(x=>x.classList.remove('is-selected'));item.classList.add('is-selected');};
+      item.addEventListener('click',select);
+      item.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
+    });
+  }
+  function pushPreviewState(extra={}){
+    musicPreviewState={...musicPreviewState,...extra,queue:Array.isArray(extra.queue??musicPreviewState.queue)?(extra.queue??musicPreviewState.queue).slice(0,10):[],simulated:true};
+    musicPreviewState.queue=musicPreviewState.queue.map(t=>({...t,requester:'Simulación',source:'simulation'}));
+    musicPreviewDraw(musicPreviewState);
+    socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+  }
+  function emitMusicAppearanceSync(){
+    if(!musicWidgetDraft)return;
+    socket?.emit?.('music:previewSettings',structuredClone(musicWidgetDraft));
+    socket?.emit?.('music:appearanceSync',structuredClone(musicWidgetDraft));
+  }
+  async function resolveSimulationTrack(query){
+    const data=await api('/api/music/preview-track',{method:'POST',body:JSON.stringify({query})});
+    if(!data?.track?.sourceId)throw new Error('No se pudo obtener un video de YouTube reproducible.');
+    return data.track;
+  }
+  async function addMusicTrackToPlaylist(){
+    const input=$('musicSimulationQuery'),query=String(input?.value||'').trim(),status=$('musicSimulationStatus');
+    if(!query){status&&(status.textContent='Escribe una canción o pega una URL para agregarla.');status?.classList.remove('is-hidden','is-loading');return;}
+    if((musicPreviewState.queue||[]).length>=10){toast('Playlist','Solo puedes agregar 10 canciones.','err');return;}
+    if(status){status.textContent='Buscando canción para la playlist…';status.classList.remove('is-hidden');status.classList.add('is-loading');}
+    try{const track=await resolveSimulationTrack(query);const q=[...(musicPreviewState?.simulated?musicPreviewState.queue:[])];if(q.some(x=>String(x.sourceId)===String(track.sourceId)) || String(musicPreviewState?.current?.sourceId||'')===String(track.sourceId)){throw new Error('Esa canción ya está en la playlist.');}q.push({...track,requester:'Simulación',source:'simulation'});pushPreviewState({queue:q});if(status){status.textContent=`Agregada a simulación y a Playlist de directo (${q.length}/10)`;status.classList.remove('is-loading');} }catch(e){if(status){status.textContent=e?.message||'No se pudo agregar la canción.';status.classList.remove('is-loading','is-hidden');}toast('Playlist',e?.message||'No se pudo agregar la canción.','err');}
+  }
+  function removeMusicPlaylistTrack(id){const q=(musicPreviewState.queue||[]).filter(t=>String(t.id)!==String(id));pushPreviewState({queue:q});}
+  async function previewAdvance(direction=1){
+    const current=musicPreviewState.current;
+    if(direction>0){
+      const next=(musicPreviewState.queue||[])[0]; if(!next)return;
+      const q=(musicPreviewState.queue||[]).slice(1);
+      const previous=current||null;
+      musicPreviewState={...musicPreviewState,current:next,queue:q,previous,elapsed:0,playing:true,paused:false,simulated:true};
+      musicPreviewDraw(musicPreviewState);
+      await loadMusicPreviewYouTube(next,true);
+      socket?.emit?.('music:simulate',{title:next.title,artist:next.artist,thumbnail:next.thumbnail,duration:next.duration,url:next.url,sourceId:next.sourceId,queue:q,previous});
+      pushPreviewState({current:next,queue:q,previous,elapsed:0,playing:true,paused:false});
+      return;
+    }
+    const prev=musicPreviewState.previous; if(!prev)return;
+    const currentTrack=current;
+    const q=[...(musicPreviewState.queue||[])];
+    if(currentTrack)q.unshift(currentTrack);
+    musicPreviewState={...musicPreviewState,current:prev,queue:q.slice(0,10),previous:null,elapsed:0,playing:true,paused:false,simulated:true};
+    musicPreviewDraw(musicPreviewState);
+    await loadMusicPreviewYouTube(prev,true);
+    socket?.emit?.('music:simulate',{title:prev.title,artist:prev.artist,thumbnail:prev.thumbnail,duration:prev.duration,url:prev.url,sourceId:prev.sourceId,queue:q.slice(0,10),previous:null});
+    pushPreviewState({current:prev,queue:q.slice(0,10),previous:null,elapsed:0,playing:true,paused:false});
+  }
+  function updatePreviewNavButtons(){const shell=$('musicPreview')?.querySelector('.sf-music-shell');if(!shell)return;const prev=shell.querySelector('[data-music-prev]'),next=shell.querySelector('[data-music-next]');prev?.classList.toggle('is-hidden',!musicPreviewState?.previous);if(next)next.disabled=!(musicPreviewState?.queue?.length);}
+  const MUSIC_PREVIEW_VINYL_DURATION=9000;
+  function syncMusicPreviewVinylAnimation(elapsed=0, playing=false, trackKey=''){
+    const vinyl=document.querySelector('#musicPreview .sf-music-vinyl');
+    if(!vinyl)return;
+    const key=String(trackKey||'');
+    let anim=vinyl.__sfSpinAnimation;
+    if(!anim){
+      try{
+        anim=vinyl.animate([{transform:'rotate(0deg)'},{transform:'rotate(360deg)'}],{duration:MUSIC_PREVIEW_VINYL_DURATION,iterations:Infinity,easing:'linear'});
+        vinyl.__sfSpinAnimation=anim;
+      }catch{ anim=null; }
+    }
+    const duration=MUSIC_PREVIEW_VINYL_DURATION;
+    const phase=((Math.max(0,Number(elapsed)||0)*1000)%duration+duration)%duration;
+    const sameTrack=vinyl.dataset.phaseTrack===key && vinyl.dataset.phaseReady==='1';
+    if(!sameTrack){
+      vinyl.dataset.phaseTrack=key;
+      vinyl.dataset.phaseReady='1';
+      if(anim){ try{anim.currentTime=phase;}catch{} }
+      vinyl.style.animation='none';
+    }
+    if(anim){
+      try{
+        anim.playbackRate=1;
+        // Keep the preview vinyl phase tied to the real YouTube clock, but only
+        // correct when the drift is large enough to be visible. This prevents
+        // the tiny "snap" that appears when the player reports time with jitter.
+        const animTime=Number(anim.currentTime||0);
+        const phaseDelta=Math.abs(animTime-phase);
+        if(phaseDelta>450 || !Number.isFinite(animTime)) anim.currentTime=phase;
+        if(playing)anim.play(); else anim.pause();
+      }catch{}
+    }else{
+      vinyl.style.animationDelay=`-${(phase/1000).toFixed(3)}s`;
+      vinyl.style.animationPlayState=playing?'running':'paused';
+    }
+  }
+
+  function updateMusicPreviewDynamic(){
+    const host=$('musicPreview'); if(!host)return; const shell=host.querySelector('.sf-music-shell'); if(!shell)return;
+    const st=musicPreviewState||{}; const t=st.current||musicDemoTrack();
+    const liveElapsed=musicWidgetSimulating && musicPreviewYTPlayer && typeof musicPreviewYTPlayer.getCurrentTime==='function' ? Number(musicPreviewYTPlayer.getCurrentTime()||0) : Number(st.elapsed||0);
+    const elapsed=Math.max(0,liveElapsed), duration=Math.max(1,Number(t.duration||214)); const progress=Math.max(0,Math.min(100,elapsed/duration*100)); const playing=Boolean(musicWidgetSimulating && musicPreviewYTPlayer ? musicPreviewYTPlayer.getPlayerState?.()===window.YT?.PlayerState?.PLAYING : (st.playing&&!st.paused));
+    const prog=shell.querySelector('[data-music-progress]'); if(prog)prog.style.width=`${progress}%`;
+    const te=shell.querySelector('[data-music-elapsed]'); if(te)te.textContent=musicTime(elapsed);
+    const td=shell.querySelector('[data-music-duration]'); if(td)td.textContent=musicTime(duration);
+    const kicker=shell.querySelector('[data-music-kicker]'); if(kicker)kicker.textContent=st.paused?'PAUSADO':st.current?(playing?'AHORA SONANDO':'LISTO PARA REPRODUCIR'):'VISTA PREVIA';
+    const b=shell.querySelector('[data-music-preview-toggle]'); if(b){b.textContent=playing?'Ⅱ':'▶'; b.title=playing?'Pausar':'Reproducir'; b.setAttribute('aria-label',playing?'Pausar':'Reproducir'); b.disabled=false;}
+    const vinyl=shell.querySelector('.sf-music-vinyl'); if(vinyl){ const correction=Math.abs(elapsed-musicPreviewVinylLastElapsed); const key=t?`${t.id||''}|${t.sourceId||''}`:''; if(key!==musicPreviewVinylTrackKey||!playing||correction>1.25){ vinyl.style.animationDelay=`${musicPreviewVinylPhase(elapsed)}s`; musicPreviewVinylTrackKey=key; } vinyl.classList.toggle('is-spinning',playing); musicPreviewVinylLastElapsed=elapsed; } updatePreviewNavButtons(); renderMusicPlaylistPanel();
+  }
+  function applyMusicPreviewAppearance(){
+    const host=$('musicPreview'), shell=host?.querySelector('.sf-music-shell');
+    if(!shell)return;
+    const cfg=musicWidgetDraft||musicDefault(), st=cfg.style||{};
+    const scale=Math.max(.45,Math.min(2,Number(st.scale||1)));
+    const progressBg=musicProgressBackground(cfg);
+    const allowedDesigns=new Set(MUSIC_DESIGN_OPTIONS.map(([value])=>value));
+    const design=allowedDesigns.has(String(st.design))?String(st.design):'vinyl-glow';
+    const previousDesign=shell.className;
+    shell.className=`sf-music-shell design-${design}`;
+    shell.style.setProperty('--music-accent',st.accent||'#8b5cf6');
+    shell.style.setProperty('--music-accent2',st.accent2||'#ec4899');
+    shell.style.setProperty('--music-text',st.textColor||'#fff');
+    shell.style.setProperty('--music-secondary',st.secondaryTextColor||'#b9b9c8');
+    shell.style.setProperty('--music-title-font',st.titleFont||'Inter');
+    shell.style.setProperty('--music-artist-font',st.artistFont||'Inter');
+    shell.style.setProperty('--music-title-size',`${Number(st.titleSize||28)}px`);
+    shell.style.setProperty('--music-artist-size',`${Number(st.artistSize||15)}px`);
+    shell.style.setProperty('--music-vinyl-size',`${Number(st.vinylSize||170)}px`);
+    shell.style.setProperty('--music-progress-bg',progressBg);
+    shell.style.setProperty('--music-scale',String(scale));
+    shell.style.transform=`scale(${scale})`;
+    shell.style.transformOrigin='center center';
+    const vinyl=shell.querySelector('.sf-music-vinyl'); if(vinyl)vinyl.style.display=st.showVinyl===false?'none':'';
+    const progress=shell.querySelector('.sf-music-progress'); if(progress)progress.style.display=cfg.showProgress===false?'none':'';
+    const requester=shell.querySelector('[data-music-requester]'); if(requester)requester.style.display=cfg.showRequester===false?'none':'';
+    const next=shell.querySelector('.sf-music-next'); if(next)next.style.display=cfg.showNext===false?'none':'';
+    const title=shell.querySelector('[data-music-title]'); if(title){title.style.fontFamily=`${st.titleFont||'Inter'},Inter,sans-serif`;title.style.fontSize=`${Number(st.titleSize||28)}px`;title.style.color=st.textColor||'#fff';}
+    const artist=shell.querySelector('[data-music-artist]'); if(artist){artist.style.fontFamily=`${st.artistFont||'Inter'},Inter,sans-serif`;artist.style.fontSize=`${Number(st.artistSize||15)}px`;artist.style.color=st.secondaryTextColor||'#b9b9c8';}
+    shell.querySelectorAll('[data-music-progress]').forEach(bar=>{bar.style.background=progressBg});
+    const designChanged=previousDesign!==shell.className;
+    if(designChanged){
+      // Changing appearance must not restart the turntable. Keep the current
+      // phase/elapsed position and only refresh the non-visual state.
+      syncMusicPreviewVinyl({force:false});
+    }
+    updateMusicPreviewDynamic();
+  }
+
+  function musicPreviewDraw(state=musicPreviewState,opts={demo:true}){
+    const host=$('musicPreview'); if(!host)return;
+    musicPreviewState=structuredClone(state||{});
+    const cfg=musicWidgetDraft||musicDefault();
+    host.innerHTML=musicPreviewMarkup(cfg,musicPreviewState,opts)+`<span class="music-resize-handle" id="musicResizeHandle" title="Redimensionar"></span>`;
+    bindMusicResizeHandle();
+    host.querySelector('[data-music-preview-toggle]')?.addEventListener('click',toggleMusicPreviewPlayback);
+    host.querySelector('[data-music-prev]')?.addEventListener('click',()=>previewAdvance(-1));
+    host.querySelector('[data-music-next]')?.addEventListener('click',()=>previewAdvance(1));
+    applyMusicPreviewAppearance();
+    renderMusicPlaylistPanel();
+  }
+  function bindMusicResizeHandle(){const h=$('musicResizeHandle');const host=$('musicPreview');if(!h||!host)return;h.onpointerdown=(ev)=>{ev.preventDefault();ev.stopPropagation();const sx=ev.clientX,sy=ev.clientY,s0=Number(musicWidgetDraft?.style?.scale||1);const move=e=>{const delta=((e.clientX-sx)+(e.clientY-sy))/520;const next=Math.max(.45,Math.min(2,s0+delta));musicWidgetDraft.style.scale=Number(next.toFixed(2));const scaleEl=$('musicScale');if(scaleEl)scaleEl.value=String(musicWidgetDraft.style.scale);const valueEl=$('musicScaleValue');if(valueEl)valueEl.textContent=`${Math.round(musicWidgetDraft.style.scale*100)}%`;musicPreviewDraw(musicPreviewState);};const up=()=>{document.removeEventListener('pointermove',move);document.removeEventListener('pointerup',up);};document.addEventListener('pointermove',move);document.addEventListener('pointerup',up,{once:true});};}
+  function stopMusicWidgetSimulation(){clearInterval(musicWidgetSimTimer);musicWidgetSimTimer=0;musicWidgetSimulating=false;musicSimulationTrack=null;try{musicPreviewYTPlayer?.stopVideo?.();}catch{}socket?.emit?.('music:simulateStop');musicPreviewState={current:null,queue:[],previous:null,elapsed:0,playing:false,paused:false};musicPreviewDraw(musicPreviewState,{demo:true}); $('musicSimulate')?.classList.remove('is-hidden'); $('musicStopSimulation')?.classList.add('is-hidden'); $('musicSimulationStatus')?.classList.remove('is-loading'); $('musicSimulationStatus')?.classList.add('is-hidden');}
+  function ensureMusicYouTubeAPI(){
+    if(window.YT?.Player) return Promise.resolve(window.YT);
+    if(musicPreviewYTPromise) return musicPreviewYTPromise;
+    musicPreviewYTPromise=new Promise((resolve,reject)=>{
+      const previous=window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady=()=>{try{previous?.();}catch{};musicPreviewYTReady=true;resolve(window.YT);};
+      const existing=document.querySelector('script[data-sf-youtube-api]');
+      if(existing){existing.addEventListener('load',()=>{if(window.YT?.Player){musicPreviewYTReady=true;resolve(window.YT);}});return;}
+      const script=document.createElement('script');script.src='https://www.youtube.com/iframe_api';script.async=true;script.dataset.sfYoutubeApi='1';script.onerror=()=>{musicPreviewYTPromise=null;reject(new Error('No se pudo cargar el reproductor de YouTube.'));};document.head.appendChild(script);
+    });
+    return musicPreviewYTPromise;
+  }
+  }
+  function ensureMusicPreviewPlayer(){
+    return ensureMusicYouTubeAPI().then(()=>{
+      if(musicPreviewYTPlayer)return musicPreviewYTPlayer;
+      let host=document.getElementById('musicPreviewYoutubeHost');
+      if(!host){host=document.createElement('div');host.id='musicPreviewYoutubeHost';host.className='music-youtube-hidden-host';document.body.appendChild(host);}
+      return new Promise((resolve,reject)=>{try{musicPreviewYTPlayer=new YT.Player(host,{width:'200',height:'200',videoId:'',playerVars:{autoplay:0,controls:0,disablekb:1,fs:0,playsinline:1,rel:0,modestbranding:1,iv_load_policy:3,origin:location.origin},events:{onReady:()=>{musicPreviewYTReady=true;resolve(musicPreviewYTPlayer);},onStateChange:e=>{if(!musicWidgetSimulating||!musicPreviewYTPlayer)return;const st=e?.data;if(st===YT.PlayerState.PLAYING)musicPreviewState={...musicPreviewState,playing:true,paused:false,simulated:true};else if(st===YT.PlayerState.PAUSED)musicPreviewState={...musicPreviewState,playing:false,paused:true,simulated:true};else if(st===YT.PlayerState.ENDED){const dur=Number(musicPreviewState.current?.duration||musicSimulationTrack?.duration||musicPreviewYTPlayer.getDuration?.()||0);musicPreviewState={...musicPreviewState,elapsed:dur,playing:false,paused:true,simulated:true};updateMusicPreviewDynamic();if((musicPreviewState.queue||[]).length){setTimeout(()=>previewAdvance(1),120);} }updateMusicPreviewDynamic();},onError:e=>{const status=$('musicSimulationStatus');if(status){status.textContent=`YouTube no puede reproducir este vídeo (código ${Number(e?.data||0)}). Prueba otra canción.`;status.classList.remove('is-loading','is-hidden');}musicWidgetSimulating=false;updateMusicPreviewDynamic();}}});}catch(e){reject(e);}});
+    });
+  }
+  async function loadMusicPreviewYouTube(track,autoplay=true){const player=await ensureMusicPreviewPlayer();const videoId=String(track?.sourceId||'').trim();if(!videoId)throw new Error('La canción no tiene un videoId de YouTube.');musicPreviewYTVideoId=videoId;const seconds=Math.max(0,Number(musicPreviewState?.elapsed||0));player.loadVideoById({videoId,startSeconds:seconds});if(!autoplay)player.pauseVideo();}
+  function startMusicPreviewClock(){
+    if(musicWidgetSimTimer)return;
+    musicWidgetSimTimer=setInterval(()=>{
+      if(!musicWidgetSimulating||!musicPreviewYTPlayer)return;
+      const current=musicPreviewState?.current||musicSimulationTrack; if(!current)return;
+      const e=Number(musicPreviewYTPlayer.getCurrentTime?.()||0),d=Math.max(1,Number(musicPreviewYTPlayer.getDuration?.()||current.duration||1));
+      const max=Number(musicPreviewState.current?.duration||d); const ps=musicPreviewYTPlayer.getPlayerState?.();
+      musicPreviewState={...musicPreviewState,elapsed:Math.min(Math.max(0,e),max),playing:ps===YT.PlayerState.PLAYING,paused:ps===YT.PlayerState.PAUSED,simulated:true};
+      updateMusicPreviewDynamic();
+      if(ps===YT.PlayerState.PLAYING||ps===YT.PlayerState.PAUSED){
+        const now=Date.now();
+        if(!window.__sfMusicPreviewLastSync || now-window.__sfMusicPreviewLastSync>1200){
+          window.__sfMusicPreviewLastSync=now;
+          socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+        }
+      }
+    },500);
+  }
+  async function toggleMusicPreviewPlayback(){
+    if(!musicWidgetSimulating||!musicSimulationTrack){
+      const input=$('musicSimulationQuery'); const query=String(input?.value||'').trim();
+      if(query){ await startMusicWidgetSimulation(); return; }
+      const status=$('musicSimulationStatus');
+      if(status){ status.textContent='Escribe una canción o pega una URL para reproducirla.'; status.classList.remove('is-hidden','is-loading'); }
+      input?.focus(); return;
+    }
+    try {
+      const player=musicPreviewYTPlayer || await ensureMusicPreviewPlayer();
+      if(!player) throw new Error('El reproductor de vista previa todavía no está listo.');
+      const yt=window.YT;
+      const ps=player.getPlayerState?.();
+      const currentTime=Number(player.getCurrentTime?.()||musicPreviewState.elapsed||0);
+      const shouldPause=yt?.PlayerState ? ps===yt.PlayerState.PLAYING : Boolean(musicPreviewState.playing&&!musicPreviewState.paused);
+      if(shouldPause){
+        player.pauseVideo?.();
+        musicPreviewState={...musicPreviewState,elapsed:currentTime,playing:false,paused:true,simulated:true};
+        socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+      } else {
+        // Do not optimistically redraw the whole widget. Let YouTube confirm
+        // PLAYING first so the button and clock never fight the iframe state.
+        player.playVideo?.();
+        musicPreviewState={...musicPreviewState,elapsed:currentTime,playing:true,paused:false,simulated:true};
+        socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+      }
+      updateMusicPreviewDynamic();
+    } catch(error) {
+      const status=$('musicSimulationStatus');
+      if(status){ status.textContent=error?.message||'No se pudo controlar la vista previa.'; status.classList.remove('is-loading','is-hidden'); }
+    }
+  }
+  async function startMusicWidgetSimulation(){
+    clearInterval(musicWidgetSimTimer);musicWidgetSimTimer=0;musicWidgetSimulating=false;musicSimulationTrack=null;
+    const input=$('musicSimulationQuery'),query=String(input?.value||'').trim(),status=$('musicSimulationStatus');
+    if(!query){if(status){status.textContent='Escribe una canción o pega una URL para reproducirla.';status.classList.remove('is-hidden','is-loading');}return;}
+    if(status){status.textContent='Buscando canción en YouTube Music…';status.classList.remove('is-hidden');status.classList.add('is-loading');}
+    try{
+      const track=await resolveSimulationTrack(query);
+      const existing=(musicPreviewState?.simulated?musicPreviewState.queue:[]).filter(Boolean).map(t=>({...t,requester:'Simulación',source:'simulation'}));
+      if(existing.some(t=>String(t.sourceId)===String(track.sourceId)) || String(musicPreviewState?.current?.sourceId||'')===String(track.sourceId)){
+        throw new Error('Esa canción ya está en la simulación.');
+      }
+      musicSimulationTrack=track;
+      musicWidgetSimulating=true;
+      musicPreviewState={current:track,queue:existing.slice(0,10),previous:null,elapsed:0,playing:true,paused:false,simulated:true,source:'simulation'};
+      musicPreviewDraw(musicPreviewState);
+      // Un estado de simulación activo se comparte con el overlay y con Playlist de directo.
+      socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+      await loadMusicPreviewYouTube(track,true);
+      if(status){status.textContent='Reproduciendo en la vista previa · sincronizada con el overlay';status.classList.remove('is-loading');}
+      $('musicSimulate')?.classList.add('is-hidden');$('musicStopSimulation')?.classList.remove('is-hidden');updatePreviewNavButtons();
+      startMusicPreviewClock();
+    }catch(e){musicWidgetSimulating=false;musicSimulationTrack=null;if(status){status.textContent=e?.message||'No se pudo reproducir la canción.';status.classList.remove('is-loading','is-hidden');}toast('Simular música',e?.message||'No se pudo obtener la canción.','err');}
+  }
+
+  const MUSIC_FONT_LINK='https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Bebas+Neue&family=Inter:wght@400;500;600;700;800;900&family=Luckiest+Guy&family=Lobster&family=Montserrat:wght@400;600;700;800;900&family=Orbitron:wght@500;700;900&family=Oswald:wght@400;600;700&family=Pacifico&family=Permanent+Marker&family=Playfair+Display:wght@600;700&family=Poppins:wght@400;500;600;700;800;900&family=Press+Start+2P&family=Righteous&family=Roboto:wght@400;500;700;900&family=Russo+One&family=Teko:wght@500;600;700&display=swap';
+  function ensureMusicFonts(){ if(document.querySelector('link[data-sf-music-fonts]'))return; const link=document.createElement('link');link.rel='stylesheet';link.href=MUSIC_FONT_LINK;link.dataset.sfMusicFonts='1';document.head.appendChild(link); }
+  function musicFontOptions(selected){
+    const fonts=[['Inter','Inter'],['Bangers','Bangers'],['Impact','Impact'],['Anton','Anton'],['Bebas Neue','Bebas Neue'],['Oswald','Oswald'],['Montserrat','Montserrat'],['Poppins','Poppins'],['Roboto','Roboto'],['Rubik','Rubik'],['Righteous','Righteous'],['Russo One','Russo One'],['Orbitron','Orbitron'],['Teko','Teko'],['Permanent Marker','Permanent Marker'],['Luckiest Guy','Luckiest Guy'],['Pacifico','Pacifico'],['Lobster','Lobster'],['Playfair Display','Playfair Display'],['Press Start 2P','Press Start 2P'],['Arial','Arial'],['Verdana','Verdana'],['Trebuchet MS','Trebuchet MS'],['Georgia','Georgia'],['Times New Roman','Times New Roman']];
+    return fonts.map(([v,l])=>`<option value="${esc(v)}" ${String(selected||'Inter')===v?'selected':''}>${esc(l)}</option>`).join('');
+  }
+  let musicWidgetActiveTab = 'commands';
+  function renderMusicWidgetEditor(){
+    ensureMusicFonts();
+    window.__sfMusicWidgetEditorOpen=true; window.__sfVoiceWidgetEditorOpen=false; window.__sfPointsWidgetEditorOpen=false; window.__sfAnnouncementHubOpen=false;
+    musicWidgetDraft=musicMerge(musicDefault(),musicWidgetDraft||settings.musicWidget||{});const s=musicWidgetDraft;
+    const pfx=MUSIC_PREFIX_OPTIONS.map(v=>`<option value="${esc(v)}" ${s.commandPrefix===v?'selected':''}>${esc(v)}</option>`).join('');
+    const tab=(key,icon,label,desc)=>`<button type="button" class="music-editor-tab ${musicWidgetActiveTab===key?'is-active':''}" data-music-tab="${key}"><span class="music-editor-tab-icon">${icon}</span><span><strong>${label}</strong><small>${desc}</small></span></button>`;
+    const connectedAdmins=['tiktok','twitch'].map(platform=>{const profile=settings.connectionProfiles?.[platform]||{};const account=state.accounts?.[platform]||{};const username=String(account.username||profile.username||'').trim()||'Sin conectar';const avatar=connectedAccountAvatarUrl(platform,{...profile,...account,avatarUrl:account.avatarUrl||profile.avatarUrl});const connected=Boolean(account.connected||profile.connected);const status=connected?'CONECTADO':'DESCONECTADO';return `<div class="music-owner-admin ${connected?'is-connected':'is-disconnected'}"><span class="music-owner-avatar">${avatar?`<img src="${esc(avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.classList.remove('is-hidden')"><span class="music-owner-avatar-fallback is-hidden">${platform==='tiktok'?'TT':'TW'}</span>`:`<span class="music-owner-avatar-fallback">${platform==='tiktok'?'TT':'TW'}</span>`}</span><span class="music-owner-copy"><strong>${platform==='tiktok'?'TikTok':'Twitch'}</strong><small>${esc(username)}</small></span><span class="music-owner-status"><i></i>${status}</span>${connected?'<span class="music-owner-badge">ADMIN</span>':''}</div>`}).join('');
+    const adminOption=(k)=>MUSIC_ADMIN_COMMANDS[k].map(v=>`<option value="${esc(v)}" ${normMusic(s.adminCommands?.[k])===normMusic(v)?'selected':''}>${esc(v)}</option>`).join('');
+    $('view').innerHTML=`
+      <div class="intro widget-editor-intro"><div><p class="eyebrow">WIDGET / MÚSICA</p><h2>Música</h2><p>Configura solicitudes, apariencia y controles del reproductor desde un solo editor.</p></div><button class="btn secondary widget-back-btn" id="backToWidgetsFromMusic">← Volver a Widgets</button></div>
+      <div class="widget-editor-layout music-widget-editor-layout">
+        <section class="card widget-controls music-widget-controls">
+          <div class="widget-editor-topbar"><div><p class="eyebrow">EDITOR</p><h3>Configuración de Música</h3><p class="widget-account-note"><span>✓</span> Los cambios se reflejan al instante en la vista previa y el overlay. <b id="musicAutoSaveStatus">● Guardado automáticamente</b></p></div><div class="widget-header-actions"><button class="btn secondary" id="saveMusicWidget">Guardar</button><button class="btn primary" id="openMusicOverlay">Generar Overlay</button></div></div>
+          <div class="music-editor-tabs" role="tablist" aria-label="Configuración de Música">${tab('commands','⌘','Comandos','Solicitudes y puntos')}${tab('playlist','♫','Playlist','Canciones de la simulación')}${tab('appearance','✦','Apariencia','Diseño del reproductor')}${tab('admin','⚙','Administración','Permisos y controles')}</div>
+          <div class="music-tab-panels">
+            <div class="music-tab-panel ${musicWidgetActiveTab==='commands'?'is-active':''}" data-music-panel="commands">
+              <div class="settings-grid two compact-grid">
+                <article class="widget-subsection"><div class="section-head"><div><p class="eyebrow">SOLICITUDES</p><h3>Comandos de música</h3></div></div><div class="music-inline-row music-request-command-row"><label>Prefijo<select id="musicPrefix">${pfx}</select></label><label>Comando<select id="musicCommandPreset">${MUSIC_REQUEST_OPTIONS.map(v=>`<option value="${esc(v)}" ${String(s.requestCommand||'musica').toLowerCase()===String(v).toLowerCase()?'selected':''}>${esc(v)}</option>`).join('')}</select></label></div><label>Coste por canción (puntos)<input id="musicPointCost" type="number" min="0" max="1000000" value="${Number(s.pointCost||0)}"></label><div class="music-command-preview-box"><span>Ejemplo</span><strong id="musicCommandPreview">${esc(s.commandPrefix)}</strong><b id="musicCommandPreviewWord">${esc(s.requestCommand||'musica')}</b> <em>Nombre de canción</em></div></article>
+                <article class="widget-subsection"><div class="section-head"><div><p class="eyebrow">REPRODUCCIÓN</p><h3>Límites y estado</h3></div></div><div class="music-inline-row"><label>Duración máxima (min)<input id="musicMaxDuration" type="number" min="0.5" max="60" step="0.5" value="${(Number(s.maxDurationSeconds||300)/60).toFixed(1).replace(/\.0$/,'')}"></label><label>Cola máxima<input id="musicMaxQueue" type="number" min="1" max="10" value="${Math.min(10,Number(s.maxQueue||10))}"></label></div><label class="check-row"><input id="musicEnabled" type="checkbox" ${s.enabled?'checked':''}><span>Activar música</span></label></article>
+              </div>
+            </div>
+            <div class="music-tab-panel ${musicWidgetActiveTab==='playlist'?'is-active':''}" data-music-panel="playlist">
+              <article class="widget-subsection music-playlist-panel">
+                <div class="section-head"><div><p class="eyebrow">PLAYLIST DE SIMULACIÓN</p><h3>Próximas canciones</h3><p class="muted">Las canciones solicitadas por simulación se sincronizan con la vista previa y el overlay cuando se reproducen.</p></div><div class="music-playlist-head-actions"><span class="music-playlist-count" id="musicPlaylistCount">0 / 10</span><button class="btn secondary music-playlist-overlay-btn" id="openMusicPlaylistOverlay" type="button">Mostrar playlist overlay</button></div></div>
+                <div class="music-playlist-list" id="musicPlaylistList"><div class="music-playlist-empty">Agrega canciones para verlas aquí.</div></div>
+              </article>
+            </div>
+            <div class="music-tab-panel ${musicWidgetActiveTab==='appearance'?'is-active':''}" data-music-panel="appearance">
+              <div class="settings-grid two compact-grid music-appearance-grid">
+                <article class="widget-subsection music-design-panel"><div class="section-head"><div><p class="eyebrow">DISEÑO</p><h3>Identidad visual</h3><p class="muted">Elige un tema y se aplica inmediatamente.</p></div></div><div class="music-style-selector"><label for="musicDesign">Temas</label><div class="music-style-select-wrap"><select id="musicDesign" class="music-style-select">${musicDesignOptions(s.style.design)}</select></div></div><div class="music-inline-row"><label>Escala<input id="musicScale" type="range" min="0.45" max="2" step="0.01" value="${Number(s.style.scale||1)}"></label><div class="music-selected-theme"><span>ACTIVO</span><strong id="musicSelectedTheme">${esc((MUSIC_DESIGN_OPTIONS.find(([v])=>v===s.style.design)||MUSIC_DESIGN_OPTIONS[0])[1])}</strong></div></div><div class="music-range-value"><output id="musicScaleValue">${Math.round(Number(s.style.scale||1)*100)}%</output><span>Escala general</span></div><div class="music-inline-row"><label>Fuente del título<select id="musicTitleFont">${musicFontOptions(s.style.titleFont)}</select></label><label>Fuente del artista<select id="musicArtistFont">${musicFontOptions(s.style.artistFont)}</select></label></div></article>
+                <article class="widget-subsection music-elements-panel"><div class="section-head"><div><p class="eyebrow">ELEMENTOS</p><h3>Qué mostrar</h3></div></div><div class="music-check-grid compact-elements">${ctl('Disco vinil','musicVinyl','check',s.style.showVinyl!==false)}${ctl('Mostrar progreso','musicProgress','check',s.showProgress!==false)}${ctl('Mostrar siguiente','musicNext','check',s.showNext!==false)}${ctl('Mostrar solicitante','musicRequester','check',s.showRequester!==false)}</div><p class="music-design-note">Transparente por defecto. Solo se renderiza el contenido.</p></article>
+                <article class="widget-subsection music-color-panel"><div class="section-head"><div><p class="eyebrow">COLOR Y TAMAÑO</p><h3>Detalles del contenido</h3></div></div><div class="music-inline-row"><label>Color del título<input id="musicTextColor" type="color" value="${esc(s.style.textColor)}"></label><label>Color del artista<input id="musicSecondaryTextColor" type="color" value="${esc(s.style.secondaryTextColor)}"></label></div><div class="music-inline-row"><label>Tamaño del título<input id="musicTitleSize" type="number" min="16" max="72" value="${Number(s.style.titleSize||28)}"></label><label>Tamaño del artista<input id="musicArtistSize" type="number" min="10" max="36" value="${Number(s.style.artistSize||15)}"></label></div><div class="music-inline-row"><label>Tamaño del vinil<input id="musicVinylSize" type="number" min="90" max="280" value="${Number(s.style.vinylSize||170)}"></label><label>Color de acento<input id="musicAccent" type="color" value="${esc(s.style.accent)}"></label></div><div class="music-inline-row"><label>Color de acento 2<input id="musicAccent2" type="color" value="${esc(s.style.accent2)}"></label><label>Barra de reproducción<select id="musicProgressMode"><option value="single" ${s.style.progressMode==='single'?'selected':''}>1 color</option><option value="gradient2" ${(!s.style.progressMode||s.style.progressMode==='gradient2')?'selected':''}>2 colores</option><option value="gradient3" ${s.style.progressMode==='gradient3'?'selected':''}>3 colores</option></select></label></div><div class="music-progress-colors"><label>Color barra 1<input id="musicProgressColor" type="color" value="${esc(s.style.progressColor||s.style.accent)}"></label><label class="music-progress-color2-label ${s.style.progressMode==='single'?'is-hidden':''}">Color barra 2<input id="musicProgressColor2" type="color" value="${esc(s.style.progressColor2||s.style.accent2)}"></label><label class="music-progress-color3-label ${s.style.progressMode==='gradient3'?'':'is-hidden'}">Color barra 3<input id="musicProgressColor3" type="color" value="${esc(s.style.progressColor3||'#22d3ee')}"></label></div></article>
+              </div>
+            </div>
+            <div class="music-tab-panel ${musicWidgetActiveTab==='admin'?'is-active':''}" data-music-panel="admin">
+              <article class="widget-subsection music-admin-panel">
+                <div class="section-head"><div><p class="eyebrow">ADMINISTRACIÓN</p><h3>Control de reproducción</h3><p class="muted">La cuenta conectada es administradora por defecto. Los moderadores son opcionales.</p></div></div>
+                <div class="music-owner-admin-grid">${connectedAdmins||'<div class="music-admin-empty">No hay cuentas TikTok/Twitch conectadas. Conecta una para que aparezca como admin.</div>'}</div>
+                <div class="music-moderator-toggle"><label class="check-row"><input id="musicAllowModeratorCommands" type="checkbox" ${s.allowModeratorCommands?'checked':''}><span>Permitir comandos a moderadores</span></label><small>Solo usuarios con insignia <b>moderador</b> podrán usar los comandos especiales.</small></div>
+                <div class="music-admin-command-grid">${Object.entries(MUSIC_ADMIN_COMMANDS).map(([k])=>{const label=k==='pause'?'Pausa':k==='stop'?'Detener':k==='skip'?'Saltar':k==='repeat'?'Repetir':'Volumen';return `<div class="music-admin-command-card"><div class="music-admin-command-title"><strong>${label}</strong><span>Admin${s.allowModeratorCommands?' + moderador':''}</span></div><div class="music-admin-command-fields"><label>Prefijo<select data-music-admin-prefix="${k}">${MUSIC_PREFIX_OPTIONS.map(v=>`<option value="${esc(v)}" ${s.adminCommandPrefixes?.[k]===v?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Comando<select data-music-admin-command="${k}">${adminOption(k)}</select></label></div><div class="music-admin-command-example">Ejemplo: <b data-music-admin-example="${k}">${esc(s.adminCommandPrefixes?.[k]||s.commandPrefix)}${esc(s.adminCommands?.[k]||'')}${k==='volume'?' 100':''}</b>${k==='volume'?'<small> · 0–100</small>':''}</div></div>`}).join('')}</div>
+                <div class="music-admin-preview"><span>Comandos activos</span><div data-music-active-commands>${Object.entries(MUSIC_ADMIN_COMMANDS).map(([k])=>`<b data-music-active-command="${k}">${esc(s.adminCommandPrefixes?.[k]||s.commandPrefix)}${esc(s.adminCommands?.[k]||k)}${k==='volume'?' 100':''}</b>`).join('&nbsp;&nbsp;')}</div></div>
+              </article>
+            </div>
+          </div>
+        </section>
+        <section class="card music-preview-panel"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA</p><h3>Reproductor</h3></div><span class="preview-live"><i></i> TIEMPO REAL</span></div><div class="music-preview-stage" id="musicPreview">${musicPreviewMarkup(s,{current:null,queue:[],playing:false})}<span class="music-resize-handle" id="musicResizeHandle" title="Redimensionar"></span></div><div id="musicPreviewYoutubeHost" class="music-youtube-hidden-host" aria-hidden="true"></div><div class="music-preview-test-block"><div class="music-preview-test-head"><div><p class="eyebrow">PRUEBA</p><strong>Simulador de canción</strong><small>Escribe una canción o pega una URL para escucharla y comprobar el diseño.</small></div><button class="music-preview-audio-btn" id="musicPreviewMute" type="button" title="Silenciar vista previa" aria-label="Silenciar vista previa">🔊</button></div><div class="music-preview-actions music-simulation-actions"><input id="musicSimulationQuery" class="music-simulation-input" type="text" maxlength="300" placeholder="Canción o URL de YouTube"><div class="music-simulation-buttons"><button class="btn primary" id="musicSimulate">▶ Simular canción</button><button class="btn secondary" id="musicAddPlaylist" type="button">＋ Agregar a playlist</button><button class="btn secondary is-hidden" id="musicStopSimulation">■ Detener simulación</button></div><small id="musicSimulationStatus" class="music-simulation-status is-hidden"></small></div></div><div class="music-preview-footer"><div class="music-overlay-tools"><button class="btn secondary is-hidden" id="copyMusicOverlayLink" type="button">⧉ Copiar enlace OBS</button></div></div></section>
+      </div>`;
+    const refreshMusicCommandLabels=()=>{
+      const mainPrefix=String($('musicPrefix')?.value||s.commandPrefix||'!');
+      const mainCommand=String($('musicCommandPreset')?.value||s.requestCommand||'musica');
+      const mainPreview=document.getElementById('musicCommandPreview');
+      const mainWord=document.getElementById('musicCommandPreviewWord');
+      if(mainPreview) mainPreview.textContent=mainPrefix;
+      if(mainWord) mainWord.textContent=mainCommand;
+      Object.keys(MUSIC_ADMIN_COMMANDS).forEach(k=>{
+        const pref=String(document.querySelector(`[data-music-admin-prefix="${k}"]`)?.value||s.commandPrefix||'!');
+        const cmd=String(document.querySelector(`[data-music-admin-command="${k}"]`)?.value||s.adminCommands?.[k]||'').trim();
+        const ex=document.querySelector(`[data-music-admin-example="${k}"]`);
+        const ac=document.querySelector(`[data-music-active-command="${k}"]`);
+        if(ex) ex.textContent=`${pref}${cmd}${k==='volume'?' 100':''}`;
+        if(ac) ac.textContent=`${pref}${cmd}${k==='volume'?' 100':''}`;
+      });
+    };
+    const sync=()=>{
+      const el=id=>$(id);s.commandPrefix=el('musicPrefix')?.value||'!';const cmdPreset=el('musicCommandPreset')?.value||'musica';s.requestCommand=cmdPreset;s.requestCommandPreset=cmdPreset;s.pointCost=Number(el('musicPointCost')?.value||0);s.maxDurationSeconds=Math.max(30,Number(el('musicMaxDuration')?.value||5)*60);s.maxQueue=Math.min(10,Math.max(1,Number(el('musicMaxQueue')?.value||10)));s.enabled=Boolean(el('musicEnabled')?.checked);s.allowModeratorCommands=Boolean(el('musicAllowModeratorCommands')?.checked);
+      s.style.scale=Number(el('musicScale')?.value||1);s.style.design=el('musicDesign')?.value||'vinyl-glow';s.style.titleFont=el('musicTitleFont')?.value||'Inter';s.style.artistFont=el('musicArtistFont')?.value||'Inter';s.style.textColor=el('musicTextColor')?.value||'#ffffff';s.style.secondaryTextColor=el('musicSecondaryTextColor')?.value||'#b9b9c8';s.style.titleSize=Number(el('musicTitleSize')?.value||28);s.style.artistSize=Number(el('musicArtistSize')?.value||15);s.style.vinylSize=Number(el('musicVinylSize')?.value||170);s.style.accent=el('musicAccent')?.value||'#8b5cf6';s.style.accent2=el('musicAccent2')?.value||'#ec4899';s.style.progressMode=el('musicProgressMode')?.value||'gradient2';s.style.progressColor=el('musicProgressColor')?.value||s.style.accent;s.style.progressColor2=el('musicProgressColor2')?.value||s.style.accent2;s.style.progressColor3=el('musicProgressColor3')?.value||'#22d3ee';s.style.showVinyl=Boolean(el('musicVinyl')?.checked);s.showProgress=Boolean(el('musicProgress')?.checked);s.showNext=Boolean(el('musicNext')?.checked);s.showRequester=Boolean(el('musicRequester')?.checked);
+      Object.keys(MUSIC_ADMIN_COMMANDS).forEach(k=>{s.adminCommandPrefixes=s.adminCommandPrefixes||{};s.adminCommands=s.adminCommands||{};s.adminCommandPrefixes[k]=document.querySelector(`[data-music-admin-prefix="${k}"]`)?.value||s.commandPrefix;s.adminCommands[k]=String(document.querySelector(`[data-music-admin-command="${k}"]`)?.value||s.adminCommands[k]||'').trim().replace(/\s+/g,'').toLowerCase()});
+      delete s.admins;
+      musicWidgetDraft=s; settings.musicWidget=s;
+      el('musicScaleValue').textContent=`${Math.round(s.style.scale*100)}%`;const activeTheme=el('musicSelectedTheme');if(activeTheme)activeTheme.textContent=MUSIC_DESIGN_OPTIONS.find(([v])=>v===s.style.design)?.[1]||s.style.design;refreshMusicCommandLabels();
+      document.querySelector('.music-progress-color2-label')?.classList.toggle('is-hidden',s.style.progressMode==='single');document.querySelector('.music-progress-color3-label')?.classList.toggle('is-hidden',s.style.progressMode!=='gradient3');
+      applyMusicPreviewAppearance(); emitMusicAppearanceSync(); scheduleMusicAutoSave(s);
+    };
+    ['musicPrefix','musicCommandPreset','musicPointCost','musicMaxDuration','musicMaxQueue','musicEnabled','musicAllowModeratorCommands','musicScale','musicDesign','musicTitleFont','musicArtistFont','musicTextColor','musicSecondaryTextColor','musicTitleSize','musicArtistSize','musicVinylSize','musicAccent','musicAccent2','musicProgressMode','musicProgressColor','musicProgressColor2','musicProgressColor3','musicVinyl','musicProgress','musicNext','musicRequester'].forEach(id=>{const e=$(id);e?.addEventListener('input',sync);e?.addEventListener('change',sync);});
+    document.querySelectorAll('[data-music-tab]').forEach(b=>b.onclick=()=>{musicWidgetActiveTab=b.dataset.musicTab;document.querySelectorAll('[data-music-tab]').forEach(x=>x.classList.toggle('is-active',x===b));document.querySelectorAll('[data-music-panel]').forEach(x=>x.classList.toggle('is-active',x.dataset.musicPanel===musicWidgetActiveTab));});
+    document.querySelectorAll('[data-music-admin-command]').forEach(e=>{e.addEventListener('input',sync);e.addEventListener('change',sync);});document.querySelectorAll('[data-music-admin-prefix]').forEach(e=>{e.addEventListener('input',sync);e.addEventListener('change',sync);});
+    refreshMusicCommandLabels();
+    $('musicSimulate').onclick=startMusicWidgetSimulation;$('musicAddPlaylist').onclick=addMusicTrackToPlaylist;$('musicStopSimulation').onclick=stopMusicWidgetSimulation;$('musicPreviewMute').onclick=()=>{musicPreviewMuted=!musicPreviewMuted;try{if(musicPreviewMuted)musicPreviewYTPlayer?.mute?.();else musicPreviewYTPlayer?.unMute?.();}catch{}const b=$('musicPreviewMute');if(b){b.textContent=musicPreviewMuted?'🔇':'🔊';b.title=musicPreviewMuted?'Activar audio de la vista previa':'Silenciar vista previa';b.setAttribute('aria-label',musicPreviewMuted?'Activar audio de la vista previa':'Silenciar vista previa');}};
+    $('backToWidgetsFromMusic').onclick=()=>{stopMusicWidgetSimulation();window.__sfMusicWidgetEditorOpen=false;renderWidgets();};
+    $('saveMusicWidget').onclick=async()=>{sync();clearTimeout(musicAutoSaveTimer);musicAutoSaveTimer=0;try{const data=await api('/api/music/settings',{method:'PUT',body:JSON.stringify({music:structuredClone(s)})});settings.musicWidget=data.music;musicWidgetDraft=structuredClone(data.music);const note=$('musicAutoSaveStatus');if(note){note.textContent='● Guardado automáticamente';note.classList.remove('is-saving');}toast('Música guardada','La configuración quedó guardada en tu cuenta.');}catch(e){toast('Música',e.message||'No se pudo guardar.','err');}};
+    $('openMusicOverlay').onclick=async()=>{try{sync();await getOverlayKey();await openOverlay('music-overlay.html?widget=music','streamfusionMusicOverlay');$('copyMusicOverlayLink')?.classList.remove('is-hidden');}catch(e){toast('Overlay',e.message||'No se pudo generar el overlay.','err');}};
+    $('openMusicPlaylistOverlay').onclick=async()=>{let popup=null;try{popup=window.open('about:blank','streamfusionMusicPlaylist','popup=yes,width=1400,height=860,resizable=yes,scrollbars=no');if(!popup){toast('Playlist','Permite ventanas emergentes para abrir la playlist.','err');return;}popupWindows.add(popup);const url=await buildOverlayUrl('music-playlist.html?widget=music-playlist');if(!popup.closed)popup.location.replace(url);try{popup.focus();}catch{};}catch(e){try{if(popup&&!popup.closed)popup.close();}catch{}toast('Playlist',e.message||'No se pudo abrir la playlist.','err');}};
+    $('copyMusicOverlayLink').onclick=async()=>{try{const url=await buildOverlayUrl('music-overlay.html?widget=music');await navigator.clipboard.writeText(url);toast('Enlace OBS','El enlace del overlay de Música fue copiado.');}catch(e){toast('Enlace OBS',e.message||'Primero genera el overlay.','err');}};
+    musicPreviewDraw(musicPreviewState);
+  }
+
+  function normMusic(v){return String(v||'').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');}
+
+  function renderWidgets(){
+    if(window.__sfAnnouncementEditorOpen){ renderAnnouncementEditor(); return; }
+    if(window.__sfPointsWidgetEditorOpen){ renderPointsWidgetEditor(); return; }
+    if(window.__sfMusicWidgetEditorOpen){ renderMusicWidgetEditor(); return; }
+    if(window.__sfAnnouncementHubOpen){ renderAnnouncementHub(); return; }
+    window.__sfVoiceWidgetEditorOpen = Boolean(window.__sfVoiceWidgetEditorOpen);
+    if(!window.__sfVoiceWidgetEditorOpen){
+      if(voiceWidgetPreviewTimer){clearInterval(voiceWidgetPreviewTimer);voiceWidgetPreviewTimer=0;}
+      voiceWidgetDraft=null;
+      const total=voiceLibraryItems().length;
+      $('view').innerHTML=`<div class="intro"><h2>Widgets</h2><p>Selecciona un widget para abrir su editor sin perder la sesión de tu cuenta.</p></div><div class="widget-launch-grid"><button type="button" class="card widget-launch-card widget-launch-card-premium" id="openVoiceWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">🎙️</span><span class="widget-launch-copy"><span class="widget-launch-kicker">WIDGET DE STREAM</span><strong class="widget-launch-title">Lista de voces</strong><small class="widget-launch-desc">Diseña la lista, movimiento e intro. Todo se guarda en tu cuenta y no necesita conectar TikTok o Twitch.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-music" id="openMusicWidget"><span class="widget-launch-icon music-launch-icon" aria-hidden="true"><svg viewBox="0 0 24 24" role="img" focusable="false"><path d="M9 18.2V5.8l10-2.2v11.6"/><path d="M9 16.2c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Zm10-1c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Z"/></svg><i></i></span><span class="widget-launch-copy"><span class="widget-launch-kicker">REPRODUCTOR</span><strong class="widget-launch-title">Música</strong><small class="widget-launch-desc">Cola de canciones, puntos, comandos y reproductor tipo vinil para OBS.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-points" id="openPointsWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">✦</span><span class="widget-launch-copy"><span class="widget-launch-kicker">INTERACCIÓN</span><strong class="widget-launch-title">Puntos</strong><small class="widget-launch-desc">Muestra los puntos del usuario cuando comenta tu comando, con cooldown y cola anti-spam.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-announcement" id="openAnnouncementWidget"><span class="widget-launch-icon" aria-hidden="true">📢</span><span class="widget-launch-copy"><span class="widget-launch-kicker">PROMOCIÓN</span><strong class="widget-launch-title">Anuncio</strong><small class="widget-launch-desc">Crea anuncios transparentes con texto, imágenes, tiempos y hasta 3 partes.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button></div>`;
+      $('openVoiceWidgetEditor').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfVoiceWidgetEditorOpen=true;voiceWidgetPreviewStartAt=Date.now();voiceWidgetVisibilityPhase='visible';voiceWidgetVisibilityPhaseStartedAt=Date.now();try{renderWidgets();}catch(e){console.error('[Widgets] Lista de voces',e);toast('Lista de voces',e.message||'No se pudo abrir el editor.','err');}};
+      $('openPointsWidgetEditor').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=true;try{const data=await api('/api/points/settings');pointsDraft=structuredClone(data.points||{});pointsWidgetDraft=structuredClone(pointsDraft.widget||{});}catch(e){pointsDraft=pointsDraft||{};pointsWidgetDraft=pointsWidgetDraft||{};toast('Puntos',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Puntos',e);toast('Puntos',e.message||'No se pudo abrir el editor.','err');}};
+      $('openAnnouncementWidget').onclick=()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=true;try{renderWidgets();}catch(e){console.error('[Widgets] Anuncio',e);toast('Anuncio',e.message||'No se pudo abrir el widget.','err');}};
+      $('openMusicWidget').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=false;window.__sfMusicWidgetEditorOpen=true;try{const data=await api('/api/music/settings');musicWidgetDraft=structuredClone(data.music||{});}catch(e){musicWidgetDraft=musicDefault();toast('Música',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Música',e);toast('Música',e.message||'No se pudo abrir el widget.','err');}};
+      if(total===0) loadVoices().then(()=>{if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen)renderWidgets();}).catch(()=>{});
+      return;
+    }
+    const s={autoShowEnabled:false,autoShowEvery:30,autoShowFor:6,hideAfterShow:false,...structuredClone(settings.voiceList||{})};
+    if(!['top','center','bottom'].includes(String(s.horizontalPosition||''))){ const legacy=String(s.listPosition||'center'); s.horizontalPosition=legacy==='left'?'top':legacy==='right'?'bottom':'center'; }
+    normalizeVoiceListPlacement(s);
+    voiceWidgetDraft=s;
+    if(!voiceWidgetPreviewTimer){ voiceWidgetPreviewTimer=setInterval(()=>{ if(page!=='widgets'||!window.__sfVoiceWidgetEditorOpen||!voiceWidgetDraft)return; syncVoiceWidgetPreview(voiceWidgetDraft,false); },100); }
+    s.axis=s.axis||s.direction||'vertical'; s.direction=s.axis; s.movementDirection=s.movementDirection||'forward'; s.roulette={enabled:false,title:'¿Quieres una voz?',subtitle:'Para participar, comenta lo que se indique en el sorteo!',winnerText:'Si ganas, solo comenta una de las siguientes voces:',titleSeconds:3,subtitleSeconds:3,winnerSeconds:3,introMotion:'fade',cardOpacity:.12,showListAfterIntro:true,...(s.roulette||{})};
+    const fontOpts=VOICE_FONTS.map(x=>`<option value="${esc(x[0])}">${esc(x[1])}</option>`).join('');
+    const library=voiceLibraryItems();
+    $('view').innerHTML=`<div class="intro widget-editor-intro"><div><p class="eyebrow">WIDGET / LISTA DE VOCES</p><h2>Lista de Voces</h2><p>Edita la lista y comprueba los cambios en tiempo real.</p></div><button class="btn secondary widget-back-btn" id="backToWidgets">← Volver a Widgets</button></div>
+      <div class="widget-editor-layout"><section class="card widget-controls"><div class="widget-editor-topbar"><div><p class="eyebrow">EDITOR</p><h3>Configuración del widget</h3><p class="widget-account-note"><span>✓</span> Se guarda en tu cuenta · no requiere conectar TikTok o Twitch</p></div><div class="widget-header-actions"><button class="btn secondary" id="saveVoiceWidget">Guardar</button><button class="btn primary" id="openVoiceWidget">Generar Overlay</button></div></div>
+      <div class="settings-grid two compact-grid">
+      <article class="widget-subsection"><p class="eyebrow">GENERAL</p>${voiceCtl('Activar','vEnabled','check',s.enabled)}${voiceCtl('Fondo transparente','vTransparent','check',s.transparent)}${voiceCtl('Opacidad de fondo','vBgOpacity','input',s.backgroundOpacity)}${voiceCtl('Fuente','vFont','select',s.fontFamily,fontOpts)}${voiceCtl('Tamaño','vSize','input',s.fontSize)}${voiceCtl('Peso','vWeight','input',s.fontWeight)}${voiceCtl('Estilo','vStyle','select',s.fontStyle,'<option value="normal">Normal</option><option value="italic">Cursiva</option>')}${voiceCtl('Color','vColor','input',s.textColor)}</article>
+      <article class="widget-subsection"><p class="eyebrow">EFECTOS</p>${voiceCtl('Sombra','vShadow','select',s.textShadow,'<option value="none">Sin sombra</option><option value="soft">Suave</option><option value="strong">Fuerte</option>')}${voiceCtl('Color sombra','vShadowColor','input',s.shadowColor)}${voiceCtl('Contorno (px)','vOutline','input',s.outlineWidth)}${voiceCtl('Color contorno','vOutlineColor','input',s.outlineColor)}${voiceCtl('Transformación','vTransform','select',s.textTransform,'<option value="none">Normal</option><option value="uppercase">MAYÚSCULAS</option><option value="lowercase">minúsculas</option><option value="capitalize">Capitalizar</option>')}${voiceCtl('Espaciado','vLetter','input',s.letterSpacing)}${voiceCtl('Altura línea','vLine','input',s.lineHeight)}</article>
+      <article class="widget-subsection"><p class="eyebrow">COMPOSICIÓN</p>${voiceCtl('Separación','vGap','input',s.itemGap)}${voiceCtl('Posición','vPosition','select',voiceAxisPosition(s.axis,s),voiceListPositionOptions(s.axis,voiceAxisPosition(s.axis,s)))}${voiceCtl('Desplazamiento','vAxis','select',s.axis,'<option value="vertical">Vertical</option><option value="horizontal">Horizontal</option>')}${voiceCtl('Dirección','vMoveDir','select',s.movementDirection,'<option value="forward">Normal</option><option value="reverse">Invertida</option>')}${voiceCtl('Movimiento','vMotion','select',s.motion,'<option value="static">Estático</option><option value="scroll">Scroll</option><option value="slide">Slide</option><option value="marquee">Marquee</option>')}${voiceCtl('Velocidad','vMotionSpeed','input',s.motionSpeed)}</article>
+      <article class="widget-subsection"><p class="eyebrow">VISIBILIDAD</p>${voiceCtl('Mostrar índice','vShowIndex','check',s.showIndex)}${voiceCtl('Mostrar ID','vShowId','check',s.showId)}${voiceCtl('Mostrar automáticamente','vAutoShow','check',s.autoShowEnabled)}${voiceCtl('Ocultar al terminar de mostrar la lista','vHideAfterShow','check',s.hideAfterShow===true)}${voiceCtl('Esperar tras ocultar (segundos)','vAutoEvery','input',s.autoShowEvery)}${voiceCtl('Visible durante (segundos)','vAutoFor','input',s.autoShowFor)}</article></div>
+      ${voiceRouletteMarkup(s.roulette)}
+      </section>
+      <section class="card widget-preview-card"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA EN TIEMPO REAL</p><h3>Lista de Voces</h3></div><span id="voicePreviewStatus">${voiceStatusMarkup()}</span></div><div id="voiceWidgetPreview" class="voice-widget-preview"></div><div class="widget-preview-footer"><span class="muted">La misma configuración guardada se usa en tu overlay único.</span><code>/voice-list-overlay.html</code></div></section></div>`;
+    syncVoiceWidgetPreview(s,true);
+    const map={vEnabled:['enabled','check'],vTransparent:['transparent','check'],vBgOpacity:['backgroundOpacity','num'],vFont:['fontFamily'],vSize:['fontSize','num'],vWeight:['fontWeight','num'],vStyle:['fontStyle'],vColor:['textColor'],vShadow:['textShadow'],vShadowColor:['shadowColor'],vOutline:['outlineWidth','num'],vOutlineColor:['outlineColor'],vTransform:['textTransform'],vLetter:['letterSpacing','num'],vLine:['lineHeight','num'],vGap:['itemGap','num'],vPosition:['__position'],vAxis:['axis'],vMoveDir:['movementDirection'],vMotion:['motion'],vMotionSpeed:['motionSpeed','num'],vShowIndex:['showIndex','check'],vShowId:['showId','check'],vAutoShow:['autoShowEnabled','check'],vHideAfterShow:['hideAfterShow','check'],vAutoEvery:['autoShowEvery','num'],vAutoFor:['autoShowFor','num']};
+    const scheduleVoiceWidgetSave=()=>{clearTimeout(voiceWidgetSaveTimer);voiceWidgetSaveTimer=setTimeout(async()=>{try{const result=await api('/api/voice-list/settings',{method:'PUT',body:JSON.stringify(s)});settings.voiceList=merge(settings.voiceList,result.voiceList||s);}catch(e){console.warn('voice widget autosave',e);}},300);};
+    const updatePreview=()=>{voiceWidgetDraft=s;if(s.autoShowEnabled!==true||s.hideAfterShow!==true){voiceWidgetVisibilityPhase='visible';voiceWidgetVisibilityPhaseStartedAt=Date.now();}syncVoiceWidgetPreview(s,false);scheduleVoiceWidgetSave();};
+    normalizeVoiceListPlacement(s);
+    for(const [id,[key,type]] of Object.entries(map)){
+      const el=$(id); if(!el) continue;
+      if(key==='__position') el.value=String(voiceAxisPosition(s.axis,s));
+      else if(type==='check') el.checked=!!s[key];
+      else el.value=String(s[key]??'');
+      const readValue=()=>{
+        if(key==='__position'){
+          const v=String(el.value||'center');
+          if(String(s.axis)==='horizontal') s.horizontalPosition=['top','center','bottom'].includes(v)?v:'center';
+          else s.listPosition=['left','center','right'].includes(v)?v:'center';
+        }else{
+          s[key]=type==='check'?el.checked:type==='num'?Number(el.value):el.value;
+        }
+        normalizeVoiceListPlacement(s);
+      };
+      el.addEventListener('input',()=>{readValue();if(id==='vAxis')refreshVoiceListPositionControls(s.axis,s);updatePreview();});
+      el.addEventListener('change',()=>{readValue();if(id==='vAxis')refreshVoiceListPositionControls(s.axis,s);updatePreview();});
+    }
+    setSelect('vFont',s.fontFamily); setSelect('vAxis',s.axis); setSelect('vMoveDir',s.movementDirection);
+    refreshVoiceListPositionControls(s.axis,s);
+    if($('vColor'))$('vColor').value=s.textColor; if($('vShadowColor'))$('vShadowColor').value=s.shadowColor; if($('vOutlineColor'))$('vOutlineColor').value=s.outlineColor;
+    const rouletteFields={vlRouletteEnabled:['enabled','check'],vlShowListAfter:['showListAfterIntro','check'],vlRText1:['title'],vlRTime1:['titleSeconds','num'],vlRText2:['subtitle'],vlRTime2:['subtitleSeconds','num'],vlRText3:['winnerText'],vlRTime3:['winnerSeconds','num'],vlRMotion:['introMotion'],vlRCard:['cardOpacity','num']};
+    for(const [id,[key,type]] of Object.entries(rouletteFields)){const el=$(id);if(!el)continue;const value=s.roulette?.[key];if(type==='check')el.checked=value!==false;else el.value=String(value??'');el.addEventListener('input',()=>{s.roulette=s.roulette||{};s.roulette[key]=type==='check'?el.checked:type==='num'?Number(el.value):el.value;voiceWidgetPreviewStartAt=Date.now();voiceWidgetPreviewSignature='';updatePreview();});el.addEventListener('change',()=>{s.roulette=s.roulette||{};s.roulette[key]=type==='check'?el.checked:type==='num'?Number(el.value):el.value;voiceWidgetPreviewStartAt=Date.now();voiceWidgetPreviewSignature='';updatePreview();});}
+    const persistVoiceWidget = async () => {
+      normalizeVoiceListPlacement(s);
+      const result=await api('/api/voice-list/settings',{method:'PUT',body:JSON.stringify(s)});
+      settings.voiceList=merge(settings.voiceList,result.voiceList||s);
+      voiceWidgetDraft=s;
+      return result.voiceList||s;
+    };
+    $('backToWidgets').onclick=()=>{ window.__sfVoiceWidgetEditorOpen=false; voiceWidgetDraft=null; voiceWidgetPreviewSignature=''; if(voiceWidgetPreviewTimer){clearInterval(voiceWidgetPreviewTimer);voiceWidgetPreviewTimer=0;} renderWidgets(); };
+    $('saveVoiceWidget').onclick=async()=>{ try{ await persistVoiceWidget(); toast('Widget guardado','Todos los cambios de Lista de Voces quedaron guardados.'); }catch(e){ toast('No se pudo guardar',e.message,'err'); } };
+    $('openVoiceWidget').onclick=async()=>{ try{ await persistVoiceWidget(); await openOverlay('voice-list-overlay.html','streamfusionVoiceList'); }catch(e){ toast('Overlay',e.message||'No se pudo generar el overlay.','err'); } };
+    loadVoices().then(()=>{if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen&&voiceLibraryItems().length!==library.length)renderWidgets();}).catch(()=>{});
+  }
+
+  let pointsDraft = null;
+  async function renderPoints(){
+    try {
+      const cfgData=await api('/api/points/settings');
+      const cfg=cfgData.points||{};
+      pointsDraft=structuredClone(cfg);
+      $('view').innerHTML=`
+        <div class="intro split"><div><h2>Sistema de puntos</h2><p>Configura la economía de tu canal y administra puntos por usuario sin cargar una lista completa en memoria.</p></div><div class="widget-live-mini"><i class="on"></i> ACTIVO</div></div>
+        <div class="settings-grid two points-grid">
+          <section class="card"><div class="section-head"><div><p class="eyebrow">PUNTOS</p><h3>Configuración por plataforma</h3></div><span class="badge-pill">✦</span></div>
+            <label class="toggle"><input id="pointsEnabled" type="checkbox" ${cfg.enabled!==false?'checked':''}><span>Activar sistema de puntos</span></label>
+            <div class="points-platform-tabs"><button class="btn secondary" data-points-platform="tiktok">TikTok</button><button class="btn secondary" data-points-platform="twitch">Twitch</button></div>
+            <div id="pointsPlatformForm"></div>
+            <div class="row points-actions"><button class="btn primary" id="savePoints">Guardar puntos</button><button class="btn secondary" id="openPointsUsers">Ver usuarios</button></div>
+          </section>
+          <section class="card points-management-card"><div class="section-head"><div><p class="eyebrow">GESTIÓN DE USUARIOS</p><h3>Dar puntos</h3></div><span class="badge-pill">✦</span></div>
+            <p class="muted">Busca un usuario registrado en tus actividades y consulta su saldo actual antes de otorgar puntos.</p>
+            <div class="points-manage-toolbar">
+              <label>Plataforma<select id="pointManagePlatform"><option value="tiktok">TikTok</option><option value="twitch">Twitch</option></select></label>
+              <label class="grow" id="pointManageUserLabel">Unique ID TikTok<input id="pointManageUser" placeholder="@unique_id" autocomplete="off"></label>
+              <button class="btn secondary" id="findPointUser">Buscar usuario</button>
+            </div>
+            <div id="pointManageResult" class="point-user-result" hidden></div>
+            <div class="points-award-row" id="pointAwardRow" hidden>
+              <label>Puntos a otorgar<input id="pointAwardAmount" type="number" min="1" step="1" value="100" inputmode="numeric"></label>
+              <button class="btn primary" id="grantPointUser">Otorgar puntos</button>
+            </div>
+            <div id="pointManageStatus" class="status" aria-live="polite"></div>
+          </section>
+        </div>`;

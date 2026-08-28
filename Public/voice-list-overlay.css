@@ -1,0 +1,361 @@
+/* StreamFusion Voice List v9 */
+html,body{margin:0;width:100%;height:100%;min-height:100%;background:transparent!important;overflow:hidden}body{font-family:Inter,Arial,sans-serif}#voiceListOverlay{position:relative;width:100%;height:100%;display:block;overflow:hidden;background:transparent!important}.voiceListShell{width:100%;height:100%;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden;background:var(--vl-bg,transparent)}
+.voiceListShell.align-center .voiceListStage{justify-content:center;align-items:center}
+.voiceListShell.align-center .voiceListTrack{align-items:center;justify-content:center;text-align:center}
+.voiceListShell.align-right .voiceListStage{justify-content:flex-end;align-items:flex-end}
+.voiceListShell.align-right .voiceListTrack{align-items:flex-end;justify-content:flex-end;text-align:right}.voiceListStage{width:100%;height:100%;display:flex;overflow:hidden;perspective:1100px}.voiceListViewport{width:100%;height:100%;display:flex;align-items:flex-start;justify-content:flex-start;overflow:hidden}.voiceListShell.list-position-center .voiceListViewport{align-items:center;justify-content:center}.voiceListShell.list-position-right .voiceListViewport{align-items:flex-end;justify-content:flex-end}.voiceListTrack{display:flex;gap:var(--vl-gap,10px);width:max-content;min-height:100%;align-content:flex-start;will-change:transform}.voiceListShell.direction-vertical .voiceListTrack{flex-direction:column;align-items:flex-start;justify-content:flex-start;text-align:var(--vl-align,left)}.voiceListShell.direction-horizontal .voiceListTrack{flex-direction:row;align-items:center;justify-content:flex-start;white-space:nowrap}.voiceListShell.direction-horizontal .voiceListItem{display:inline-flex;flex-direction:column;flex:0 0 auto}.voiceListItem{box-sizing:border-box;line-height:var(--vl-line,1.2);letter-spacing:var(--vl-spacing,0);text-align:var(--vl-align,left);padding:2px 8px;border-radius:12px;background:transparent;margin:0;white-space:nowrap;color:var(--vl-color,#000);font:var(--vl-weight,700) var(--vl-size,28px)/var(--vl-line,1.2) var(--vl-font,Inter,Arial,sans-serif);font-style:var(--vl-style,normal);text-shadow:var(--vl-shadow,none);text-transform:var(--vl-transform,none);-webkit-text-stroke-width:var(--vl-outline-width,0px);-webkit-text-stroke-color:var(--vl-outline-color,#000);paint-order:stroke fill}.voiceListItem small{display:block;font:400 10px/1.1 monospace;opacity:.55;letter-spacing:0;text-transform:none}.voiceListEmpty{color:#000;padding:20px}.voiceListShell.motion-static .voiceListTrack{transform:none}.voiceListShell.motion-crawl .voiceListStage,.voiceListShell.motion-starwars .voiceListStage{justify-content:center;align-items:flex-start}.voiceListShell.motion-crawl .voiceListTrack,.voiceListShell.motion-starwars .voiceListTrack{animation-duration:var(--vl-speed,24s);animation-timing-function:linear;animation-iteration-count:infinite}.voiceListShell.motion-crawl.direction-vertical.travel-forward .voiceListTrack,.voiceListShell.motion-scroll.direction-vertical.travel-forward .voiceListTrack,.voiceListShell.motion-slide.direction-vertical.travel-forward .voiceListTrack{animation-name:voiceListCrawlYForward}.voiceListShell.motion-crawl.direction-vertical.travel-reverse .voiceListTrack,.voiceListShell.motion-scroll.direction-vertical.travel-reverse .voiceListTrack,.voiceListShell.motion-slide.direction-vertical.travel-reverse .voiceListTrack{animation-name:voiceListCrawlYReverse}.voiceListShell.motion-crawl.direction-horizontal.travel-forward .voiceListTrack,.voiceListShell.motion-scroll.direction-horizontal.travel-forward .voiceListTrack,.voiceListShell.motion-slide.direction-horizontal.travel-forward .voiceListTrack{animation-name:voiceListCrawlXForward}.voiceListShell.motion-crawl.direction-horizontal.travel-reverse .voiceListTrack,.voiceListShell.motion-scroll.direction-horizontal.travel-reverse .voiceListTrack,.voiceListShell.motion-slide.direction-horizontal.travel-reverse .voiceListTrack{animation-name:voiceListCrawlXReverse}.voiceListShell.motion-starwars.direction-vertical .voiceListStage{align-items:flex-end;justify-content:center}.voiceListShell.motion-starwars.direction-vertical .voiceListTrack{transform-origin:50% 100%;animation-name:voiceListStarWarsY}.voiceListShell.motion-starwars.direction-horizontal .voiceListStage{align-items:center;justify-content:flex-start}.voiceListShell.motion-starwars.direction-horizontal .voiceListTrack{transform-origin:0% 50%;animation-name:voiceListStarWarsX}.voiceListShell.motion-marquee.direction-horizontal.travel-forward .voiceListTrack{animation:voiceListCrawlXForward var(--vl-speed,24s) linear infinite}.voiceListShell.motion-marquee.direction-horizontal.travel-reverse .voiceListTrack{animation:voiceListCrawlXReverse var(--vl-speed,24s) linear infinite}.voiceListShell.motion-marquee.direction-vertical.travel-forward .voiceListTrack{animation:voiceListCrawlYForward var(--vl-speed,24s) linear infinite}.voiceListShell.motion-marquee.direction-vertical.travel-reverse .voiceListTrack{animation:voiceListCrawlYReverse var(--vl-speed,24s) linear infinite}@keyframes voiceListCrawlY{from{transform:translateY(0)}to{transform:translateY(calc(-50% - var(--vl-gap,10px)))}}@keyframes voiceListCrawlX{from{transform:translateX(0)}to{transform:translateX(calc(-50% - var(--vl-gap,10px)))}}@keyframes voiceListStarWarsY{from{transform:translateY(60%) rotateX(65deg)}to{transform:translateY(-120%) rotateX(65deg)}}@keyframes voiceListStarWarsX{from{transform:translateX(35%) rotateY(-50deg)}to{transform:translateX(-120%) rotateY(-50deg)}}
+
+.voiceListShell.motion-slide-down.direction-vertical .voiceListTrack{animation-name:voiceListSlideDownY}
+.voiceListShell.motion-slide-up.direction-vertical .voiceListTrack{animation-name:voiceListSlideUpY}
+.voiceListShell.motion-slide-down.direction-horizontal.travel-forward .voiceListTrack{animation-name:voiceListSlideRightX}
+.voiceListShell.motion-slide-down.direction-horizontal.travel-reverse .voiceListTrack{animation-name:voiceListSlideLeftX}
+.voiceListShell.motion-slide-up.direction-horizontal.travel-forward .voiceListTrack{animation-name:voiceListSlideLeftX}
+.voiceListShell.motion-slide-up.direction-horizontal.travel-reverse .voiceListTrack{animation-name:voiceListSlideRightX}
+.voiceListShell.motion-float .voiceListTrack{animation-name:voiceListFloatY;animation-duration:calc(var(--vl-speed,24s)*.75);animation-timing-function:ease-in-out;animation-iteration-count:infinite}
+.voiceListShell.motion-slide-down .voiceListTrack,.voiceListShell.motion-slide-up .voiceListTrack,.voiceListShell.motion-float .voiceListTrack{-webkit-backface-visibility:hidden;backface-visibility:hidden}
+@keyframes voiceListSlideDownY{from{transform:translateY(calc(-50% - var(--vl-gap,10px)))}to{transform:translateY(0)}}
+@keyframes voiceListSlideUpY{from{transform:translateY(0)}to{transform:translateY(calc(-50% - var(--vl-gap,10px)))}}
+@keyframes voiceListSlideRightX{from{transform:translateX(calc(-50% - var(--vl-gap,10px)))}to{transform:translateX(0)}}
+@keyframes voiceListSlideLeftX{from{transform:translateX(0)}to{transform:translateX(calc(-50% - var(--vl-gap,10px)))}}
+@keyframes voiceListFloatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+
+.voiceListRoulette{border:1px solid var(--line);border-radius:18px;padding:12px;background:rgba(255,255,255,.025);display:flex;flex-direction:column;gap:10px}
+.voiceListRouletteIntro{display:flex;gap:8px;flex-wrap:wrap}
+.voiceListControlGrid.rouletteGrid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.voiceListControlGrid.rouletteGrid .fullWidth{grid-column:1 / -1}
+.voiceListRouletteShell{width:100%;min-height:430px;display:flex;align-items:center;justify-content:center;padding:12px}
+.voiceListRouletteCard{width:min(100%,980px);border-radius:28px;padding:22px;display:grid;gap:18px;background:var(--vl-roulette-card-bg,rgba(255,255,255,.12));box-shadow:0 20px 60px rgba(0,0,0,.18);backdrop-filter:blur(14px);border:1px solid rgba(0,0,0,.12);color:#000;overflow:hidden}
+.voiceListRouletteShell.image-top .voiceListRouletteCard{grid-template-columns:1fr;text-align:center;justify-items:center}
+.voiceListRouletteShell.image-top .voiceListRouletteBadge{align-self:center}
+.voiceListRouletteShell.image-left .voiceListRouletteCard,.voiceListRouletteShell.image-right .voiceListRouletteCard{grid-template-columns:minmax(180px,auto) minmax(0,1fr);align-items:center;text-align:left;justify-items:start}
+.voiceListRouletteShell.image-right .voiceListRouletteCard{grid-template-columns:minmax(0,1fr) minmax(180px,auto)}
+.voiceListRouletteShell.image-right .voiceListRouletteImageWrap{order:2}
+.voiceListRouletteShell.image-right .voiceListRouletteCopy{order:1}
+.voiceListRouletteImageWrap{display:flex;align-items:center;justify-content:center}
+.voiceListRouletteImageWrap img{max-width:100%;border-radius:20px;display:block;box-shadow:0 12px 30px rgba(0,0,0,.16);background:transparent;object-position:center;image-rendering:auto}
+.voiceListRouletteCopy{display:flex;flex-direction:column;gap:10px;justify-content:center}
+.voiceListRouletteBadge{display:inline-flex;align-self:flex-start;font-size:12px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.45);border-radius:999px;padding:6px 10px;color:#000}
+.voiceListRouletteText{font-size:clamp(28px,4vw,52px);font-weight:900;line-height:1.04;color:#000;text-shadow:none}
+.voiceListRouletteHint{font-size:14px;font-weight:700;color:rgba(0,0,0,.68)}
+.voiceListRouletteStepBox{display:grid;grid-template-columns:1fr;gap:10px;padding:12px;border:1px solid rgba(0,0,0,.08);border-radius:18px;background:rgba(255,255,255,.18)}
+.voiceListRouletteStepBox .stepTitle{font-weight:900;font-size:13px;letter-spacing:.06em;text-transform:uppercase;opacity:.75}
+.voiceListRouletteStepBox .stepFields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.voiceListRouletteStepBox .stepFields .fullWidth{grid-column:1 / -1}
+.voiceListRouletteListWrap{display:flex;flex-direction:column;gap:14px;width:100%}
+.voiceListRouletteShell.motion-fade .voiceListRouletteCard{animation:voiceListRouletteFade .8s ease both}
+.voiceListRouletteShell.motion-slide-up .voiceListRouletteCard{animation:voiceListRouletteSlideUp .85s cubic-bezier(.22,.9,.2,1) both;will-change:transform,opacity}
+.voiceListRouletteShell.motion-slide-down .voiceListRouletteCard{animation:voiceListRouletteSlideDown .85s cubic-bezier(.22,.9,.2,1) both;will-change:transform,opacity}
+.voiceListRouletteShell.motion-zoom .voiceListRouletteCard{animation:voiceListRouletteZoom .85s cubic-bezier(.2,.9,.2,1) both;will-change:transform,opacity}
+.voiceListRouletteShell.motion-type .voiceListRouletteText{overflow:hidden;white-space:nowrap;animation:voiceListRouletteType 1.1s steps(18,end) both}
+@keyframes voiceListRouletteFade{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes voiceListRouletteSlideUp{from{opacity:0;transform:translateY(42px)}to{opacity:1;transform:none}}
+@keyframes voiceListRouletteSlideDown{from{opacity:0;transform:translateY(-42px)}to{opacity:1;transform:none}}
+@keyframes voiceListRouletteZoom{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
+@keyframes voiceListRouletteType{from{max-width:0}to{max-width:100%}}
+
+.voiceListRouletteShell.motion-starwars .voiceListRouletteCard{animation:voiceListRouletteStarWars 1.05s cubic-bezier(.1,.8,.2,1) both;transform-origin:center top;will-change:transform,opacity}
+@keyframes voiceListRouletteStarWars{from{opacity:0;transform:translateY(60%) rotateX(72deg) scale(.96)}to{opacity:1;transform:none}}
+
+.voiceListShell{contain:layout paint;overscroll-behavior:contain;scrollbar-gutter:stable;}
+.voiceListShell.direction-horizontal .voiceListTrack{direction:ltr;}
+.voiceListShell.direction-vertical .voiceListTrack{direction:ltr;}
+.voiceListShell.direction-horizontal.travel-reverse .voiceListTrack{flex-direction:row;}
+
+
+/* v8: predictable movement + transparent widget stage */
+html,body{background:transparent!important;overflow:hidden;}
+.voiceListShell{background:transparent!important;color:var(--vl-color,#000);}
+.voiceListViewport{overflow:hidden!important;overscroll-behavior:contain;}
+.voiceListTrack{flex-shrink:0;will-change:transform;transform:translate3d(0,0,0);}
+.voiceListShell.direction-horizontal .voiceListTrack{flex-direction:row;align-items:center;justify-content:flex-start;}
+.voiceListShell.direction-horizontal .voiceListItem{flex:0 0 auto;}
+.voiceListShell.direction-vertical .voiceListTrack{flex-direction:column;align-items:flex-start;justify-content:flex-start;}
+
+.voiceListEditorScroll,.voiceListModal{overscroll-behavior:contain;}
+
+
+/* v9: horizontal real + animation names válidos para el overlay generado */
+.voiceListShell.direction-horizontal .voiceListTrack{
+  flex-direction:row !important;
+  align-items:center;
+  justify-content:flex-start;
+  width:max-content;
+  min-width:max-content;
+  min-height:0;
+  flex-wrap:nowrap !important;
+  white-space:nowrap;
+}
+.voiceListShell.direction-horizontal .voiceListItem{
+  display:inline-flex !important;
+  flex:0 0 auto !important;
+  flex-direction:row !important;
+  align-items:baseline;
+  width:auto;
+}
+.voiceListShell.direction-horizontal .voiceListItem:not(:last-child)::after{
+  content:" · ";
+  opacity:.72;
+  margin-left:4px;
+}
+
+.voiceListShell.motion-crawl.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-scroll.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-slide.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-marquee.direction-horizontal.travel-forward .voiceListTrack{
+  animation-name:voiceListCrawlXForward !important;
+}
+.voiceListShell.motion-crawl.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-scroll.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-slide.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-marquee.direction-horizontal.travel-reverse .voiceListTrack{
+  animation-name:voiceListCrawlXReverse !important;
+}
+.voiceListShell.motion-crawl.direction-vertical.travel-forward .voiceListTrack,
+.voiceListShell.motion-scroll.direction-vertical.travel-forward .voiceListTrack,
+.voiceListShell.motion-slide.direction-vertical.travel-forward .voiceListTrack{
+  animation-name:voiceListCrawlYForward !important;
+}
+.voiceListShell.motion-crawl.direction-vertical.travel-reverse .voiceListTrack,
+.voiceListShell.motion-scroll.direction-vertical.travel-reverse .voiceListTrack,
+.voiceListShell.motion-slide.direction-vertical.travel-reverse .voiceListTrack{
+  animation-name:voiceListCrawlYReverse !important;
+}
+
+@keyframes voiceListCrawlXForward{
+  from{transform:translate3d(calc(-50% - var(--vl-gap,10px)),0,0)}
+  to{transform:translate3d(0,0,0)}
+}
+@keyframes voiceListCrawlXReverse{
+  from{transform:translate3d(0,0,0)}
+  to{transform:translate3d(calc(-50% - var(--vl-gap,10px)),0,0)}
+}
+@keyframes voiceListCrawlYForward{
+  from{transform:translate3d(0,calc(-50% - var(--vl-gap,10px)),0)}
+  to{transform:translate3d(0,0,0)}
+}
+@keyframes voiceListCrawlYReverse{
+  from{transform:translate3d(0,0,0)}
+  to{transform:translate3d(0,calc(-50% - var(--vl-gap,10px)),0)}
+}
+
+.voiceListShell.motion-crawl .voiceListTrack,
+.voiceListShell.motion-scroll .voiceListTrack,
+.voiceListShell.motion-slide .voiceListTrack,
+.voiceListShell.motion-marquee .voiceListTrack{
+  animation-duration:var(--vl-speed,24s);
+  animation-timing-function:linear;
+  animation-iteration-count:infinite;
+  animation-fill-mode:both;
+  will-change:transform;
+}
+
+
+/* Live visibility: keep the animation instance mounted so show/hide never flashes or rebuilds the DOM. */
+.voiceListShell.is-hidden{opacity:0!important;visibility:hidden!important;pointer-events:none!important;}
+.voiceListShell:not(.is-hidden){opacity:1;visibility:visible;}
+.voiceListShell{transition:opacity .12s linear;will-change:opacity;}
+.voice-widget-preview .voiceListShell.is-hidden{opacity:0!important;visibility:hidden!important;}
+
+/* v10: desplazamiento horizontal centrado y continuo, como una línea de texto. */
+.voiceListShell.direction-horizontal .voiceListViewport{
+  align-items:center;
+  justify-content:center;
+}
+.voiceListShell.direction-horizontal .voiceListTrack{
+  align-items:center !important;
+  justify-content:flex-start !important;
+  text-align:center !important;
+  flex-wrap:nowrap !important;
+  white-space:nowrap !important;
+  min-height:0 !important;
+}
+.voiceListShell.direction-horizontal .voiceListItem{
+  flex:0 0 auto !important;
+  display:inline-flex !important;
+  flex-direction:row !important;
+  align-items:baseline !important;
+  justify-content:center;
+  text-align:center !important;
+  white-space:nowrap !important;
+  word-break:normal !important;
+  overflow-wrap:normal !important;
+}
+
+/*
+ * El track contiene dos copias idénticas de la línea.
+ * Para avanzar de izquierda a derecha, una copia termina exactamente
+ * donde empieza la siguiente. Los extremos están centrados, evitando
+ * saltos visibles al reiniciar el ciclo.
+ */
+@keyframes voiceListTextLineRight{
+  from{transform:translate3d(calc(-25% - (var(--vl-gap,10px) / 4)),0,0)}
+  to{transform:translate3d(calc(25% + (var(--vl-gap,10px) / 4)),0,0)}
+}
+@keyframes voiceListTextLineLeft{
+  from{transform:translate3d(calc(25% + (var(--vl-gap,10px) / 4)),0,0)}
+  to{transform:translate3d(calc(-25% - (var(--vl-gap,10px) / 4)),0,0)}
+}
+.voiceListShell.motion-crawl.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-scroll.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-slide.direction-horizontal.travel-forward .voiceListTrack,
+.voiceListShell.motion-marquee.direction-horizontal.travel-forward .voiceListTrack{
+  animation-name:voiceListTextLineRight !important;
+  animation-timing-function:linear !important;
+}
+.voiceListShell.motion-crawl.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-scroll.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-slide.direction-horizontal.travel-reverse .voiceListTrack,
+.voiceListShell.motion-marquee.direction-horizontal.travel-reverse .voiceListTrack{
+  animation-name:voiceListTextLineLeft !important;
+  animation-timing-function:linear !important;
+}
+
+.voiceListShell.motion-scroll.direction-horizontal .voiceListTrack,
+.voiceListShell.motion-crawl.direction-horizontal .voiceListTrack,
+.voiceListShell.motion-marquee.direction-horizontal .voiceListTrack,
+.voiceListShell.motion-slide.direction-horizontal .voiceListTrack{
+  will-change:transform;
+  backface-visibility:hidden;
+  transform:translate3d(0,0,0);
+}
+
+
+/* v11: posición vertical semántica para desplazamiento horizontal. */
+.voiceListShell.direction-horizontal .voiceListViewport{
+  justify-content:center !important;
+}
+.voiceListShell.direction-horizontal.list-position-left .voiceListViewport{
+  align-items:flex-start !important;
+}
+.voiceListShell.direction-horizontal.list-position-center .voiceListViewport{
+  align-items:center !important;
+}
+.voiceListShell.direction-horizontal.list-position-right .voiceListViewport{
+  align-items:flex-end !important;
+}
+.voiceListShell.direction-horizontal .voiceListTrack{
+  min-height:0 !important;
+}
+
+/* FIX FINAL: horizontal voice list = centered viewport + true continuous text travel. */
+.voiceListShell.direction-horizontal .voiceListStage,
+.voiceListShell.direction-horizontal .voiceListViewport{
+  width:100%;
+  height:100%;
+  min-width:0;
+  box-sizing:border-box;
+  overflow:hidden;
+}
+.voiceListShell.direction-horizontal .voiceListViewport{
+  justify-content:center !important;
+}
+.voiceListShell.direction-horizontal.list-position-left .voiceListViewport{align-items:flex-start !important;}
+.voiceListShell.direction-horizontal.list-position-center .voiceListViewport{align-items:center !important;}
+.voiceListShell.direction-horizontal.list-position-right .voiceListViewport{align-items:flex-end !important;}
+.voiceListShell.direction-horizontal .voiceListTrack{
+  display:flex !important;
+  flex-direction:row !important;
+  align-items:center !important;
+  justify-content:flex-start !important;
+  flex-wrap:nowrap !important;
+  width:max-content !important;
+  min-width:max-content !important;
+  min-height:0 !important;
+  margin:0 !important;
+  padding:0 !important;
+  white-space:nowrap !important;
+  gap:var(--vl-gap,10px) !important;
+  text-align:left !important;
+  transform:translate3d(0,0,0);
+  will-change:transform;
+  backface-visibility:hidden;
+}
+.voiceListShell.direction-horizontal .voiceListItem{
+  flex:0 0 auto !important;
+  width:auto !important;
+  max-width:none !important;
+  display:inline-flex !important;
+  flex-direction:row !important;
+  align-items:baseline !important;
+  justify-content:flex-start !important;
+  margin:0 !important;
+  white-space:nowrap !important;
+}
+@keyframes voiceListHorizontalForwardFinal{
+  from{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}
+  to{transform:translate3d(0,0,0)}
+}
+@keyframes voiceListHorizontalReverseFinal{
+  from{transform:translate3d(0,0,0)}
+  to{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}
+}
+.voiceListShell.direction-horizontal.motion-scroll.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-slide.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-marquee.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-crawl.travel-forward .voiceListTrack{
+  animation:voiceListHorizontalForwardFinal var(--vl-speed,24s) linear infinite !important;
+}
+.voiceListShell.direction-horizontal.motion-scroll.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-slide.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-marquee.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-crawl.travel-reverse .voiceListTrack{
+  animation:voiceListHorizontalReverseFinal var(--vl-speed,24s) linear infinite !important;
+}
+.voiceListShell.direction-horizontal.motion-static .voiceListTrack{
+  animation:none !important;
+  transform:none !important;
+}
+
+/* Lista de voces: posición vertical independiente para el modo horizontal. */
+.voiceListShell.direction-horizontal{justify-content:center !important;}
+.voiceListShell.direction-horizontal .voiceListStage,
+.voiceListShell.direction-horizontal .voiceListViewport{width:100%;height:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
+.voiceListShell.direction-horizontal .voiceListViewport{justify-content:center !important;}
+.voiceListShell.direction-horizontal.horizontal-position-top .voiceListViewport{align-items:flex-start !important;}
+.voiceListShell.direction-horizontal.horizontal-position-center .voiceListViewport{align-items:center !important;}
+.voiceListShell.direction-horizontal.horizontal-position-bottom .voiceListViewport{align-items:flex-end !important;}
+.voiceListShell.direction-horizontal .voiceListTrack{min-height:0 !important;}
+
+
+/* StreamFusion positioning: one Position control, interpreted by axis.
+   vertical displacement -> left / center / right
+   horizontal displacement -> top / center / bottom */
+.voiceListShell{width:100%;height:100%;min-width:0;min-height:0;box-sizing:border-box;display:flex!important;overflow:hidden!important;background:transparent!important}
+.voiceListShell .voiceListStage,.voiceListShell .voiceListViewport{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-sizing:border-box!important;overflow:hidden!important}
+.voiceListShell .voiceListStage{display:flex!important}
+.voiceListShell .voiceListViewport{display:flex!important}
+
+.voiceListShell.direction-vertical .voiceListViewport{flex-direction:row!important;justify-content:flex-start!important;align-items:flex-start!important}
+.voiceListShell.direction-vertical.list-position-left .voiceListViewport{justify-content:flex-start!important}
+.voiceListShell.direction-vertical.list-position-center .voiceListViewport{justify-content:center!important}
+.voiceListShell.direction-vertical.list-position-right .voiceListViewport{justify-content:flex-end!important}
+.voiceListShell.direction-vertical .voiceListTrack{width:max-content!important;min-width:0!important;max-width:100%!important;height:max-content!important;min-height:0!important;flex:0 0 auto!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-start!important;box-sizing:border-box!important}
+
+.voiceListShell.direction-horizontal .voiceListStage{align-items:stretch!important;justify-content:stretch!important}
+.voiceListShell.direction-horizontal .voiceListViewport{flex-direction:column!important;justify-content:flex-start!important}
+.voiceListShell.direction-horizontal.horizontal-position-top .voiceListViewport{align-items:flex-start!important}
+.voiceListShell.direction-horizontal.horizontal-position-center .voiceListViewport{align-items:center!important}
+.voiceListShell.direction-horizontal.horizontal-position-bottom .voiceListViewport{align-items:flex-end!important}
+.voiceListShell.direction-horizontal .voiceListTrack{width:max-content!important;min-width:max-content!important;max-width:none!important;height:max-content!important;min-height:0!important;flex:0 0 auto!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;flex-wrap:nowrap!important;white-space:nowrap!important;box-sizing:border-box!important}
+.voiceListShell.direction-horizontal .voiceListItem{flex:0 0 auto!important;width:auto!important;max-width:none!important;display:inline-flex!important;white-space:nowrap!important}
+.voiceListShell.direction-horizontal.motion-static .voiceListTrack{animation:none!important;transform:none!important}
+.voiceListShell.direction-horizontal.motion-scroll.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-slide.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-marquee.travel-forward .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-crawl.travel-forward .voiceListTrack{animation-name:sfVoiceHorizontalForward!important}
+.voiceListShell.direction-horizontal.motion-scroll.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-slide.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-marquee.travel-reverse .voiceListTrack,
+.voiceListShell.direction-horizontal.motion-crawl.travel-reverse .voiceListTrack{animation-name:sfVoiceHorizontalReverse!important}
+@keyframes sfVoiceHorizontalForward{from{transform:translate3d(0,0,0)}to{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}}
+@keyframes sfVoiceHorizontalReverse{from{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}to{transform:translate3d(0,0,0)}}
+
+/* The dashboard preview intentionally reuses the exact overlay geometry. */
+.voice-widget-preview .voiceListShell{width:100%!important;height:100%!important}
+.voice-widget-preview .voiceListShell.direction-vertical .voiceListViewport{justify-content:flex-start!important}
+.voice-widget-preview .voiceListShell.direction-vertical.list-position-center .voiceListViewport{justify-content:center!important}
+.voice-widget-preview .voiceListShell.direction-vertical.list-position-right .voiceListViewport{justify-content:flex-end!important}
+.voice-widget-preview .voiceListShell.direction-horizontal .voiceListViewport{justify-content:flex-start!important}
+.voice-widget-preview .voiceListShell.direction-horizontal.horizontal-position-center .voiceListViewport{align-items:center!important}
+.voice-widget-preview .voiceListShell.direction-horizontal.horizontal-position-bottom .voiceListViewport{align-items:flex-end!important}

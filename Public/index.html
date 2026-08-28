@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>StreamFusion Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="/socket.io/socket.io.js"></script>
+  <link rel="icon" type="image/x-icon" href="/SfIcono.ico">
+</head>
+<body class="theme-dark">
+  <section class="auth-screen" id="authScreen">
+    <div class="auth-art"><span class="logo-mark">S</span><p class="eyebrow">STREAMFUSION STUDIO</p><h1>Tu directo,<br><em>en una sola señal.</em></h1><p>Conecta TikTok y Twitch, diseña tus overlays y administra tus voces en un solo espacio.</p></div>
+    <form class="auth-card" id="authForm">
+      <div class="brand-line"><span class="logo-mark small">S</span><strong>StreamFusion</strong></div>
+      <h2 id="authTitle">Bienvenido de vuelta</h2><p id="authText">Inicia sesión para abrir tu estudio.</p>
+      <label class="auth-name hidden" id="authNameWrap">Nombre visible<input id="authName" maxlength="50" placeholder="Tu nombre"></label>
+      <label>Correo<input id="authEmail" type="email" required placeholder="tu@correo.com"></label>
+      <label>Contraseña<input id="authPassword" type="password" required minlength="8" placeholder="Mínimo 8 caracteres"></label>
+      <button class="btn primary full" id="authSubmit">Entrar al estudio <span>→</span></button>
+      <button class="link-btn" type="button" id="authToggle">¿No tienes cuenta? Crear cuenta</button>
+      <p class="form-error" id="authError"></p>
+    </form>
+  </section>
+
+  <div class="app hidden" id="app">
+    <aside class="sidebar" id="sidebar">
+      <div class="side-brand"><span class="logo-mark small">S</span><span>StreamFusion</span><button class="collapse" id="collapse" aria-label="Contraer menú">‹</button></div>
+      <nav id="nav">
+        <p class="nav-label">ESTUDIO</p>
+        <button class="nav-item active" data-page="dashboard"><i>⌂</i><span>Dashboard</span></button>
+        <button class="nav-item" data-page="connections"><i>⌁</i><span>Conexiones</span></button>
+        <p class="nav-label">CREACIÓN</p>
+        <button class="nav-item" data-page="customize"><i>✦</i><span>Personalización</span></button>
+        <button class="nav-item" data-page="overlays"><i>▣</i><span>Overlays</span></button>
+        <button class="nav-item" data-page="roulette"><i>◉</i><span>Ruleta</span></button>
+        <button class="nav-item" data-page="voices"><i>♬</i><span>Voces</span></button>
+        <button class="nav-item" data-page="points"><i>✦</i><span>Sistema de puntos</span></button>
+        <button class="nav-item" data-page="widgets"><i>▤</i><span>Widgets</span></button>
+        <p class="nav-label">CUENTA</p>
+        <button class="nav-item" data-page="settings"><i>⚙</i><span>Ajustes</span></button>
+        <button class="nav-item" data-page="library"><i>▦</i><span>Biblioteca</span></button>
+      </nav>
+      <div class="side-user"><span class="user-avatar" id="userInitial">A</span><div><strong id="userName">Creador</strong><small id="userEmail">Plan Studio</small></div><button id="logout" title="Cerrar sesión">↪</button></div>
+    </aside>
+
+    <main>
+      <header class="topbar">
+        <div><p class="eyebrow" id="pageKicker">TU ESTUDIO</p><h1 id="pageTitle">Dashboard</h1></div>
+        <div class="connected-accounts" id="topAccounts"></div>
+        <button class="btn primary" data-page="connections">＋ Conectar canal</button>
+      </header>
+      <section id="view" class="view"></section>
+    </main>
+  </div>
+
+  <div class="toast-stack" id="toastStack"></div>
+</body>
+<script src="app.js"></script>
+</html>

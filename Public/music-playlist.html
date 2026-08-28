@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>StreamFusion · Playlist de directo</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+:root{--page:#080a12;--panel:rgba(20,23,36,.86);--panel2:rgba(255,255,255,.035);--line:rgba(255,255,255,.08);--muted:rgba(255,255,255,.48);--accent:#8b5cf6;--accent2:#ec4899}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;background:var(--page)!important;color:#fff;font-family:Inter,Segoe UI,Arial,sans-serif}body{overflow:hidden}
+.music-admin-page{height:100vh;display:flex;flex-direction:column;background:radial-gradient(circle at 80% 10%,rgba(139,92,246,.10),transparent 25%),radial-gradient(circle at 20% 20%,rgba(236,72,153,.06),transparent 28%),var(--page)}
+.music-admin-top{height:72px;flex:0 0 72px;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:0 24px;border-bottom:1px solid var(--line);background:rgba(10,12,20,.84);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+.music-admin-brand{display:flex;align-items:center;gap:12px;min-width:0}.music-admin-logo{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,rgba(139,92,246,.28),rgba(236,72,153,.18));border:1px solid rgba(167,139,250,.28);font-size:19px;font-weight:900;box-shadow:0 8px 26px rgba(0,0,0,.22)}.music-admin-title{min-width:0}.music-admin-title strong{display:block;font-size:14px;letter-spacing:.08em}.music-admin-title small{display:block;margin-top:3px;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-state{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted);white-space:nowrap}.music-admin-state i{width:7px;height:7px;border-radius:50%;background:#55df9b;box-shadow:0 0 12px rgba(85,223,155,.7)}.music-admin-state.is-loading i{background:#f2c94c;box-shadow:0 0 12px rgba(242,201,76,.55)}.music-admin-state.is-error i{background:#ff667d;box-shadow:0 0 12px rgba(255,102,125,.55)}
+.music-admin-main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;padding:18px 22px 138px;overflow:hidden}.music-admin-content{min-width:0;min-height:0;display:flex;flex-direction:column;gap:14px}.music-admin-side{min-width:0;min-height:0;display:flex;flex-direction:column;gap:14px}
+.music-admin-card{border:1px solid var(--line);border-radius:18px;background:linear-gradient(145deg,rgba(255,255,255,.045),rgba(255,255,255,.018));box-shadow:0 20px 60px rgba(0,0,0,.18);overflow:hidden}.music-admin-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 17px;border-bottom:1px solid var(--line)}.music-admin-card-head h2{margin:0;font-size:15px}.music-admin-card-head p{margin:4px 0 0;color:var(--muted);font-size:10px}.music-admin-pill{display:inline-flex;align-items:center;gap:7px;padding:7px 9px;border:1px solid rgba(167,139,250,.18);border-radius:999px;background:rgba(139,92,246,.08);color:#c4b5fd;font-size:10px;font-weight:900;white-space:nowrap}
+.music-admin-add{display:flex;gap:9px;padding:13px 14px;border-bottom:1px solid var(--line)}.music-admin-add input{flex:1;min-width:0;height:42px;padding:0 13px;border-radius:11px;border:1px solid rgba(255,255,255,.10);background:rgba(0,0,0,.18);color:#fff;outline:0;font:inherit;font-size:12px}.music-admin-add input:focus{border-color:rgba(167,139,250,.5);box-shadow:0 0 0 3px rgba(139,92,246,.10)}.music-admin-btn{border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);color:#fff;border-radius:11px;height:42px;padding:0 13px;font-weight:850;font-size:11px;cursor:pointer}.music-admin-btn:hover{background:rgba(255,255,255,.09)}.music-admin-btn.primary{background:linear-gradient(135deg,rgba(139,92,246,.30),rgba(236,72,153,.20));border-color:rgba(167,139,250,.30)}.music-admin-btn.danger{font-size:18px;width:44px;padding:0}.music-admin-btn:disabled{opacity:.45;cursor:wait}
+.music-admin-list-scroll{min-height:0;flex:1;overflow:auto}.music-admin-section-label{padding:11px 15px 7px;color:rgba(255,255,255,.34);font-size:9px;font-weight:900;letter-spacing:.13em;text-transform:uppercase;position:sticky;top:0;background:linear-gradient(180deg,rgba(14,17,27,.97),rgba(14,17,27,.78),transparent);z-index:3}.music-admin-row{display:grid;grid-template-columns:22px 28px 58px minmax(0,1fr) auto 34px;align-items:center;gap:11px;padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.055);cursor:pointer;transition:.16s ease}.music-admin-row:hover{background:rgba(255,255,255,.035)}.music-admin-row.is-current{background:linear-gradient(90deg,rgba(139,92,246,.16),rgba(236,72,153,.045));box-shadow:inset 3px 0 var(--accent)}.music-admin-row.is-history{opacity:.9}.music-admin-drag{display:grid;place-items:center;color:rgba(255,255,255,.25);font-size:12px;letter-spacing:-3px;cursor:grab;user-select:none}.music-admin-row.is-dragging{opacity:.42;transform:scale(.992);box-shadow:0 10px 24px rgba(0,0,0,.18)}.music-admin-row.drag-placeholder{height:64px;padding:0;border:1px dashed rgba(167,139,250,.34);background:rgba(139,92,246,.055);border-radius:12px}.music-admin-row.drag-placeholder>*{visibility:hidden}.music-admin-row.drag-over{box-shadow:inset 0 2px var(--accent),inset 0 -2px rgba(139,92,246,.25);background:rgba(139,92,246,.08)}.music-admin-index{text-align:center;font-size:10px;color:rgba(255,255,255,.36);font-weight:900}.music-admin-thumb{width:58px;height:43px;border-radius:9px;overflow:hidden;background:rgba(139,92,246,.08);display:grid;place-items:center;color:#c4b5fd}.music-admin-thumb img{display:block;width:100%;height:100%;object-fit:cover}.music-admin-copy{min-width:0;display:grid;gap:4px}.music-admin-copy strong{font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-copy small{font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-badge{display:inline-flex;align-items:center;width:max-content;padding:3px 6px;border-radius:999px;font-size:8px;font-weight:900;letter-spacing:.06em;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.07);color:rgba(255,255,255,.55)}.music-admin-badge.live{color:#c4b5fd;border-color:rgba(167,139,250,.2);background:rgba(139,92,246,.08)}.music-admin-badge.sim{color:#f0abfc;border-color:rgba(236,72,153,.2);background:rgba(236,72,153,.08)}.music-admin-badge.direct{color:#9ca3b5;border-color:rgba(156,163,175,.14);background:rgba(156,163,175,.055)}.music-admin-section-label .music-admin-section-sub{font-weight:600;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.28);margin-left:7px}.music-admin-row.is-simulation-row{background:linear-gradient(90deg,rgba(236,72,153,.055),transparent)}.music-admin-duration{font-size:10px;color:#c4b5fd;font-variant-numeric:tabular-nums;white-space:nowrap}.music-admin-remove{width:30px;height:30px;border-radius:9px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);color:rgba(255,255,255,.48);cursor:pointer;font-size:16px}.music-admin-remove:hover{color:#fff;background:rgba(236,72,153,.12)}
+.music-admin-empty{padding:55px 24px;text-align:center;color:rgba(255,255,255,.38)}.music-admin-empty .big{font-size:42px;margin-bottom:8px}.music-admin-empty strong{display:block;color:rgba(255,255,255,.72);font-size:13px;margin-bottom:5px}.music-admin-empty small{display:block;font-size:10px;line-height:1.5}
+.music-admin-side-card{padding:15px}.music-admin-side-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.music-admin-side-title strong{font-size:12px}.music-admin-side-title small{font-size:9px;color:var(--muted)}
+.music-admin-now{display:grid;gap:10px}.music-admin-now-art{width:100%;aspect-ratio:16/8;border-radius:13px;overflow:hidden;background:radial-gradient(circle at 50% 50%,rgba(139,92,246,.20),rgba(0,0,0,.25));display:grid;place-items:center}.music-admin-now-art img{width:100%;height:100%;object-fit:cover}.music-admin-now-copy strong{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-now-copy small{display:block;margin-top:4px;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-meta{display:flex;justify-content:space-between;gap:10px;font-size:9px;color:rgba(255,255,255,.42)}.music-admin-progress{height:5px;border-radius:999px;background:rgba(255,255,255,.10);overflow:hidden}.music-admin-progress span{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:inherit;transition:width .25s linear}
+.music-admin-info{display:grid;gap:7px}.music-admin-info-line{display:flex;justify-content:space-between;gap:12px;padding:8px 9px;border-radius:10px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.06);font-size:10px}.music-admin-info-line span{color:var(--muted)}.music-admin-info-line b{color:#fff;text-align:right}
+.music-admin-player{position:fixed;left:0;right:0;bottom:0;z-index:20;min-height:116px;border-top:1px solid rgba(255,255,255,.11);background:linear-gradient(180deg,rgba(25,28,42,.98),rgba(10,12,20,.99));box-shadow:0 -22px 60px rgba(0,0,0,.40);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);display:grid;grid-template-columns:82px minmax(240px,1fr) auto minmax(190px,260px);align-items:center;gap:15px;padding:12px 22px}.music-admin-vinyl{width:70px;height:70px;border-radius:50%;position:relative;display:grid;place-items:center;background:radial-gradient(circle at 50% 50%,#202020 0 6%,#0b0b0b 7% 13%,#1d1d1d 14% 22%,#090909 23% 100%);box-shadow:inset 0 0 0 4px rgba(255,255,255,.05),0 12px 30px rgba(0,0,0,.34);animation:musicAdminSpin 9s linear infinite;animation-play-state:paused;will-change:transform;transform:translateZ(0)}.music-admin-vinyl:before{content:"";position:absolute;inset:9px;border-radius:50%;border:1px solid rgba(255,255,255,.08);box-shadow:0 0 0 7px rgba(255,255,255,.018),0 0 0 14px rgba(255,255,255,.018),0 0 0 21px rgba(255,255,255,.014)}.music-admin-vinyl:after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:#090909;border:2px solid rgba(255,255,255,.08);z-index:4}.music-admin-vinyl img{width:36px;height:36px;border-radius:50%;object-fit:cover;position:relative;z-index:2;border:1px solid rgba(255,255,255,.16)}.music-admin-vinyl.is-spinning{animation-play-state:running}@keyframes musicAdminSpin{from{transform:translate3d(0,0,0) rotate(0deg)}to{transform:translate3d(0,0,0) rotate(360deg)}}
+.music-admin-current{min-width:0}.music-admin-current .eyebrow{font-size:8px;font-weight:900;letter-spacing:.13em;color:#a78bfa}.music-admin-current strong{display:block;margin-top:4px;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-current small{display:block;margin-top:3px;font-size:10px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.music-admin-progress-row{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;margin-top:8px}.music-admin-progress-row .time{font-size:9px;color:rgba(255,255,255,.4);font-variant-numeric:tabular-nums}.music-admin-controls{display:flex;align-items:center;gap:7px}.music-admin-control{width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.045);color:#fff;display:grid;place-items:center;padding:0;cursor:pointer;font-size:13px}.music-admin-control:hover{background:rgba(255,255,255,.09)}.music-admin-control.main{width:44px;height:44px;font-size:17px;border-color:rgba(167,139,250,.3);box-shadow:0 8px 20px rgba(0,0,0,.25)}
+.music-admin-volume{display:flex;align-items:center;gap:9px}.music-admin-volume input{width:100%;accent-color:#a78bfa}.music-admin-volume span{font-size:10px;color:rgba(255,255,255,.52);width:36px;text-align:right}
+.music-confirm-backdrop{position:fixed;inset:0;z-index:60;display:grid;place-items:center;background:rgba(2,3,8,.58);backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}.music-confirm{width:min(380px,calc(100vw - 32px));padding:19px;border:1px solid rgba(255,255,255,.10);border-radius:18px;background:linear-gradient(145deg,rgba(30,33,49,.98),rgba(14,16,26,.98));box-shadow:0 25px 90px rgba(0,0,0,.55)}.music-confirm .icon{font-size:30px}.music-confirm h3{margin:9px 0 6px;font-size:15px}.music-confirm p{margin:0;color:rgba(255,255,255,.55);font-size:11px;line-height:1.5}.music-confirm-actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:16px}.music-confirm-check,.music-confirm-x{height:42px;border-radius:11px;border:1px solid rgba(255,255,255,.1);color:#fff;cursor:pointer;font-size:18px;font-weight:900}.music-confirm-check{background:linear-gradient(135deg,rgba(85,223,155,.18),rgba(85,223,155,.08));border-color:rgba(85,223,155,.25)}.music-confirm-x{background:rgba(255,255,255,.045)}
+@media(max-width:980px){.music-admin-main{grid-template-columns:1fr}.music-admin-side{display:none}.music-admin-player{grid-template-columns:66px minmax(0,1fr) auto}.music-admin-volume{grid-column:1/-1}.music-admin-main{padding-bottom:175px}}@media(max-width:620px){.music-admin-top{padding:0 13px}.music-admin-main{padding:10px 10px 190px}.music-admin-player{grid-template-columns:56px minmax(0,1fr);padding:10px}.music-admin-controls{grid-column:1/-1;justify-content:center}.music-admin-volume{grid-column:1/-1}.music-admin-vinyl{width:54px;height:54px}.music-admin-vinyl img{width:29px;height:29px}.music-admin-row{grid-template-columns:24px 46px minmax(0,1fr) 34px;padding:9px}.music-admin-thumb{width:46px;height:35px}.music-admin-duration{display:none}.music-admin-add{flex-wrap:wrap}.music-admin-add input{width:100%;flex:1 0 100%}}
+
+.music-context-menu{position:fixed;z-index:1000;min-width:170px;padding:6px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(19,22,33,.98);box-shadow:0 18px 50px rgba(0,0,0,.42);backdrop-filter:blur(18px);display:none}
+.music-context-menu button{display:flex;width:100%;align-items:center;gap:9px;border:0;background:transparent;color:#fff;padding:10px 11px;border-radius:8px;font:700 11px Inter,Segoe UI,Arial,sans-serif;cursor:pointer;text-align:left}.music-context-menu button:hover{background:rgba(236,72,153,.14);color:#fff}.music-context-menu button.danger{color:#f9a8d4}
+.music-admin-row.drag-over{transition:none}
+
+.music-admin-row.is-draggable{will-change:transform,background,box-shadow;transition:transform .12s ease,background .12s ease,box-shadow .12s ease}.music-admin-row.is-draggable:active{cursor:grabbing}.music-admin-drag{touch-action:none}
+
+.music-admin-queue-scroll{max-height:330px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable}.music-admin-history-scroll{max-height:122px;overflow:auto;overscroll-behavior:contain;scrollbar-gutter:stable;border-bottom:1px solid rgba(255,255,255,.04)}.music-admin-history-scroll .music-admin-row{min-height:58px}.music-admin-queue-scroll::-webkit-scrollbar,.music-admin-history-scroll::-webkit-scrollbar{width:7px}.music-admin-queue-scroll::-webkit-scrollbar-thumb,.music-admin-history-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:999px}.music-admin-queue-scroll::-webkit-scrollbar-track,.music-admin-history-scroll::-webkit-scrollbar-track{background:transparent}
+</style>
+</head>
+<body>
+<div class="music-admin-page">
+  <header class="music-admin-top">
+    <div class="music-admin-brand"><div class="music-admin-logo">♫</div><div class="music-admin-title"><strong>PLAYLIST DE DIRECTO</strong><small>Centro de control del overlay · la simulación de vista previa permanece independiente</small></div></div>
+    <div class="music-admin-state" id="status"><i></i><span>Conectando…</span></div>
+  </header>
+  <main class="music-admin-main">
+    <section class="music-admin-content music-admin-card">
+      <div class="music-admin-card-head"><div><h2>Cola y biblioteca del directo</h2><p>Haz clic en cualquier canción para reproducirla en el overlay generado.</p></div><span class="music-admin-pill" id="countPill">0 en cola</span></div>
+      <div class="music-admin-add"><input id="query" maxlength="300" placeholder="Agregar canción o pegar URL de YouTube"><button id="add" class="music-admin-btn primary">＋ Agregar</button><button id="clearHistory" class="music-admin-btn danger" title="Limpiar historial" aria-label="Limpiar historial">🗑️</button></div><div class="music-admin-drag-hint">Arrastra una canción de la cola para cambiar su posición.</div>
+      <div class="music-admin-list-scroll" id="list"></div>
+    </section>
+    <aside class="music-admin-side">
+      <section class="music-admin-card music-admin-side-card">
+        <div class="music-admin-side-title"><strong>Ahora sonando</strong><small id="sideSource">—</small></div>
+        <div class="music-admin-now"><div class="music-admin-now-art" id="sideArt">♫</div><div class="music-admin-now-copy"><strong id="sideTitle">Sin reproducción</strong><small id="sideArtist">El overlay está en espera.</small></div><div class="music-admin-progress"><span id="sideProgress"></span></div><div class="music-admin-meta"><span id="sideElapsed">0:00</span><span id="sideDuration">0:00</span></div></div>
+      </section>
+      <section class="music-admin-card music-admin-side-card"><div class="music-admin-side-title"><strong>Estado del directo</strong><small>Tiempo real</small></div><div class="music-admin-info"><div class="music-admin-info-line"><span>En cola</span><b id="queueMeta">0</b></div><div class="music-admin-info-line"><span>Historial</span><b id="historyMeta">0</b></div><div class="music-admin-info-line"><span>Volumen</span><b id="sideVolume">100%</b></div><div class="music-admin-info-line"><span>Fuente actual</span><b id="sidePlatform">—</b></div></div></section>
+    </aside>
+  </main>
+  <footer class="music-admin-player" id="playerBar">
+    <div class="music-admin-vinyl" id="vinyl"><img id="vinylImg" alt=""></div>
+    <div class="music-admin-current"><div class="eyebrow" id="label">SIN REPRODUCCIÓN</div><strong id="currentTitle">No hay una canción en el overlay</strong><small id="currentArtist">Agrega una canción o espera una solicitud por chat.</small><div class="music-admin-progress-row"><div class="music-admin-progress"><span id="progress"></span></div><span class="time" id="time">0:00 / 0:00</span></div></div>
+    <div class="music-admin-controls"><button class="music-admin-control" data-action="previous" title="Anterior">◀</button><button class="music-admin-control main" data-action="toggle" id="toggle" title="Reproducir/Reanudar">▶</button><button class="music-admin-control" data-action="skip" title="Siguiente">▶|</button><button class="music-admin-control" data-action="stop" title="Detener">■</button></div>
+    <div class="music-admin-volume"><span>🔊</span><input id="volume" type="range" min="0" max="100" value="100" step="1"><span id="volumeValue">100%</span></div>
+  </footer>
+</div>
+<div id="confirmHost"></div><div id="musicContextMenu" class="music-context-menu" role="menu"><button type="button" class="danger" id="musicContextDelete">🗑️ Eliminar canción</button></div>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(()=>{
+ const p=new URLSearchParams(location.search),owner=p.get('owner')||'',overlayKey=p.get('overlayKey')||''; const $=id=>document.getElementById(id); const enc=v=>encodeURIComponent(String(v??''));
+ const api=(u,opt={})=>fetch(u,{headers:{'Content-Type':'application/json',...(opt.headers||{})},...opt}).then(async r=>{const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Error');return d});
+ const esc=s=>String(s??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); const fmt=n=>{n=Math.max(0,Math.floor(Number(n)||0));const m=Math.floor(n/60),s=n%60;return `${m}:${String(s).padStart(2,'0')}`};
+ const auth=()=>`owner=${enc(owner)}&overlayKey=${enc(overlayKey)}`;
+ let state={current:null,queue:[],previous:null,history:[],playing:false,paused:false,volume:100,startedAt:0,pausedElapsed:0,serverNow:0};let anchorElapsed=0,anchorAt=performance.now(),raf=0,busy=false,lastRenderSignature='';
+ const sock=io({auth:{overlayKey,widget:'music-playlist',owner},transports:['polling','websocket'],upgrade:true,reconnection:true,reconnectionAttempts:Infinity,reconnectionDelay:700,reconnectionDelayMax:7000,timeout:15000});
+ function setStatus(text,mode=''){const el=$('status');el.className=`music-admin-state ${mode}`;el.querySelector('span').textContent=text;}
+ function effectiveElapsed(){const t=state.current;if(!t)return 0;const now=performance.now();const duration=Math.max(0,Number(t.duration||0));const playing=Boolean(state.playing&&!state.paused);if(!playing){return Math.min(Math.max(0,Number(anchorElapsed||0)),duration||Infinity);}const elapsed=Math.max(0,Number(anchorElapsed||0)) + Math.max(0,(now-anchorAt)/1000);return Math.min(elapsed,duration||Infinity);}
+ function rowHtml(t,{kind='queue',index=0,current=false,simulation=false}={}){const isSim=simulation || String(t?.source||'').toLowerCase()==='simulation' || String(t?.requester||'').toLowerCase()==='simulación';const draggable=(kind==='queue'||kind==='simulation-queue')&&!current;return `<div class="music-admin-row ${current?'is-current':''} ${kind==='history'?'is-history':''} ${isSim?'is-simulation-row':''} ${draggable?'is-draggable':''}" data-track-id="${esc(t.id)}" data-queue-kind="${esc(kind)}" ${draggable?'draggable="true"':''}><span class="music-admin-drag" aria-hidden="true" title="Arrastrar">⋮⋮</span><span class="music-admin-index">${current?'▶':kind==='history'?'↺':index+1}</span><div class="music-admin-thumb">${t.thumbnail?`<img src="${esc(t.thumbnail)}" alt="">`:'♫'}</div><div class="music-admin-copy"><strong>${esc(t.title||'Canción')}</strong><small>${esc(t.artist||'Artista')} · ${esc(t.requester||'Usuario')} ${current?'<span class="music-admin-badge live">AHORA</span>':''} ${isSim?'<span class="music-admin-badge sim">SOLICITADA POR SIMULACIÓN</span>':'<span class="music-admin-badge direct">SOLO OVERLAY</span>'}</small></div><span class="music-admin-duration">${fmt(t.duration)}</span>${kind==='queue'||kind==='simulation-queue'?`<button class="music-admin-remove" data-remove="${esc(t.id)}" title="Quitar de la cola" aria-label="Quitar">×</button>`:'<span></span>'}</div>`}
+ function renderList(){
+  const host=$('list'),current=state.current,q=Array.isArray(state.queue)?state.queue:[],sq=Array.isArray(state.simulationQueue)?state.simulationQueue:[],h=Array.isArray(state.history)?state.history:[];
+  let html='';
+  if(current) html+='<div class="music-admin-section-label">Ahora sonando · '+(String(current.source||'').toLowerCase()==='simulation'?'SIMULACIÓN':'DIRECTO')+'</div>'+rowHtml(current,{current:true,kind:'current',simulation:String(current.source||'').toLowerCase()==='simulation'});
+  if(sq.length) html+='<div class="music-admin-section-label">Solicitadas en simulación <span class="music-admin-section-sub">También entran al overlay al darles play</span></div>'+sq.map((t,i)=>rowHtml(t,{kind:'simulation-queue',index:i,simulation:true})).join('');
+  if(q.length) html+='<div class="music-admin-section-label">Cola del directo <span class="music-admin-section-sub">No altera la vista previa</span></div><div class="music-admin-queue-scroll">'+q.map((t,i)=>rowHtml(t,{kind:'queue',index:i})).join('')+'</div>';
+  if(h.length) html+='<div class="music-admin-section-label">Reproducidas recientemente <span class="music-admin-section-sub">Las 2 más recientes primero · desplázate para ver más</span></div><div class="music-admin-history-scroll">'+h.map(t=>rowHtml(t,{kind:'history'})).join('')+'</div>';
+  if(!html) html='<div class="music-admin-empty"><div class="big">♫</div><strong>La playlist del directo está vacía</strong><small>Las solicitudes de simulación y las canciones agregadas al overlay aparecerán aquí.</small></div>';
+  host.innerHTML=html;
+  const total=q.length+sq.length;
+  $('countPill').textContent=`${total} en cola`;$('queueMeta').textContent=String(total);$('historyMeta').textContent=String(h.length);
+  host.querySelectorAll('[data-remove]').forEach(b=>b.onclick=async e=>{e.stopPropagation();try{await api(`/api/music/playlist/${enc(b.dataset.remove)}?${auth()}`,{method:'DELETE'});setStatus('Canción retirada de la cola.');}catch(err){setStatus(err.message||'No se pudo quitar.','is-error')}});
+  host.querySelectorAll('[data-track-id]').forEach(row=>row.onclick=async(ev)=>{if(ev.target.closest('[data-remove]'))return;if(row.dataset.dragging==='1')return;const id=row.dataset.trackId;if(!id||row.classList.contains('is-current'))return;try{setStatus('Cambiando canción…','is-loading');const d=await api(`/api/music/playlist/play/${enc(id)}?${auth()}`,{method:'POST'});applyState(d.music||state);setStatus(row.dataset.queueKind==='simulation-queue'?'Simulación enviada al overlay y a la vista previa.':'Canción seleccionada para el overlay.');}catch(err){setStatus(err.message||'No se pudo seleccionar.','is-error')}});
+  const draggableRows=[...host.querySelectorAll('.music-admin-row.is-draggable')]; let dragId='',dragKind='',dragOriginRows=[];
+  const contextMenu=$('musicContextMenu'), contextDelete=$('musicContextDelete'); let contextTrackId='';
+  const hideContext=()=>{if(contextMenu)contextMenu.style.display='none';contextTrackId='';};
+  window.__sfMusicHideContext=hideContext;
+  if(!window.__sfMusicContextBound){document.addEventListener('click',hideContext);document.addEventListener('scroll',hideContext,true);window.__sfMusicContextBound=true;}
+  draggableRows.forEach(row=>{
+    row.addEventListener('dragstart',e=>{
+      dragId=row.dataset.trackId||''; dragKind=row.dataset.queueKind||''; dragOriginRows=[...host.querySelectorAll(`.music-admin-row.is-draggable[data-queue-kind="${CSS.escape(dragKind)}"]`)];
+      row.dataset.dragging='1';row.classList.add('is-dragging');
+      try{e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',dragId);e.dataTransfer.setDragImage(row,24,28);}catch{}
+    });
+    row.addEventListener('dragend',()=>{row.dataset.dragging='0';row.classList.remove('is-dragging');draggableRows.forEach(r=>r.classList.remove('drag-over'));dragId='';dragKind='';dragOriginRows=[];});
+    row.addEventListener('dragover',e=>{
+      if(!dragId||dragId===row.dataset.trackId||!row.classList.contains('is-draggable')||row.dataset.queueKind!==dragKind)return;
+      e.preventDefault(); e.dataTransfer.dropEffect='move';
+      dragOriginRows.forEach(r=>r.classList.remove('drag-over'));
+      row.classList.add('drag-over');
+    });
+    row.addEventListener('drop',async e=>{
+      e.preventDefault();
+      if(!dragId||dragId===row.dataset.trackId||row.dataset.queueKind!==dragKind)return;
+      const rowsNow=[...host.querySelectorAll(`.music-admin-row.is-draggable[data-queue-kind="${CSS.escape(dragKind)}"]`)];
+      const target=row, targetBox=target.getBoundingClientRect();
+      const after=e.clientY>targetBox.top+targetBox.height/2;
+      const remaining=rowsNow.filter(r=>r.dataset.trackId!==dragId);
+      let targetIndex=remaining.findIndex(r=>r.dataset.trackId===target.dataset.trackId);
+      if(targetIndex<0)return;
+      if(after)targetIndex+=1;
+      try{
+        setStatus('Reordenando playlist…','is-loading');
+        const d=await api(`/api/music/playlist/reorder?${auth()}`,{method:'POST',body:JSON.stringify({trackId:dragId,targetIndex})});
+        applyState(d.music||state);setStatus('Playlist reordenada.');
+      }catch(err){setStatus(err.message||'No se pudo reordenar.','is-error')}
+    });
+    row.addEventListener('contextmenu',e=>{
+      const isQueue=row.dataset.queueKind==='queue'||row.dataset.queueKind==='simulation-queue';
+      if(!isQueue)return;
+      e.preventDefault();e.stopPropagation();contextTrackId=row.dataset.trackId||'';
+      if(!contextMenu)return;contextMenu.style.display='block';
+      const pad=10,w=contextMenu.offsetWidth,h=contextMenu.offsetHeight;
+      contextMenu.style.left=`${Math.min(e.clientX,window.innerWidth-w-pad)}px`;
+      contextMenu.style.top=`${Math.min(e.clientY,window.innerHeight-h-pad)}px`;
+    });
+  });
+  if(contextDelete)contextDelete.onclick=async()=>{
+    const id=contextTrackId;hideContext();if(!id)return;
+    try{setStatus('Eliminando canción…','is-loading');const d=await api(`/api/music/playlist/${enc(id)}?${auth()}`,{method:'DELETE'});applyState(d.music||state);setStatus('Canción eliminada de la cola.');}
+    catch(err){setStatus(err.message||'No se pudo eliminar.','is-error')}
+  };
+
+ }
+ function renderPlayer(){
+  const vinyl=$('vinyl'), t=state.current;
+  if(!t){
+    $('label').textContent='SIN REPRODUCCIÓN';$('currentTitle').textContent='No hay una canción en el overlay';$('currentArtist').textContent='Agrega una canción o espera una solicitud por chat.';$('vinylImg').removeAttribute('src');$('progress').style.width='0%';$('time').textContent='0:00 / 0:00';$('toggle').textContent='▶';$('sideTitle').textContent='Sin reproducción';$('sideArtist').textContent='El overlay está en espera.';$('sideArt').textContent='♫';$('sideArt').querySelector?.('img')?.remove();$('sideElapsed').textContent='0:00';$('sideDuration').textContent='0:00';$('sideProgress').style.width='0%';$('sideSource').textContent='—';$('sidePlatform').textContent='—';vinyl.classList.remove('is-spinning');vinyl.removeAttribute('data-phase-track');return;
+  }
+  const e=effectiveElapsed(),d=Math.max(1,Number(t.duration||1)),pct=Math.min(100,e/d*100);
+  $('label').textContent=state.paused?'PAUSADO':state.playing?'AHORA SONANDO':'LISTO PARA REPRODUCIR';$('currentTitle').textContent=t.title||'Canción';$('currentArtist').textContent=`${t.artist||'Artista'} · ${t.requester||'Usuario'}`;$('time').textContent=`${fmt(e)} / ${fmt(d)}`;$('progress').style.width=`${pct}%`;$('toggle').textContent=state.playing&&!state.paused?'Ⅱ':'▶';$('sideTitle').textContent=t.title||'Canción';$('sideArtist').textContent=`${t.artist||'Artista'} · ${t.requester||'Usuario'}`;$('sideElapsed').textContent=fmt(e);$('sideDuration').textContent=fmt(d);$('sideProgress').style.width=`${pct}%`;$('sideSource').textContent=String(t.requester||'Usuario').toLowerCase()==='simulación'?'SIMULACIÓN':'DIRECTO';$('sidePlatform').textContent=t.platform||'youtube';$('sideVolume').textContent=`${Math.round(Number(state.volume??100))}%`;
+  if(t.thumbnail){$('vinylImg').src=t.thumbnail;$('sideArt').innerHTML=`<img src="${esc(t.thumbnail)}" alt="">`;}else{$('vinylImg').removeAttribute('src');$('sideArt').textContent='♫';}
+  const phaseTrack=String(t.id||t.sourceId||'');
+  if(vinyl.dataset.phaseTrack!==phaseTrack){vinyl.dataset.phaseTrack=phaseTrack;vinyl.style.animationDelay=`-${Math.max(0,e%9).toFixed(3)}s`;}
+  vinyl.classList.toggle('is-spinning',Boolean(state.playing&&!state.paused));
+ }
+
+ function applyState(v){
+  const incoming=structuredClone(v||state);
+  const incomingCurrentId=String(incoming.current?.id||'');
+  const prevCurrentId=String(state.current?.id||'');
+  const structuralSignature=JSON.stringify({
+    current:incomingCurrentId,
+    queue:(incoming.queue||[]).map(x=>String(x?.id||'')),
+    simulationQueue:(incoming.simulationQueue||[]).map(x=>String(x?.id||'')),
+    history:(incoming.history||[]).map(x=>String(x?.id||'')),
+    previous:String(incoming.previous?.id||''),
+    paused:Boolean(incoming.paused),
+    playing:Boolean(incoming.playing)
+  });
+  const now=performance.now();
+  const incomingElapsed=Math.max(0,Number(incoming.elapsed||0));
+  const incomingServerNow=Number(incoming.serverNow||0);
+  const predictedFromServer=(incoming.playing&&!incoming.paused&&incomingServerNow)?incomingElapsed+Math.max(0,(Date.now()-incomingServerNow)/1000):incomingElapsed;
+  const trackChanged=incomingCurrentId!==prevCurrentId;
+  const wasPlaying=Boolean(state.playing&&!state.paused);
+  state=incoming;
+  if(trackChanged){
+    anchorElapsed=Math.min(predictedFromServer,Number(state.current?.duration||predictedFromServer));
+    anchorAt=now;
+  }else if(!state.playing||state.paused){
+    anchorElapsed=Math.max(0,incomingElapsed);
+    anchorAt=now;
+  }else if(!wasPlaying){
+    anchorElapsed=Math.min(predictedFromServer,Number(state.current?.duration||predictedFromServer));
+    anchorAt=now;
+  }else{
+    const local=anchorElapsed+Math.max(0,(now-anchorAt)/1000);
+    const drift=predictedFromServer-local;
+    // Re-anchor only when a real drift exists; normal telemetry must not restart the clock.
+    if(Math.abs(drift)>0.45){
+      anchorElapsed=predictedFromServer;
+      anchorAt=now;
+    }
+  }
+  if(structuralSignature!==lastRenderSignature){lastRenderSignature=structuralSignature;renderList();}
+  renderPlayer();
+}
+ async function control(action){if(busy)return;busy=true;try{setStatus('Aplicando…','is-loading');await new Promise((resolve,reject)=>sock.emit('music:control',action,r=>r?.ok===false?reject(new Error(r.error||'No se pudo ejecutar')):resolve(r)));setStatus('Overlay actualizado.');}catch(e){setStatus(e.message||'No se pudo controlar.','is-error')}finally{busy=false}}
+ $('add').onclick=async()=>{const input=$('query'),query=input.value.trim();if(!query){setStatus('Escribe una canción o URL.','is-error');return}try{$('add').disabled=true;setStatus('Buscando en YouTube Music…','is-loading');const d=await api(`/api/music/playlist/add?${auth()}`,{method:'POST',body:JSON.stringify({query,owner,overlayKey})});applyState(d.music||state);input.value='';setStatus('Canción agregada al directo.');}catch(e){setStatus(e.message||'No se pudo agregar.','is-error')}finally{$('add').disabled=false}};$('query').addEventListener('keydown',e=>{if(e.key==='Enter')$('add').click()});
+ document.querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>control(b.dataset.action==='toggle'?(state.playing&&!state.paused?'pause':'resume'):b.dataset.action));
+ $('volume').oninput=()=>{$('volumeValue').textContent=`${$('volume').value}%`};$('volume').onchange=()=>{const n=Math.round(Number($('volume').value||0));sock.emit('music:volume',n,r=>{if(r?.ok===false){setStatus(r.error||'No se pudo cambiar el volumen.','is-error');return}setStatus(`Volumen al ${n}%.`)})};
+ function showClearConfirm(){const host=$('confirmHost');host.innerHTML=`<div class="music-confirm-backdrop" id="confirmBackdrop"><div class="music-confirm"><div class="icon">🗑️</div><h3>¿Limpiar historial de la playlist?</h3><p>Se eliminará toda la música ya reproducida del historial. La canción que está sonando y las próximas canciones de la cola no se tocarán.</p><div class="music-confirm-actions"><button class="music-confirm-check" id="confirmCheck" title="Confirmar">✓</button><button class="music-confirm-x" id="confirmX" title="Cancelar">✕</button></div></div></div>`;const close=()=>host.replaceChildren();$('confirmX').onclick=close;$('confirmBackdrop').onclick=e=>{if(e.target.id==='confirmBackdrop')close()};$('confirmCheck').onclick=async()=>{try{$('confirmCheck').disabled=true;setStatus('Limpiando historial…','is-loading');const d=await api(`/api/music/playlist/clear-history?${auth()}`,{method:'POST',body:JSON.stringify({owner,overlayKey})});applyState(d.music||state);setStatus('Historial limpiado.');close();}catch(e){setStatus(e.message||'No se pudo limpiar.','is-error');close()}}}
+ $('clearHistory').onclick=showClearConfirm;
+ function tick(){renderPlayer();raf=requestAnimationFrame(tick)};raf=requestAnimationFrame(tick);
+ sock.on('connect',()=>{setStatus('Conectado · overlay en tiempo real');sock.emit('music:getState')});sock.on('disconnect',()=>setStatus('Reconectando…','is-loading'));sock.on('connect_error',()=>setStatus('Reconectando…','is-loading'));sock.on('musicState',applyState);sock.on('musicVolume',d=>{state.volume=Math.max(0,Math.min(100,Number(d?.volume??state.volume)));$('volume').value=String(Math.round(state.volume));$('volumeValue').textContent=`${Math.round(state.volume)}%`;});
+ api(`/api/music/playlist?${auth()}`).then(d=>applyState(d.music||state)).catch(e=>setStatus(e.message||'No se pudo cargar la playlist.','is-error'));
+})();
+</script>
+</body>
+</html>

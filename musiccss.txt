@@ -1,0 +1,326 @@
+.design-golden-hour .sf-music-shell{filter:drop-shadow(0 18px 42px rgba(245,158,11,.15))}.design-golden-hour .sf-music-info{border:1px solid rgba(251,191,36,.20);background:linear-gradient(135deg,rgba(251,191,36,.07),rgba(249,115,22,.04))}.design-golden-hour .sf-music-vinyl{box-shadow:0 0 0 2px rgba(251,191,36,.44),0 0 28px rgba(249,115,22,.24)}.design-golden-hour .sf-music-kicker{color:#fde68a}
+.design-ruby-noir .sf-music-shell{padding:12px 14px;border-radius:20px;background:linear-gradient(135deg,rgba(20,5,10,.82),rgba(76,5,25,.30));border:1px solid rgba(251,113,133,.24)}.design-ruby-noir .sf-music-info{background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.08)}.design-ruby-noir .sf-music-vinyl{box-shadow:0 0 0 2px rgba(251,113,133,.45),0 0 28px rgba(244,63,94,.25)}
+.design-vapor-dream .sf-music-shell{filter:drop-shadow(0 18px 50px rgba(168,85,247,.16))}.design-vapor-dream .sf-music-info{border:1px solid rgba(240,171,252,.20);background:linear-gradient(135deg,rgba(167,139,250,.08),rgba(240,171,252,.06));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}.design-vapor-dream .sf-music-vinyl{box-shadow:0 0 0 2px rgba(192,132,252,.42),0 0 30px rgba(240,171,252,.24),0 0 62px rgba(167,139,250,.18)}
+.design-cosmic-bloom .sf-music-shell{filter:drop-shadow(0 18px 48px rgba(129,140,248,.16))}.design-cosmic-bloom .sf-music-info h3{text-shadow:0 0 16px rgba(244,114,182,.25),0 2px 0 rgba(129,140,248,.25)}.design-cosmic-bloom .sf-music-vinyl{box-shadow:0 0 0 2px rgba(129,140,248,.46),0 0 26px rgba(244,114,182,.24),0 0 64px rgba(129,140,248,.18)}
+
+/* ============================================================
+   Música · tematización avanzada v15
+   Cada tema puede teñir marco, botón, artista, kicker, barra,
+   siguiente y el halo del vinilo sin perder la estructura común.
+   ============================================================ */
+.sf-music-info p,
+.sf-music-kicker,
+.sf-music-play,
+.sf-music-next span,
+.sf-music-next strong,
+.sf-music-progress,
+.sf-music-live-dot,
+.sf-music-vinyl,
+.sf-music-disc-glow{transition:color .22s ease,background .22s ease,border-color .22s ease,box-shadow .22s ease,text-shadow .22s ease,filter .22s ease}
+.sf-music-info p{color:var(--music-secondary)!important}
+.sf-music-info h3{transition:text-shadow .22s ease,filter .22s ease,color .22s ease}
+.sf-music-play{color:#fff!important}
+.sf-music-kicker{font-weight:800;letter-spacing:.055em}
+.sf-music-next{overflow:hidden;position:relative}
+.sf-music-next:before{content:"";position:absolute;left:0;top:-1px;width:34%;height:1px;background:linear-gradient(90deg,var(--music-accent),transparent);opacity:.85}
+.sf-music-vinyl{filter:saturate(1.04) contrast(1.02)}
+
+/* 01 Vinil Glow */
+.design-vinyl-glow .sf-music-play{background:radial-gradient(circle at 32% 28%,rgba(255,255,255,.18),color-mix(in srgb,var(--music-accent) 28%,transparent));border-color:color-mix(in srgb,var(--music-accent) 72%,#fff 8%);box-shadow:0 0 0 1px rgba(255,255,255,.05) inset,0 0 18px color-mix(in srgb,var(--music-accent) 32%,transparent)}
+.design-vinyl-glow .sf-music-info p{color:#ddd6fe!important;text-shadow:0 0 10px rgba(139,92,246,.16)}
+
+/* 02 Minimal */
+.design-minimal .sf-music-play{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.26);box-shadow:0 6px 18px rgba(0,0,0,.18)}
+.design-minimal .sf-music-info p{color:#cbd5e1!important}
+
+/* 03 Neon Ring */
+.design-neon-ring .sf-music-play{color:#cffafe!important;background:rgba(34,211,238,.10);border-color:#22d3ee;box-shadow:0 0 10px rgba(34,211,238,.42),0 0 28px rgba(168,85,247,.20)}
+.design-neon-ring .sf-music-info p{color:#67e8f9!important;text-shadow:0 0 12px rgba(34,211,238,.45)}
+.design-neon-ring .sf-music-kicker{color:#a5f3fc!important;text-shadow:0 0 10px rgba(34,211,238,.4)}
+
+/* 04 Retro */
+.design-retro .sf-music-play{color:#fff7ed!important;background:linear-gradient(145deg,rgba(249,115,22,.24),rgba(239,68,68,.16));border-color:rgba(251,146,60,.55);box-shadow:0 0 18px rgba(249,115,22,.24),inset 0 1px rgba(255,255,255,.12)}
+.design-retro .sf-music-info p{color:#fed7aa!important;text-shadow:1px 1px 0 rgba(127,29,29,.24)}
+
+/* 05 Monocromo */
+.design-mono .sf-music-play{background:rgba(248,250,252,.08);border-color:rgba(248,250,252,.34);box-shadow:0 0 18px rgba(255,255,255,.10)}
+.design-mono .sf-music-info p{color:#e2e8f0!important}
+
+/* 06 Glass Aura */
+.design-glass .sf-music-play{background:linear-gradient(145deg,rgba(255,255,255,.16),color-mix(in srgb,var(--music-accent) 10%,transparent));border-color:rgba(255,255,255,.30);box-shadow:0 10px 26px rgba(0,0,0,.20),0 0 22px color-mix(in srgb,var(--music-accent) 24%,transparent),inset 0 1px rgba(255,255,255,.16)}
+.design-glass .sf-music-info p{color:#ddd6fe!important;text-shadow:0 0 12px color-mix(in srgb,var(--music-accent) 22%,transparent)}
+
+/* 07 Cyber Pulse */
+.design-cyber .sf-music-play{color:#cffafe!important;background:rgba(34,211,238,.12);border-color:#22d3ee;box-shadow:0 0 9px rgba(34,211,238,.45),0 0 28px rgba(139,92,246,.18)}
+.design-cyber .sf-music-info p{color:#67e8f9!important;text-shadow:0 0 10px rgba(34,211,238,.48)}
+
+/* 08 Sunset Wave */
+.design-sunset .sf-music-play{color:#fff1f2!important;background:linear-gradient(145deg,rgba(244,63,94,.22),rgba(245,158,11,.17));border-color:rgba(251,113,133,.56);box-shadow:0 0 18px rgba(244,63,94,.24),0 0 32px rgba(245,158,11,.12)}
+.design-sunset .sf-music-info p{color:#fecdd3!important;text-shadow:0 0 11px rgba(251,113,133,.28)}
+
+/* 09 Arcade */
+.design-arcade .sf-music-play{color:#fff!important;background:linear-gradient(145deg,rgba(59,130,246,.24),rgba(236,72,153,.20));border-color:rgba(96,165,250,.72);box-shadow:4px 4px 0 rgba(236,72,153,.20),0 0 18px rgba(59,130,246,.28)}
+.design-arcade .sf-music-info p{color:#bfdbfe!important;text-shadow:2px 2px 0 rgba(236,72,153,.23),0 0 10px rgba(59,130,246,.28)}
+
+/* 10 Arcade + Glass */
+.design-arcade-glass .sf-music-play{color:#f5f3ff!important;background:linear-gradient(145deg,rgba(129,140,248,.25),rgba(34,211,238,.16));border-color:color-mix(in srgb,var(--music-accent) 68%,#fff 8%);box-shadow:0 0 18px color-mix(in srgb,var(--music-accent) 32%,transparent),4px 4px 0 rgba(236,72,153,.15),inset 0 1px rgba(255,255,255,.14)}
+.design-arcade-glass .sf-music-info p{color:#c4b5fd!important;text-shadow:2px 2px 0 rgba(34,211,238,.16),0 0 11px rgba(167,139,250,.28)}
+
+/* 11 Aurora Bloom */
+.design-aurora .sf-music-play{color:#d1fae5!important;background:linear-gradient(135deg,rgba(34,211,238,.16),rgba(52,211,153,.18));border-color:rgba(94,234,212,.62);box-shadow:0 0 18px rgba(52,211,153,.26),0 0 34px rgba(139,92,246,.14)}
+.design-aurora .sf-music-info p{color:#a7f3d0!important;text-shadow:0 0 12px rgba(52,211,153,.30)}
+.design-aurora .sf-music-kicker{color:#99f6e4!important}
+
+/* 12 Synthwave 80s */
+.design-synthwave .sf-music-play{color:#fce7f3!important;background:linear-gradient(135deg,rgba(236,72,153,.26),rgba(99,102,241,.24));border-color:#f472b6;box-shadow:0 0 9px rgba(236,72,153,.50),0 0 28px rgba(99,102,241,.24)}
+.design-synthwave .sf-music-info p{color:#f9a8d4!important;text-shadow:0 0 10px rgba(236,72,153,.46)}
+
+/* 13 Hologram */
+.design-hologram .sf-music-play{color:#cffafe!important;background:linear-gradient(135deg,rgba(34,211,238,.18),rgba(236,72,153,.16));border-color:rgba(103,232,249,.75);box-shadow:0 0 12px rgba(34,211,238,.34),0 0 26px rgba(236,72,153,.18)}
+.design-hologram .sf-music-info p{color:#a5f3fc!important;text-shadow:0 0 8px rgba(34,211,238,.38),0 0 16px rgba(236,72,153,.18)}
+.design-hologram .sf-music-info h3{text-shadow:0 0 9px rgba(34,211,238,.26),0 0 20px rgba(236,72,153,.15)}
+
+/* 14 Matrix */
+.design-matrix .sf-music-play{color:#dcfce7!important;background:rgba(34,197,94,.10);border-color:#4ade80;box-shadow:0 0 14px rgba(34,197,94,.34),inset 0 0 14px rgba(34,197,94,.06)}
+.design-matrix .sf-music-info p{color:#86efac!important;text-shadow:0 0 10px rgba(34,197,94,.42)}
+.design-matrix .sf-music-kicker{color:#4ade80!important}
+
+/* 15 Oceanic */
+.design-oceanic .sf-music-play{color:#cffafe!important;background:linear-gradient(145deg,rgba(14,165,233,.18),rgba(6,182,212,.18));border-color:rgba(56,189,248,.62);box-shadow:0 0 16px rgba(14,165,233,.30),0 0 28px rgba(6,182,212,.14)}
+.design-oceanic .sf-music-info p{color:#bae6fd!important;text-shadow:0 0 11px rgba(14,165,233,.34)}
+
+/* 16 Inferno */
+.design-fire .sf-music-play{color:#fff7ed!important;background:linear-gradient(145deg,rgba(239,68,68,.24),rgba(249,115,22,.22),rgba(245,158,11,.16));border-color:rgba(248,113,113,.64);box-shadow:0 0 15px rgba(249,115,22,.42),0 0 34px rgba(239,68,68,.15)}
+.design-fire .sf-music-info p{color:#fed7aa!important;text-shadow:0 0 12px rgba(249,115,22,.36)}
+
+/* 17 Candy Pop */
+.design-candy .sf-music-play{color:#fff1f2!important;background:linear-gradient(135deg,rgba(244,114,182,.24),rgba(196,181,253,.22));border-color:rgba(249,168,212,.62);box-shadow:0 0 15px rgba(244,114,182,.30),0 0 28px rgba(168,85,247,.14),inset 0 1px rgba(255,255,255,.14)}
+.design-candy .sf-music-info p{color:#fbcfe8!important;text-shadow:0 0 10px rgba(244,114,182,.32)}
+.design-candy .sf-music-kicker{color:#f9a8d4!important}
+
+/* 18 Mono Glow */
+.design-monochrome-glow .sf-music-play{color:#fff!important;background:rgba(248,250,252,.10);border-color:rgba(255,255,255,.38);box-shadow:0 0 20px rgba(255,255,255,.16)}
+.design-monochrome-glow .sf-music-info p{color:#cbd5e1!important;text-shadow:0 0 12px rgba(255,255,255,.18)}
+
+/* 19 Blueprint */
+.design-blueprint .sf-music-play{color:#dbeafe!important;background:rgba(59,130,246,.12);border-color:#60a5fa;box-shadow:0 0 14px rgba(59,130,246,.26),inset 0 0 12px rgba(96,165,250,.05)}
+.design-blueprint .sf-music-info p{color:#bfdbfe!important;text-shadow:0 0 9px rgba(96,165,250,.30)}
+.design-blueprint .sf-music-kicker{color:#93c5fd!important}
+
+/* 20 Terminal */
+.design-terminal .sf-music-play{color:#dcfce7!important;background:rgba(34,197,94,.09);border-color:#4ade80;box-shadow:0 0 16px rgba(34,197,94,.30)}
+.design-terminal .sf-music-info p{color:#86efac!important;text-shadow:0 0 12px rgba(34,197,94,.36)}
+
+/* 21 Crystal Glass */
+.design-crystal-glass .sf-music-play{color:#e0f2fe!important;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(125,211,252,.12));border-color:rgba(186,230,253,.65);box-shadow:0 0 18px rgba(125,211,252,.26),inset 0 1px rgba(255,255,255,.18)}
+.design-crystal-glass .sf-music-info p{color:#dbeafe!important;text-shadow:0 0 12px rgba(125,211,252,.26)}
+.design-crystal-glass .sf-music-vinyl{box-shadow:0 0 0 1px rgba(186,230,253,.55),0 0 24px rgba(125,211,252,.22),0 0 55px rgba(255,255,255,.10)!important}
+
+/* 22 Rose Aurora */
+.design-rose-aurora .sf-music-play{color:#ffe4e6!important;background:linear-gradient(135deg,rgba(244,63,94,.18),rgba(168,85,247,.20));border-color:rgba(251,113,133,.60);box-shadow:0 0 16px rgba(244,63,94,.28),0 0 30px rgba(168,85,247,.16)}
+.design-rose-aurora .sf-music-info p{color:#fbcfe8!important;text-shadow:0 0 11px rgba(244,63,94,.30)}
+.design-rose-aurora .sf-music-kicker{color:#f9a8d4!important}
+
+/* 23 Midnight Luxe */
+.design-midnight-luxe .sf-music-play{color:#ede9fe!important;background:linear-gradient(145deg,rgba(49,46,129,.34),rgba(88,28,135,.22));border-color:rgba(167,139,250,.64);box-shadow:0 0 16px rgba(139,92,246,.34),0 0 32px rgba(99,102,241,.14)}
+.design-midnight-luxe .sf-music-info p{color:#c4b5fd!important;text-shadow:0 0 11px rgba(139,92,246,.36)}
+.design-midnight-luxe .sf-music-kicker{color:#a5b4fc!important}
+
+/* 24 Plasma Core */
+.design-plasma-core .sf-music-play{color:#f5d0fe!important;background:linear-gradient(135deg,rgba(217,70,239,.24),rgba(79,70,229,.24));border-color:#e879f9;box-shadow:0 0 13px rgba(217,70,239,.50),0 0 30px rgba(79,70,229,.20)}
+.design-plasma-core .sf-music-info p{color:#f0abfc!important;text-shadow:0 0 12px rgba(217,70,239,.44)}
+
+/* 25 Mint Mist */
+.design-mint-mist .sf-music-play{color:#d1fae5!important;background:linear-gradient(145deg,rgba(16,185,129,.18),rgba(45,212,191,.16));border-color:rgba(110,231,183,.64);box-shadow:0 0 16px rgba(45,212,191,.28),0 0 30px rgba(16,185,129,.12)}
+.design-mint-mist .sf-music-info p{color:#a7f3d0!important;text-shadow:0 0 11px rgba(45,212,191,.34)}
+.design-mint-mist .sf-music-kicker{color:#6ee7b7!important}
+
+/* 26 Ice Chrome */
+.design-ice-chrome .sf-music-play{color:#f0f9ff!important;background:linear-gradient(145deg,rgba(226,232,240,.20),rgba(148,163,184,.11));border-color:rgba(224,242,254,.72);box-shadow:0 0 18px rgba(226,232,240,.22),inset 0 1px rgba(255,255,255,.18)}
+.design-ice-chrome .sf-music-info p{color:#dbeafe!important;text-shadow:0 0 10px rgba(226,232,240,.28)}
+.design-ice-chrome .sf-music-kicker{color:#cbd5e1!important}
+
+/* 27 Golden Hour */
+.design-golden-hour .sf-music-play{color:#fffbeb!important;background:linear-gradient(145deg,rgba(245,158,11,.20),rgba(234,179,8,.17));border-color:rgba(253,224,71,.68);box-shadow:0 0 16px rgba(245,158,11,.34),0 0 30px rgba(234,179,8,.13)}
+.design-golden-hour .sf-music-info p{color:#fde68a!important;text-shadow:0 0 11px rgba(245,158,11,.34)}
+.design-golden-hour .sf-music-kicker{color:#fcd34d!important}
+
+/* 28 Ruby Noir */
+.design-ruby-noir .sf-music-play{color:#ffe4e6!important;background:linear-gradient(145deg,rgba(190,24,93,.20),rgba(127,29,29,.20));border-color:rgba(251,113,133,.68);box-shadow:0 0 16px rgba(225,29,72,.35),0 0 30px rgba(190,24,93,.14)}
+.design-ruby-noir .sf-music-info p{color:#fecdd3!important;text-shadow:0 0 11px rgba(225,29,72,.38)}
+.design-ruby-noir .sf-music-kicker{color:#fda4af!important}
+
+/* 29 Vapor Dream */
+.design-vapor-dream .sf-music-play{color:#fae8ff!important;background:linear-gradient(135deg,rgba(167,139,250,.23),rgba(244,114,182,.19));border-color:rgba(196,181,253,.66);box-shadow:0 0 15px rgba(167,139,250,.36),0 0 30px rgba(244,114,182,.16)}
+.design-vapor-dream .sf-music-info p{color:#e9d5ff!important;text-shadow:0 0 12px rgba(167,139,250,.40)}
+.design-vapor-dream .sf-music-kicker{color:#ddd6fe!important}
+
+/* 30 Cosmic Bloom */
+.design-cosmic-bloom .sf-music-play{color:#f5f3ff!important;background:linear-gradient(135deg,rgba(124,58,237,.24),rgba(20,184,166,.18),rgba(236,72,153,.18));border-color:rgba(196,181,253,.68);box-shadow:0 0 16px rgba(124,58,237,.34),0 0 30px rgba(20,184,166,.14)}
+.design-cosmic-bloom .sf-music-info p{color:#ddd6fe!important;text-shadow:0 0 11px rgba(124,58,237,.34),0 0 18px rgba(20,184,166,.12)}
+.design-cosmic-bloom .sf-music-kicker{color:#c4b5fd!important}
+
+/* Acentos compartidos por tema para barra / punto LIVE / halo */
+.design-neon-ring .sf-music-live-dot,.design-cyber .sf-music-live-dot{box-shadow:0 0 12px #22d3ee,0 0 28px rgba(34,211,238,.24)!important}
+.design-arcade .sf-music-live-dot,.design-arcade-glass .sf-music-live-dot{box-shadow:0 0 10px #3b82f6,0 0 20px rgba(236,72,153,.24)!important}
+.design-aurora .sf-music-live-dot{box-shadow:0 0 12px #34d399,0 0 24px rgba(34,211,238,.24)!important}
+.design-synthwave .sf-music-live-dot{box-shadow:0 0 12px #ec4899,0 0 24px rgba(99,102,241,.26)!important}
+.design-matrix .sf-music-live-dot,.design-terminal .sf-music-live-dot{box-shadow:0 0 12px #22c55e,0 0 26px rgba(34,197,94,.22)!important}
+.design-fire .sf-music-live-dot{box-shadow:0 0 12px #f97316,0 0 26px rgba(239,68,68,.24)!important}
+.design-candy .sf-music-live-dot,.design-rose-aurora .sf-music-live-dot{box-shadow:0 0 12px #f9a8d4,0 0 28px rgba(244,114,182,.24)!important}
+.design-midnight-luxe .sf-music-live-dot,.design-plasma-core .sf-music-live-dot,.design-vapor-dream .sf-music-live-dot{box-shadow:0 0 12px #a78bfa,0 0 28px rgba(139,92,246,.24)!important}
+.design-mint-mist .sf-music-live-dot{box-shadow:0 0 12px #6ee7b7,0 0 24px rgba(45,212,191,.24)!important}
+.design-ice-chrome .sf-music-live-dot{box-shadow:0 0 12px #e2e8f0,0 0 24px rgba(226,232,240,.20)!important}
+.design-golden-hour .sf-music-live-dot{box-shadow:0 0 12px #f59e0b,0 0 26px rgba(234,179,8,.24)!important}
+.design-ruby-noir .sf-music-live-dot{box-shadow:0 0 12px #fb7185,0 0 26px rgba(190,24,93,.22)!important}
+.design-cosmic-bloom .sf-music-live-dot{box-shadow:0 0 12px #a78bfa,0 0 26px rgba(20,184,166,.18)!important}
+
+/* Barra de progreso con firma visual cuando el tema lo pide */
+.design-hologram .sf-music-progress span{box-shadow:0 0 10px rgba(34,211,238,.40),0 0 18px rgba(236,72,153,.18)}
+.design-matrix .sf-music-progress span,.design-terminal .sf-music-progress span{box-shadow:0 0 9px rgba(34,197,94,.36)}
+.design-candy .sf-music-progress span,.design-vapor-dream .sf-music-progress span{box-shadow:0 0 10px rgba(244,114,182,.34)}
+.design-golden-hour .sf-music-progress span{box-shadow:0 0 10px rgba(245,158,11,.34)}
+.design-ruby-noir .sf-music-progress span{box-shadow:0 0 10px rgba(225,29,72,.34)}
+
+/* El hover del control conserva la firma de cada tema */
+.design-neon-ring .sf-music-play:hover,.design-cyber .sf-music-play:hover{box-shadow:0 0 16px rgba(34,211,238,.52),0 0 30px rgba(168,85,247,.20)}
+.design-arcade .sf-music-play:hover,.design-arcade-glass .sf-music-play:hover{box-shadow:4px 4px 0 rgba(236,72,153,.26),0 0 22px rgba(59,130,246,.36)}
+.design-synthwave .sf-music-play:hover{box-shadow:0 0 14px rgba(236,72,153,.58),0 0 30px rgba(99,102,241,.28)}
+.design-candy .sf-music-play:hover{box-shadow:0 0 16px rgba(244,114,182,.45),0 0 30px rgba(168,85,247,.22)}
+.design-fire .sf-music-play:hover{box-shadow:0 0 16px rgba(249,115,22,.58),0 0 30px rgba(239,68,68,.24)}
+.design-golden-hour .sf-music-play:hover{box-shadow:0 0 18px rgba(245,158,11,.50),0 0 32px rgba(234,179,8,.20)}
+.design-ruby-noir .sf-music-play:hover{box-shadow:0 0 18px rgba(225,29,72,.52),0 0 32px rgba(190,24,93,.20)}
+
+@media (prefers-reduced-motion: reduce){
+  .sf-music-info p,.sf-music-kicker,.sf-music-play,.sf-music-next span,.sf-music-next strong,.sf-music-progress,.sf-music-live-dot,.sf-music-vinyl,.sf-music-disc-glow{transition:none!important}
+}
+
+/* Música · v15.1 — acabados premium tipo Candy Pop para temas de vidrio */
+/* La estructura base se conserva: solo cambia el lenguaje visual del shell y del panel de información. */
+.design-hologram,
+.design-blueprint,
+.design-midnight-luxe,
+.design-ice-chrome,
+.design-mint-mist,
+.design-golden-hour,
+.design-ruby-noir,
+.design-vapor-dream{--music-card-a:255,255,255;--music-card-border:255,255,255;}
+
+.design-hologram .sf-music-shell,
+.design-blueprint .sf-music-shell,
+.design-midnight-luxe .sf-music-shell,
+.design-ice-chrome .sf-music-shell,
+.design-mint-mist .sf-music-shell,
+.design-golden-hour .sf-music-shell,
+.design-ruby-noir .sf-music-shell,
+.design-vapor-dream .sf-music-shell{
+  padding:12px 14px;
+  border-radius:22px;
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:0 22px 60px rgba(0,0,0,.22), inset 0 1px 0 rgba(255,255,255,.16);
+  backdrop-filter:blur(16px) saturate(120%);
+  -webkit-backdrop-filter:blur(16px) saturate(120%);
+  overflow:hidden;
+  isolation:isolate;
+  position:relative;
+}
+
+.design-hologram .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.075),rgba(34,211,238,.09) 42%,rgba(236,72,153,.065));border-color:rgba(103,232,249,.30);box-shadow:0 22px 60px rgba(8,47,73,.22),0 0 36px rgba(34,211,238,.10),inset 0 1px rgba(255,255,255,.16)}
+.design-blueprint .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.062),rgba(37,99,235,.095) 46%,rgba(96,165,250,.045));border-color:rgba(96,165,250,.30);box-shadow:0 22px 60px rgba(15,23,42,.26),0 0 34px rgba(59,130,246,.10),inset 0 1px rgba(255,255,255,.15)}
+.design-midnight-luxe .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(49,46,129,.13) 48%,rgba(139,92,246,.055));border-color:rgba(167,139,250,.24);box-shadow:0 24px 62px rgba(2,6,23,.46),0 0 38px rgba(99,102,241,.10),inset 0 1px rgba(255,255,255,.13)}
+.design-ice-chrome .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.11),rgba(224,242,254,.07) 48%,rgba(148,163,184,.045));border-color:rgba(224,242,254,.35);box-shadow:0 22px 56px rgba(15,23,42,.20),0 0 32px rgba(226,232,240,.10),inset 0 1px rgba(255,255,255,.24)}
+.design-mint-mist .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.065),rgba(110,231,183,.085) 46%,rgba(103,232,249,.055));border-color:rgba(110,231,183,.28);box-shadow:0 22px 56px rgba(6,78,59,.18),0 0 34px rgba(45,212,191,.10),inset 0 1px rgba(255,255,255,.15)}
+.design-golden-hour .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(251,191,36,.09) 44%,rgba(249,115,22,.06));border-color:rgba(253,224,71,.29);box-shadow:0 22px 56px rgba(120,53,15,.18),0 0 34px rgba(245,158,11,.11),inset 0 1px rgba(255,255,255,.16)}
+.design-ruby-noir .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.045),rgba(127,29,29,.12) 45%,rgba(190,24,93,.065));border-color:rgba(251,113,133,.28);box-shadow:0 24px 62px rgba(20,5,10,.40),0 0 36px rgba(225,29,72,.11),inset 0 1px rgba(255,255,255,.13)}
+.design-vapor-dream .sf-music-shell{background:linear-gradient(135deg,rgba(255,255,255,.07),rgba(167,139,250,.09) 42%,rgba(240,171,252,.07));border-color:rgba(240,171,252,.29);box-shadow:0 22px 60px rgba(76,29,149,.18),0 0 38px rgba(168,85,247,.11),inset 0 1px rgba(255,255,255,.16)}
+
+/* Panel de contenido: misma anatomía de Candy Pop, pero con identidad propia */
+.design-hologram .sf-music-info,
+.design-blueprint .sf-music-info,
+.design-midnight-luxe .sf-music-info,
+.design-ice-chrome .sf-music-info,
+.design-mint-mist .sf-music-info,
+.design-golden-hour .sf-music-info,
+.design-ruby-noir .sf-music-info,
+.design-vapor-dream .sf-music-info{
+  padding:12px 15px;
+  border-radius:17px;
+  border:1px solid rgba(255,255,255,.15);
+  background:linear-gradient(135deg,rgba(255,255,255,.085),rgba(255,255,255,.03));
+  backdrop-filter:blur(14px) saturate(120%);
+  -webkit-backdrop-filter:blur(14px) saturate(120%);
+  box-shadow:inset 0 1px rgba(255,255,255,.10),0 14px 36px rgba(0,0,0,.10);
+}
+.design-hologram .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.085),rgba(34,211,238,.055),rgba(236,72,153,.045));border-color:rgba(103,232,249,.22);box-shadow:inset 0 1px rgba(255,255,255,.12),0 14px 36px rgba(14,116,144,.10)}
+.design-blueprint .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.075),rgba(59,130,246,.055),rgba(96,165,250,.035));border-color:rgba(147,197,253,.21);box-shadow:inset 0 1px rgba(255,255,255,.10),0 14px 36px rgba(30,64,175,.10)}
+.design-midnight-luxe .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.055),rgba(99,102,241,.05),rgba(139,92,246,.045));border-color:rgba(196,181,253,.18);box-shadow:inset 0 1px rgba(255,255,255,.08),0 14px 38px rgba(2,6,23,.18)}
+.design-ice-chrome .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.11),rgba(224,242,254,.055),rgba(148,163,184,.035));border-color:rgba(224,242,254,.23);box-shadow:inset 0 1px rgba(255,255,255,.14),0 14px 34px rgba(51,65,85,.10)}
+.design-mint-mist .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.075),rgba(110,231,183,.05),rgba(103,232,249,.04));border-color:rgba(167,243,208,.20);box-shadow:inset 0 1px rgba(255,255,255,.10),0 14px 36px rgba(4,120,87,.08)}
+.design-golden-hour .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(251,191,36,.055),rgba(249,115,22,.035));border-color:rgba(253,224,71,.20);box-shadow:inset 0 1px rgba(255,255,255,.10),0 14px 36px rgba(146,64,14,.09)}
+.design-ruby-noir .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.05),rgba(190,24,93,.055),rgba(127,29,29,.045));border-color:rgba(253,164,175,.18);box-shadow:inset 0 1px rgba(255,255,255,.08),0 14px 36px rgba(76,5,25,.16)}
+.design-vapor-dream .sf-music-info{background:linear-gradient(135deg,rgba(255,255,255,.08),rgba(167,139,250,.065),rgba(240,171,252,.045));border-color:rgba(240,171,252,.21);box-shadow:inset 0 1px rgba(255,255,255,.10),0 14px 36px rgba(107,33,168,.10)}
+
+/* Acabado de tipografía, artista y controles dentro de estos paneles */
+.design-hologram .sf-music-info h3{ text-shadow:0 0 10px rgba(34,211,238,.28),0 0 22px rgba(236,72,153,.13) }
+.design-blueprint .sf-music-info h3{ text-shadow:0 0 12px rgba(96,165,250,.24) }
+.design-midnight-luxe .sf-music-info h3{ text-shadow:0 0 14px rgba(139,92,246,.26) }
+.design-ice-chrome .sf-music-info h3{ text-shadow:0 1px 8px rgba(255,255,255,.18) }
+.design-mint-mist .sf-music-info h3{ text-shadow:0 0 12px rgba(45,212,191,.24) }
+.design-golden-hour .sf-music-info h3{ text-shadow:0 0 12px rgba(245,158,11,.26) }
+.design-ruby-noir .sf-music-info h3{ text-shadow:0 0 12px rgba(225,29,72,.28) }
+.design-vapor-dream .sf-music-info h3{ text-shadow:0 0 12px rgba(167,139,250,.28),0 0 22px rgba(240,171,252,.12) }
+
+.design-hologram .sf-music-play{background:linear-gradient(135deg,rgba(34,211,238,.18),rgba(236,72,153,.16));box-shadow:0 0 15px rgba(34,211,238,.34),0 0 28px rgba(236,72,153,.16),inset 0 1px rgba(255,255,255,.12)}
+.design-blueprint .sf-music-play{background:linear-gradient(145deg,rgba(59,130,246,.18),rgba(96,165,250,.10));box-shadow:0 0 15px rgba(59,130,246,.30),inset 0 1px rgba(255,255,255,.12)}
+.design-midnight-luxe .sf-music-play{background:linear-gradient(145deg,rgba(99,102,241,.20),rgba(139,92,246,.16));box-shadow:0 0 17px rgba(139,92,246,.32),0 0 30px rgba(79,70,229,.15),inset 0 1px rgba(255,255,255,.11)}
+.design-ice-chrome .sf-music-play{background:linear-gradient(145deg,rgba(255,255,255,.16),rgba(148,163,184,.10));box-shadow:0 0 16px rgba(226,232,240,.25),inset 0 1px rgba(255,255,255,.20)}
+.design-mint-mist .sf-music-play{background:linear-gradient(145deg,rgba(16,185,129,.15),rgba(45,212,191,.15));box-shadow:0 0 16px rgba(45,212,191,.28),0 0 28px rgba(16,185,129,.12),inset 0 1px rgba(255,255,255,.11)}
+.design-golden-hour .sf-music-play{background:linear-gradient(145deg,rgba(245,158,11,.18),rgba(249,115,22,.12));box-shadow:0 0 17px rgba(245,158,11,.34),0 0 28px rgba(234,179,8,.13),inset 0 1px rgba(255,255,255,.12)}
+.design-ruby-noir .sf-music-play{background:linear-gradient(145deg,rgba(190,24,93,.18),rgba(127,29,29,.16));box-shadow:0 0 17px rgba(225,29,72,.34),0 0 30px rgba(190,24,93,.13),inset 0 1px rgba(255,255,255,.10)}
+.design-vapor-dream .sf-music-play{background:linear-gradient(135deg,rgba(167,139,250,.20),rgba(240,171,252,.15));box-shadow:0 0 16px rgba(167,139,250,.34),0 0 30px rgba(244,114,182,.14),inset 0 1px rgba(255,255,255,.12)}
+
+/* Vinilo integrado al mismo acabado glass para que no parezca un elemento separado */
+.design-hologram .sf-music-vinyl{box-shadow:0 0 0 2px rgba(103,232,249,.48),0 0 28px rgba(34,211,238,.24),0 0 58px rgba(236,72,153,.14),0 16px 42px rgba(0,0,0,.28)}
+.design-blueprint .sf-music-vinyl{box-shadow:0 0 0 2px rgba(96,165,250,.46),0 0 26px rgba(59,130,246,.22),0 18px 42px rgba(0,0,0,.26)}
+.design-midnight-luxe .sf-music-vinyl{box-shadow:0 0 0 2px rgba(167,139,250,.44),0 0 30px rgba(139,92,246,.25),0 0 60px rgba(79,70,229,.14),0 18px 44px rgba(0,0,0,.35)}
+.design-ice-chrome .sf-music-vinyl{box-shadow:0 0 0 2px rgba(224,242,254,.50),0 0 28px rgba(226,232,240,.22),0 0 52px rgba(255,255,255,.10),0 16px 40px rgba(15,23,42,.22)}
+.design-mint-mist .sf-music-vinyl{box-shadow:0 0 0 2px rgba(110,231,183,.46),0 0 28px rgba(103,232,249,.20),0 0 54px rgba(45,212,191,.14),0 16px 42px rgba(0,0,0,.22)}
+.design-golden-hour .sf-music-vinyl{box-shadow:0 0 0 2px rgba(253,224,71,.48),0 0 28px rgba(245,158,11,.24),0 0 52px rgba(249,115,22,.14),0 16px 42px rgba(0,0,0,.24)}
+.design-ruby-noir .sf-music-vinyl{box-shadow:0 0 0 2px rgba(251,113,133,.44),0 0 30px rgba(225,29,72,.25),0 0 56px rgba(190,24,93,.14),0 18px 44px rgba(0,0,0,.34)}
+.design-vapor-dream .sf-music-vinyl{box-shadow:0 0 0 2px rgba(240,171,252,.46),0 0 30px rgba(167,139,250,.24),0 0 58px rgba(244,114,182,.13),0 16px 42px rgba(0,0,0,.25)}
+
+/* Barras y estados con la misma firma */
+.design-hologram .sf-music-progress span{box-shadow:0 0 10px rgba(34,211,238,.46),0 0 18px rgba(236,72,153,.20)!important}
+.design-blueprint .sf-music-progress span{box-shadow:0 0 10px rgba(59,130,246,.38)!important}
+.design-midnight-luxe .sf-music-progress span{box-shadow:0 0 11px rgba(139,92,246,.40)!important}
+.design-ice-chrome .sf-music-progress span{box-shadow:0 0 10px rgba(226,232,240,.30)!important}
+.design-mint-mist .sf-music-progress span{box-shadow:0 0 10px rgba(45,212,191,.36)!important}
+.design-golden-hour .sf-music-progress span{box-shadow:0 0 11px rgba(245,158,11,.40)!important}
+.design-ruby-noir .sf-music-progress span{box-shadow:0 0 11px rgba(225,29,72,.40)!important}
+.design-vapor-dream .sf-music-progress span{box-shadow:0 0 11px rgba(167,139,250,.42)!important}
+
+/* v16 · Glass premium: color interno legible sobre fondo transparente del overlay */
+.design-hologram .sf-music-info{background:linear-gradient(135deg,rgba(8,36,53,.72),rgba(34,211,238,.18),rgba(236,72,153,.15)),linear-gradient(180deg,rgba(255,255,255,.10),rgba(255,255,255,.035));}
+.design-blueprint .sf-music-info{background:linear-gradient(135deg,rgba(9,30,72,.74),rgba(37,99,235,.19),rgba(96,165,250,.12)),linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.035));}
+.design-midnight-luxe .sf-music-info{background:linear-gradient(135deg,rgba(18,16,52,.78),rgba(79,70,229,.18),rgba(139,92,246,.14)),linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.025));}
+.design-ice-chrome .sf-music-info{background:linear-gradient(135deg,rgba(35,48,66,.62),rgba(224,242,254,.20),rgba(148,163,184,.12)),linear-gradient(180deg,rgba(255,255,255,.12),rgba(255,255,255,.045));}
+.design-mint-mist .sf-music-info{background:linear-gradient(135deg,rgba(6,58,46,.68),rgba(16,185,129,.16),rgba(45,212,191,.14)),linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03));}
+.design-golden-hour .sf-music-info{background:linear-gradient(135deg,rgba(72,43,10,.70),rgba(245,158,11,.18),rgba(249,115,22,.13)),linear-gradient(180deg,rgba(255,255,255,.09),rgba(255,255,255,.03));}
+.design-ruby-noir .sf-music-info{background:linear-gradient(135deg,rgba(61,8,24,.76),rgba(190,24,93,.18),rgba(127,29,29,.15)),linear-gradient(180deg,rgba(255,255,255,.065),rgba(255,255,255,.025));}
+.design-vapor-dream .sf-music-info{background:linear-gradient(135deg,rgba(47,27,86,.72),rgba(167,139,250,.18),rgba(240,171,252,.15)),linear-gradient(180deg,rgba(255,255,255,.085),rgba(255,255,255,.03));}
+.design-hologram .sf-music-info,.design-blueprint .sf-music-info,.design-midnight-luxe .sf-music-info,.design-ice-chrome .sf-music-info,.design-mint-mist .sf-music-info,.design-golden-hour .sf-music-info,.design-ruby-noir .sf-music-info,.design-vapor-dream .sf-music-info{isolation:isolate;position:relative;overflow:hidden;}
+.design-hologram .sf-music-info::before,.design-blueprint .sf-music-info::before,.design-midnight-luxe .sf-music-info::before,.design-ice-chrome .sf-music-info::before,.design-mint-mist .sf-music-info::before,.design-golden-hour .sf-music-info::before,.design-ruby-noir .sf-music-info::before,.design-vapor-dream .sf-music-info::before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:radial-gradient(circle at 12% 0%,rgba(255,255,255,.16),transparent 38%),linear-gradient(90deg,transparent 0%,rgba(255,255,255,.035) 48%,transparent 100%);opacity:.8;z-index:-1;}
+
+/* Biblioteca personal · almacenamiento visual tipo drive */
+.sf-library-shell{padding:0;overflow:hidden}.sf-library-tabs{display:flex;gap:8px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08);background:linear-gradient(180deg,rgba(255,255,255,.025),transparent)}
+.sf-library-tab{appearance:none;border:1px solid transparent;background:transparent;color:var(--muted,#aab0c7);padding:10px 13px;border-radius:12px;display:flex;align-items:center;gap:8px;font:inherit;cursor:pointer}.sf-library-tab:hover{background:rgba(255,255,255,.05);color:#fff}.sf-library-tab.active{color:#fff;border-color:rgba(124,92,255,.35);background:rgba(124,92,255,.12);box-shadow:inset 0 1px rgba(255,255,255,.06)}.sf-library-tab span{font-size:16px}.sf-library-tab em{font-style:normal;font-size:11px;min-width:22px;text-align:center;padding:3px 6px;border-radius:999px;background:rgba(255,255,255,.07)}
+.sf-library-head{display:flex;justify-content:space-between;align-items:center;padding:20px 22px 16px}.sf-library-head h3{margin:.1rem 0 0}.sf-library-upload{position:relative;overflow:hidden}.sf-library-upload input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.sf-library-content{padding:0 22px 22px;min-height:390px}.sf-library-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;max-height:520px;overflow:auto;padding-right:4px}.sf-library-card{position:relative;border:1px solid rgba(255,255,255,.09);border-radius:18px;background:linear-gradient(180deg,rgba(255,255,255,.055),rgba(255,255,255,.025));overflow:hidden;box-shadow:0 14px 36px rgba(0,0,0,.12);transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}.sf-library-card:hover{transform:translateY(-2px);border-color:rgba(124,92,255,.35);box-shadow:0 18px 42px rgba(0,0,0,.18)}.sf-library-card-menu{position:absolute;right:10px;top:8px;z-index:2;width:28px;height:28px;display:grid;place-items:center;border-radius:10px;background:rgba(5,8,18,.6);backdrop-filter:blur(10px);opacity:0;transition:opacity .16s}.sf-library-card:hover .sf-library-card-menu{opacity:1}.sf-library-thumb{height:142px;background:linear-gradient(135deg,#171a2a,#0d1020);display:grid;place-items:center;overflow:hidden}.sf-library-thumb img,.sf-library-thumb video{width:100%;height:100%;object-fit:cover}.sf-library-audio-thumb{position:relative;background:radial-gradient(circle at 50% 0,rgba(124,92,255,.25),transparent 55%),linear-gradient(135deg,#15162b,#0e101d)}.sf-library-audio-thumb>span{font-size:30px;color:#fff;opacity:.9}.sf-library-wave{position:absolute;bottom:18px;left:25px;right:25px;display:flex;align-items:center;justify-content:center;gap:4px;height:46px}.sf-library-wave i{display:block;width:4px;border-radius:99px;background:linear-gradient(180deg,#b39cff,#7c5cff);height:20px;opacity:.8}.sf-library-wave i:nth-child(2){height:31px}.sf-library-wave i:nth-child(3){height:18px}.sf-library-wave i:nth-child(4){height:40px}.sf-library-wave i:nth-child(5){height:26px}.sf-library-wave i:nth-child(6){height:35px}.sf-library-wave i:nth-child(7){height:15px}.sf-library-playmark{position:absolute;bottom:10px;right:10px;width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:rgba(5,8,18,.72);color:#fff;border:1px solid rgba(255,255,255,.1)}
+.sf-library-card-body{padding:12px 13px 14px}.sf-library-name{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px;cursor:text}.sf-library-card-body small{display:block;margin-top:5px;color:var(--muted,#9ba3be);font-size:11px}.sf-library-inline-name{display:block;width:100%;box-sizing:border-box;border:1px solid rgba(124,92,255,.65);background:rgba(8,10,22,.75);color:#fff;padding:4px 6px;border-radius:7px;outline:none;font:inherit;font-size:14px}
+.sf-library-empty{min-height:360px;border:1px dashed rgba(255,255,255,.16);border-radius:22px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;background:radial-gradient(circle at 50% 0,rgba(124,92,255,.08),transparent 48%),rgba(255,255,255,.012);transition:border-color .16s,background .16s}.sf-library-empty.dragover{border-color:#8d74ff;background:radial-gradient(circle at 50% 0,rgba(124,92,255,.18),transparent 52%),rgba(124,92,255,.06)}.sf-library-empty-icon{width:96px;height:96px;border-radius:26px;display:grid;place-items:center;font-size:64px;line-height:1;color:#fff;background:linear-gradient(145deg,rgba(124,92,255,.20),rgba(124,92,255,.05));border:1px solid rgba(124,92,255,.28);box-shadow:0 18px 44px rgba(0,0,0,.18),inset 0 1px rgba(255,255,255,.12);margin-bottom:18px}.sf-library-empty h3{margin:0 0 6px}.sf-library-empty p{margin:0;color:var(--muted,#9ba3be)}.sf-library-empty>span{margin:12px 0;color:#777e9a;font-size:12px}.sf-library-empty small{margin-top:13px;color:#747b97}
+.sf-library-foot{display:flex;justify-content:space-between;padding:12px 22px 16px;color:#7f87a4;font-size:11px;border-top:1px solid rgba(255,255,255,.06)}.sf-library-usage{width:220px;padding:11px 13px;border:1px solid rgba(255,255,255,.08);border-radius:14px;background:rgba(255,255,255,.025)}.sf-library-usage strong{display:block;color:#fff}.sf-library-usage span{font-size:11px;color:#7f87a4}.sf-library-usage>div{height:5px;background:rgba(255,255,255,.08);border-radius:99px;margin-top:8px;overflow:hidden}.sf-library-usage i{display:block;height:100%;background:linear-gradient(90deg,#7c5cff,#c084fc);border-radius:inherit}
+.sf-library-context{position:fixed;z-index:99999;width:180px;padding:6px;border:1px solid rgba(255,255,255,.12);border-radius:14px;background:rgba(17,20,34,.96);backdrop-filter:blur(18px);box-shadow:0 20px 50px rgba(0,0,0,.35)}.sf-library-context button{width:100%;border:0;background:transparent;color:#e8eaf4;text-align:left;padding:9px 10px;border-radius:9px;display:flex;align-items:center;gap:9px;cursor:pointer;font:inherit;font-size:12px}.sf-library-context button:hover{background:rgba(255,255,255,.07)}.sf-library-context button.danger{color:#ff9f9f}.sf-library-context-sep{height:1px;background:rgba(255,255,255,.07);margin:4px 3px}
+@media (max-width:820px){.sf-library-head{align-items:flex-start;gap:12px;flex-direction:column}.sf-library-usage{width:auto}.sf-library-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.sf-library-foot{flex-direction:column;gap:5px}}
+
+/* Biblioteca: previsualización multimedia y menú de acciones */
+.sf-library-tab svg,.sf-library-context svg,.sf-library-preview-kind svg,.sf-library-audio-symbol svg{flex:none;display:block}
