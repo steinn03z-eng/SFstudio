@@ -1,0 +1,6 @@
+# StreamFusion runs Node.js and also needs Python for the YouTube Music metadata helper.
+providers = ["node", "python"]
+
+[variables]
+NIXPACKS_PYTHON_VERSION = "3.13"
+PYTHON_BIN = "python3"

@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { spawn, execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -125,6 +125,13 @@ const __dirname = path.dirname(__filename);
 // Playback is delegated to the official YouTube IFrame Player in the browser/OBS overlay.
 const YTMUSIC_HELPER = path.join(__dirname, '..', 'scripts', 'ytmusic-search.py');
 
+function getPythonCommand(){
+  const configured=String(process.env.PYTHON_BIN||'').trim();
+  if(configured) return configured;
+  // Railway/Linux normally exposes python3; Windows commonly exposes python.
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+
 
 function extractYouTubeId(value){
   const input=String(value||'').trim();
@@ -137,12 +144,18 @@ async function runYtMusicHelper(mode, value){
   const input=String(value||'').trim();
   if(!input) throw new Error('Escribe el nombre o URL de la canción.');
   return await new Promise((resolve,reject)=>{
-    const child=spawn('python3',[YTMUSIC_HELPER,mode,input],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+    const child=spawn(getPythonCommand(),[YTMUSIC_HELPER,mode,input],{stdio:['ignore','pipe','pipe'],windowsHide:true});
     let stdout=''; let stderr=''; let settled=false;
     const timer=setTimeout(()=>{if(settled)return;settled=true;try{child.kill('SIGKILL')}catch{};reject(new Error('YouTube Music tardó demasiado en responder.'));},15000);
     child.stdout.on('data',d=>stdout+=d.toString());
     child.stderr.on('data',d=>stderr+=d.toString());
-    child.once('error',e=>{if(settled)return;settled=true;clearTimeout(timer);reject(e);});
+    child.once('error',e=>{
+      if(settled)return;
+      settled=true;
+      clearTimeout(timer);
+      if(e?.code==='ENOENT') reject(new Error(`No se encontró Python (${getPythonCommand()}). Instala Python 3.10+ y ytmusicapi, o define PYTHON_BIN.`));
+      else reject(e);
+    });
     child.once('close',code=>{
       if(settled)return;
       settled=true;clearTimeout(timer);
@@ -429,4 +442,4 @@ export async function resolveMusicPreview(query, maxDurationSeconds=300) {
 }
 
 export { DEFAULT_MUSIC, REQUEST_COMMANDS, ADMIN_COMMANDS, PREFIXES, resolveTrack, formatDuration };
-export function getMusicRuntimeStatus(){ return {mode:'youtube-iframe', ytmusicapi:true, ytDlp:false, poToken:false, cookies:false, youtubeApiKeyRequired:false}; }
+export function getMusicRuntimeStatus(){ return {mode:'youtube-iframe', ytmusicapi:true, pythonCommand:getPythonCommand(), ytDlp:false, poToken:false, cookies:false, youtubeApiKeyRequired:false}; }

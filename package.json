@@ -20,5 +20,8 @@
     "tiktok-live-connector": "^2.4.3",
     "tmi.js": "^1.8.5",
     "ffmpeg-static": "^5.2.0"
+  },
+  "engines": {
+    "node": ">=20 <24"
   }
 }
