@@ -7,7 +7,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check services/music.js && node --check Public/app.js && node --check Public/announcement-overlay.js"
+    "check": "node --check server.js && node --check services/music.js && node --check Public/app.js && node --check Public/announcement-overlay.js",
+    "postinstall": "python -m pip install --no-cache-dir -r requirements.txt"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
