@@ -185,12 +185,103 @@ function trackFromYtMusic(item,requester){
   };
 }
 
+async function youtubeWebFallback(query, requester){
+  const input=String(query||'').trim();
+  const directId=extractYouTubeId(input);
+  const headers={
+    'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/139.0.0.0 Safari/537.36',
+    'accept-language':'es-ES,es;q=0.9,en;q=0.8'
+  };
+
+  if(directId){
+    try{
+      const u=`https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${directId}`)}&format=json`;
+      const r=await fetch(u,{headers,signal:AbortSignal.timeout(8000)});
+      if(r.ok){
+        const d=await r.json();
+        return {
+          videoId:directId,
+          title:d.title||'Canción de YouTube',
+          artists:[{name:d.author_name||'Artista desconocido'}],
+          duration_seconds:1,
+          thumbnail:`https://i.ytimg.com/vi/${directId}/hqdefault.jpg`
+        };
+      }
+    }catch{}
+    return {videoId:directId,title:'Canción de YouTube',artists:[{name:'Artista desconocido'}],duration_seconds:1,thumbnail:`https://i.ytimg.com/vi/${directId}/hqdefault.jpg`};
+  }
+
+  const url=`https://www.youtube.com/results?search_query=${encodeURIComponent(input)}`;
+  const response=await fetch(url,{headers,signal:AbortSignal.timeout(10000)});
+  if(!response.ok) throw new Error(`YouTube respondió con HTTP ${response.status}.`);
+  const html=await response.text();
+  const marker='var ytInitialData = ';
+  const start=html.indexOf(marker);
+  if(start<0) throw new Error('YouTube no devolvió resultados de búsqueda.');
+  const jsonStart=start+marker.length;
+  let depth=0,inString=false,esc=false,end=-1;
+  for(let i=jsonStart;i<html.length;i++){
+    const c=html[i];
+    if(inString){
+      if(esc) esc=false;
+      else if(c==='\\') esc=true;
+      else if(c==='"') inString=false;
+      continue;
+    }
+    if(c==='"'){inString=true;continue;}
+    if(c==='{') depth++;
+    else if(c==='}'){depth--;if(depth===0){end=i+1;break;}}
+  }
+  if(end<0) throw new Error('No se pudo leer la respuesta de YouTube.');
+  let data;
+  try{data=JSON.parse(html.slice(jsonStart,end));}catch{throw new Error('YouTube devolvió una respuesta no válida.');}
+
+  const videos=[];
+  const walk=(node)=>{
+    if(!node||videos.length>=8)return;
+    if(Array.isArray(node)){for(const x of node)walk(x);return;}
+    if(typeof node!=='object')return;
+    const v=node.videoRenderer;
+    if(v?.videoId){
+      const title=(v.title?.runs?.map(x=>x?.text||'').join('')||v.title?.simpleText||'').trim();
+      const artist=(v.ownerText?.runs?.map(x=>x?.text||'').join('')||v.longBylineText?.runs?.map(x=>x?.text||'').join('')||'Artista desconocido').trim();
+      const thumb=Array.isArray(v.thumbnail?.thumbnails)&&v.thumbnail.thumbnails.length?v.thumbnail.thumbnails.at(-1)?.url:`https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
+      const length=v.lengthText?.simpleText||'';
+      videos.push({videoId:v.videoId,title:title||'Sin título',artists:[{name:artist}],duration:length,duration_seconds:1,thumbnail:thumb});
+    }
+    for(const value of Object.values(node))walk(value);
+  };
+  walk(data);
+  const unique=[]; const seen=new Set();
+  for(const item of videos){if(!seen.has(item.videoId)){seen.add(item.videoId);unique.push(item);}}
+  if(!unique.length) throw new Error('No encontré una canción con ese nombre.');
+  return unique[0];
+}
+
 async function resolveViaYtMusic(query,requester){
   const directId=extractYouTubeId(query);
-  const result=await runYtMusicHelper(directId?'video':'search',directId||query);
-  const item=result?.track || result?.results?.[0];
-  if(!item) throw new Error('No encontré una canción con ese nombre.');
-  return trackFromYtMusic(item,requester);
+  try{
+    const result=await runYtMusicHelper(directId?'video':'search',directId||query);
+    const item=result?.track || result?.results?.[0];
+    if(item) return trackFromYtMusic(item,requester);
+  }catch(primaryError){
+    // Public YouTube search is a fallback for Railway/hosting environments
+    // where the unofficial YouTube Music endpoint is temporarily blocked or
+    // changed. Playback still uses the official IFrame Player.
+    try{
+      const fallback=await youtubeWebFallback(query,requester);
+      return trackFromYtMusic(fallback,requester);
+    }catch(fallbackError){
+      const detail=String(primaryError?.message||fallbackError?.message||'');
+      throw new Error(detail||'No se pudo consultar YouTube.');
+    }
+  }
+  try{
+    const fallback=await youtubeWebFallback(query,requester);
+    return trackFromYtMusic(fallback,requester);
+  }catch(e){
+    throw new Error(e?.message||'No encontré una canción con ese nombre.');
+  }
 }
 
 async function resolveTrack(query,requester){
