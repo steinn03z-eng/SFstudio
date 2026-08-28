@@ -7,8 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check services/music.js && node --check Public/app.js && node --check Public/announcement-overlay.js",
-    "postinstall": "python -m pip install --no-cache-dir -r requirements.txt"
+    "check": "node --check server.js && node --check services/music.js && node --check Public/app.js && node --check Public/announcement-overlay.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
@@ -21,8 +20,5 @@
     "tiktok-live-connector": "^2.4.3",
     "tmi.js": "^1.8.5",
     "ffmpeg-static": "^5.2.0"
-  },
-  "engines": {
-    "node": ">=20 <24"
   }
 }

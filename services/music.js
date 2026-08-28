@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { spawn } from 'node:child_process';
+import { spawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -125,13 +125,6 @@ const __dirname = path.dirname(__filename);
 // Playback is delegated to the official YouTube IFrame Player in the browser/OBS overlay.
 const YTMUSIC_HELPER = path.join(__dirname, '..', 'scripts', 'ytmusic-search.py');
 
-function getPythonCommand(){
-  const configured=String(process.env.PYTHON_BIN||'').trim();
-  if(configured) return configured;
-  // Railway/Linux normally exposes python3; Windows commonly exposes python.
-  return process.platform === 'win32' ? 'python' : 'python3';
-}
-
 
 function extractYouTubeId(value){
   const input=String(value||'').trim();
@@ -140,33 +133,48 @@ function extractYouTubeId(value){
   return m?.[1] || (/^[A-Za-z0-9_-]{11}$/.test(input)?input:'');
 }
 
+function pythonCommands(){
+  const configured=String(process.env.PYTHON||'').trim();
+  if(configured) return [configured];
+  // Railway/Linux normally exposes python3. Windows often exposes python or py.
+  return process.platform==='win32' ? ['python','py','python3'] : ['python3','python'];
+}
+
 async function runYtMusicHelper(mode, value){
   const input=String(value||'').trim();
   if(!input) throw new Error('Escribe el nombre o URL de la canción.');
-  return await new Promise((resolve,reject)=>{
-    const child=spawn(getPythonCommand(),[YTMUSIC_HELPER,mode,input],{stdio:['ignore','pipe','pipe'],windowsHide:true});
-    let stdout=''; let stderr=''; let settled=false;
-    const timer=setTimeout(()=>{if(settled)return;settled=true;try{child.kill('SIGKILL')}catch{};reject(new Error('YouTube Music tardó demasiado en responder.'));},15000);
-    child.stdout.on('data',d=>stdout+=d.toString());
-    child.stderr.on('data',d=>stderr+=d.toString());
-    child.once('error',e=>{
-      if(settled)return;
-      settled=true;
-      clearTimeout(timer);
-      if(e?.code==='ENOENT') reject(new Error(`No se encontró Python (${getPythonCommand()}). Instala Python 3.10+ y ytmusicapi, o define PYTHON_BIN.`));
-      else reject(e);
-    });
-    child.once('close',code=>{
-      if(settled)return;
-      settled=true;clearTimeout(timer);
-      if(code!==0){reject(new Error(stderr.trim()||'No se pudo consultar YouTube Music.'));return;}
-      try{
-        const parsed=JSON.parse(stdout);
-        if(!parsed?.ok) throw new Error(parsed?.error||'No se encontró la canción.');
-        resolve(parsed);
-      }catch(e){reject(e instanceof Error?e:new Error('Respuesta inválida de YouTube Music.'));}
-    });
-  });
+  const commands=pythonCommands();
+  let lastEnoent=null;
+  for(const command of commands){
+    try{
+      return await new Promise((resolve,reject)=>{
+        const child=spawn(command,[YTMUSIC_HELPER,mode,input],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+        let stdout=''; let stderr=''; let settled=false;
+        const timer=setTimeout(()=>{if(settled)return;settled=true;try{child.kill('SIGKILL')}catch{};reject(new Error('YouTube Music tardó demasiado en responder.'));},15000);
+        child.stdout.on('data',d=>stdout+=d.toString());
+        child.stderr.on('data',d=>stderr+=d.toString());
+        child.once('error',e=>{if(settled)return;settled=true;clearTimeout(timer);reject(e);});
+        child.once('close',code=>{
+          if(settled)return;
+          settled=true;clearTimeout(timer);
+          if(code!==0){reject(new Error(stderr.trim()||'No se pudo consultar YouTube Music.'));return;}
+          try{
+            const parsed=JSON.parse(stdout);
+            if(!parsed?.ok) throw new Error(parsed?.error||'No se encontró la canción.');
+            resolve(parsed);
+          }catch(e){reject(e instanceof Error?e:new Error('Respuesta inválida de YouTube Music.'));}
+        });
+      });
+    }catch(error){
+      if(error?.code==='ENOENT'){ lastEnoent=error; continue; }
+      throw error;
+    }
+  }
+  const configured=String(process.env.PYTHON||'').trim();
+  if(configured){
+    throw new Error(`No se encontró el intérprete de Python configurado (${configured}). Instala Python 3.10+ o corrige PYTHON.`);
+  }
+  throw new Error('No se encontró Python. En Railway vuelve a desplegar con requirements.txt/Dockerfile para instalar Python 3.10+ y ytmusicapi.');
 }
 
 function trackFromYtMusic(item,requester){
@@ -185,103 +193,12 @@ function trackFromYtMusic(item,requester){
   };
 }
 
-async function youtubeWebFallback(query, requester){
-  const input=String(query||'').trim();
-  const directId=extractYouTubeId(input);
-  const headers={
-    'user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/139.0.0.0 Safari/537.36',
-    'accept-language':'es-ES,es;q=0.9,en;q=0.8'
-  };
-
-  if(directId){
-    try{
-      const u=`https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${directId}`)}&format=json`;
-      const r=await fetch(u,{headers,signal:AbortSignal.timeout(8000)});
-      if(r.ok){
-        const d=await r.json();
-        return {
-          videoId:directId,
-          title:d.title||'Canción de YouTube',
-          artists:[{name:d.author_name||'Artista desconocido'}],
-          duration_seconds:1,
-          thumbnail:`https://i.ytimg.com/vi/${directId}/hqdefault.jpg`
-        };
-      }
-    }catch{}
-    return {videoId:directId,title:'Canción de YouTube',artists:[{name:'Artista desconocido'}],duration_seconds:1,thumbnail:`https://i.ytimg.com/vi/${directId}/hqdefault.jpg`};
-  }
-
-  const url=`https://www.youtube.com/results?search_query=${encodeURIComponent(input)}`;
-  const response=await fetch(url,{headers,signal:AbortSignal.timeout(10000)});
-  if(!response.ok) throw new Error(`YouTube respondió con HTTP ${response.status}.`);
-  const html=await response.text();
-  const marker='var ytInitialData = ';
-  const start=html.indexOf(marker);
-  if(start<0) throw new Error('YouTube no devolvió resultados de búsqueda.');
-  const jsonStart=start+marker.length;
-  let depth=0,inString=false,esc=false,end=-1;
-  for(let i=jsonStart;i<html.length;i++){
-    const c=html[i];
-    if(inString){
-      if(esc) esc=false;
-      else if(c==='\\') esc=true;
-      else if(c==='"') inString=false;
-      continue;
-    }
-    if(c==='"'){inString=true;continue;}
-    if(c==='{') depth++;
-    else if(c==='}'){depth--;if(depth===0){end=i+1;break;}}
-  }
-  if(end<0) throw new Error('No se pudo leer la respuesta de YouTube.');
-  let data;
-  try{data=JSON.parse(html.slice(jsonStart,end));}catch{throw new Error('YouTube devolvió una respuesta no válida.');}
-
-  const videos=[];
-  const walk=(node)=>{
-    if(!node||videos.length>=8)return;
-    if(Array.isArray(node)){for(const x of node)walk(x);return;}
-    if(typeof node!=='object')return;
-    const v=node.videoRenderer;
-    if(v?.videoId){
-      const title=(v.title?.runs?.map(x=>x?.text||'').join('')||v.title?.simpleText||'').trim();
-      const artist=(v.ownerText?.runs?.map(x=>x?.text||'').join('')||v.longBylineText?.runs?.map(x=>x?.text||'').join('')||'Artista desconocido').trim();
-      const thumb=Array.isArray(v.thumbnail?.thumbnails)&&v.thumbnail.thumbnails.length?v.thumbnail.thumbnails.at(-1)?.url:`https://i.ytimg.com/vi/${v.videoId}/hqdefault.jpg`;
-      const length=v.lengthText?.simpleText||'';
-      videos.push({videoId:v.videoId,title:title||'Sin título',artists:[{name:artist}],duration:length,duration_seconds:1,thumbnail:thumb});
-    }
-    for(const value of Object.values(node))walk(value);
-  };
-  walk(data);
-  const unique=[]; const seen=new Set();
-  for(const item of videos){if(!seen.has(item.videoId)){seen.add(item.videoId);unique.push(item);}}
-  if(!unique.length) throw new Error('No encontré una canción con ese nombre.');
-  return unique[0];
-}
-
 async function resolveViaYtMusic(query,requester){
   const directId=extractYouTubeId(query);
-  try{
-    const result=await runYtMusicHelper(directId?'video':'search',directId||query);
-    const item=result?.track || result?.results?.[0];
-    if(item) return trackFromYtMusic(item,requester);
-  }catch(primaryError){
-    // Public YouTube search is a fallback for Railway/hosting environments
-    // where the unofficial YouTube Music endpoint is temporarily blocked or
-    // changed. Playback still uses the official IFrame Player.
-    try{
-      const fallback=await youtubeWebFallback(query,requester);
-      return trackFromYtMusic(fallback,requester);
-    }catch(fallbackError){
-      const detail=String(primaryError?.message||fallbackError?.message||'');
-      throw new Error(detail||'No se pudo consultar YouTube.');
-    }
-  }
-  try{
-    const fallback=await youtubeWebFallback(query,requester);
-    return trackFromYtMusic(fallback,requester);
-  }catch(e){
-    throw new Error(e?.message||'No encontré una canción con ese nombre.');
-  }
+  const result=await runYtMusicHelper(directId?'video':'search',directId||query);
+  const item=result?.track || result?.results?.[0];
+  if(!item) throw new Error('No encontré una canción con ese nombre.');
+  return trackFromYtMusic(item,requester);
 }
 
 async function resolveTrack(query,requester){
@@ -499,16 +416,11 @@ export function attachSocketHandlers(io,socket){
     }
     io?.to?.(`user:${ownerId}`).emit('musicEditorPreviewState',safe);
   });
-  socket.on('music:simulate',(payload={},ack)=>{
+  socket.on('music:simulate',(payload={})=>{
     const t={id:'preview-simulated',title:clean(payload.title||'Blinding Lights',120),artist:clean(payload.artist||'The Weeknd',100),thumbnail:clean(payload.thumbnail||'',2000),duration:Math.max(1,Number(payload.duration||214)),requester:'Simulación',platform:'youtube',url:clean(payload.url||'',2000),sourceType:'youtube-iframe',sourceId:clean(payload.sourceId||'',32),source:'simulation'};
     const preview={current:t,queue:Array.isArray(payload.queue)?payload.queue.slice(0,10).map(v=>publicTrack({...v,requester:'Simulación',source:'simulation'})).filter(Boolean):[],previous:payload.previous?publicTrack({...payload.previous,requester:'Simulación',source:'simulation'}):null,elapsed:Math.max(0,Number(payload.elapsed||0)),playing:payload.playing!==false,paused:Boolean(payload.paused),version:Date.now(),simulated:true};
     previewStates.set(String(ownerId),preview);
-    const state=bridgeSimulation(ownerId,t,io,preview.queue,preview.previous,{elapsed:preview.elapsed,playing:preview.playing,paused:preview.paused});
-    const authoritative=previewStates.get(String(ownerId));
-    // Return the server's authoritative playback clock so the editor preview can
-    // start at the exact same epoch as the generated OBS/overlay player.
-    const sync={startedAt:Number(state?.startedAt||0),serverNow:Number(state?.serverNow||Date.now()),elapsed:Number(state?.elapsed||0),playing:Boolean(state?.playing),paused:Boolean(state?.paused),trackId:String(state?.current?.id||'')};
-    if(typeof ack==='function')ack({ok:true,state,preview, sync});
+    bridgeSimulation(ownerId,t,io,preview.queue,preview.previous,{elapsed:preview.elapsed,playing:preview.playing,paused:preview.paused});
     io?.to?.(`user:${ownerId}`).emit('musicEditorPreviewState',preview);
   });
   socket.on('music:simulateStop',()=>{
@@ -538,4 +450,4 @@ export async function resolveMusicPreview(query, maxDurationSeconds=300) {
 }
 
 export { DEFAULT_MUSIC, REQUEST_COMMANDS, ADMIN_COMMANDS, PREFIXES, resolveTrack, formatDuration };
-export function getMusicRuntimeStatus(){ return {mode:'youtube-iframe', ytmusicapi:true, pythonCommand:getPythonCommand(), ytDlp:false, poToken:false, cookies:false, youtubeApiKeyRequired:false}; }
+export function getMusicRuntimeStatus(){ return {mode:'youtube-iframe', pythonCommands:pythonCommands(), helper:YTMUSIC_HELPER, ytmusicapi:true, ytDlp:false, poToken:false, cookies:false, youtubeApiKeyRequired:false,playback:'youtube-iframe'}; }

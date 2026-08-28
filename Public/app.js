@@ -2631,16 +2631,6 @@
       item.addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();select();}});
     });
   }
-  function musicServerSyncElapsed(snap){
-    const base=Math.max(0,Number(snap?.elapsed||0));
-    if(snap?.paused || !snap?.playing) return base;
-    const startedAt=Number(snap?.startedAt||0);
-    if(startedAt>0){
-      return Math.max(0,(Date.now()-startedAt)/1000);
-    }
-    const serverNow=Number(snap?.serverNow||0);
-    return serverNow>0 ? Math.max(0,base+(Date.now()-serverNow)/1000) : base;
-  }
   function pushPreviewState(extra={}){
     musicPreviewState={...musicPreviewState,...extra,queue:Array.isArray(extra.queue??musicPreviewState.queue)?(extra.queue??musicPreviewState.queue).slice(0,10):[],simulated:true};
     musicPreviewState.queue=musicPreviewState.queue.map(t=>({...t,requester:'Simulación',source:'simulation'}));
@@ -2809,10 +2799,10 @@
       if(musicPreviewYTPlayer)return musicPreviewYTPlayer;
       let host=document.getElementById('musicPreviewYoutubeHost');
       if(!host){host=document.createElement('div');host.id='musicPreviewYoutubeHost';host.className='music-youtube-hidden-host';document.body.appendChild(host);}
-      return new Promise((resolve,reject)=>{try{musicPreviewYTPlayer=new YT.Player(host,{width:'200',height:'200',videoId:'',playerVars:{autoplay:0,controls:0,disablekb:1,fs:0,playsinline:1,rel:0,modestbranding:1,iv_load_policy:3,origin:location.origin},events:{onReady:()=>{musicPreviewYTReady=true;resolve(musicPreviewYTPlayer);},onStateChange:e=>{if(!musicWidgetSimulating||!musicPreviewYTPlayer)return;const st=e?.data;if(st===YT.PlayerState.PLAYING)musicPreviewState={...musicPreviewState,playing:true,paused:false,simulated:true};else if(st===YT.PlayerState.PAUSED)musicPreviewState={...musicPreviewState,playing:false,paused:true,simulated:true};else if(st===YT.PlayerState.ENDED){const dur=Number(musicPreviewState.current?.duration||musicSimulationTrack?.duration||musicPreviewYTPlayer.getDuration?.()||0);musicPreviewState={...musicPreviewState,elapsed:dur,playing:false,paused:true,simulated:true};updateMusicPreviewDynamic();if((musicPreviewState.queue||[]).length){setTimeout(()=>previewAdvance(1),120);} }updateMusicPreviewDynamic();},onError:e=>{const status=$('musicSimulationStatus');if(status){status.textContent=`YouTube no puede reproducir este vídeo (código ${Number(e?.data||0)}). Prueba otra canción.`;status.classList.remove('is-loading','is-hidden');}musicWidgetSimulating=false;updateMusicPreviewDynamic();}}});}catch(e){reject(e);}});
+      return new Promise((resolve,reject)=>{try{musicPreviewYTPlayer=new YT.Player(host,{width:'200',height:'200',videoId:'',playerVars:{autoplay:0,controls:0,disablekb:1,fs:0,playsinline:1,rel:0,modestbranding:1,iv_load_policy:3,origin:location.origin},events:{onReady:()=>{musicPreviewYTReady=true;resolve(musicPreviewYTPlayer);},onStateChange:e=>{if(!musicWidgetSimulating||!musicPreviewYTPlayer)return;const st=e?.data;if(st===YT.PlayerState.PLAYING){const elapsed=Math.max(0,Number(musicPreviewYTPlayer.getCurrentTime?.()||musicPreviewState.elapsed||0));musicPreviewState={...musicPreviewState,elapsed,playing:true,paused:false,simulated:true};updateMusicPreviewDynamic();socket?.emit?.('music:previewState',structuredClone(musicPreviewState));}else if(st===YT.PlayerState.PAUSED){const elapsed=Math.max(0,Number(musicPreviewYTPlayer.getCurrentTime?.()||musicPreviewState.elapsed||0));musicPreviewState={...musicPreviewState,elapsed,playing:false,paused:true,simulated:true};updateMusicPreviewDynamic();socket?.emit?.('music:previewState',structuredClone(musicPreviewState));}else if(st===YT.PlayerState.ENDED){const dur=Number(musicPreviewState.current?.duration||musicSimulationTrack?.duration||musicPreviewYTPlayer.getDuration?.()||0);musicPreviewState={...musicPreviewState,elapsed:dur,playing:false,paused:true,simulated:true};updateMusicPreviewDynamic();socket?.emit?.('music:previewState',structuredClone(musicPreviewState));if((musicPreviewState.queue||[]).length){setTimeout(()=>previewAdvance(1),120);} }else{updateMusicPreviewDynamic();}},onError:e=>{const status=$('musicSimulationStatus');if(status){status.textContent=`YouTube no puede reproducir este vídeo (código ${Number(e?.data||0)}). Prueba otra canción.`;status.classList.remove('is-loading','is-hidden');}musicWidgetSimulating=false;updateMusicPreviewDynamic();}}});}catch(e){reject(e);}});
     });
   }
-  async function loadMusicPreviewYouTube(track,autoplay=true,startSeconds=null){const player=await ensureMusicPreviewPlayer();const videoId=String(track?.sourceId||'').trim();if(!videoId)throw new Error('La canción no tiene un videoId de YouTube.');musicPreviewYTVideoId=videoId;const fallback=Math.max(0,Number(musicPreviewState?.elapsed||0));const seconds=Math.max(0,Number(startSeconds==null?fallback:startSeconds)||0);player.loadVideoById({videoId,startSeconds:seconds});if(!autoplay)player.pauseVideo();}
+  async function loadMusicPreviewYouTube(track,autoplay=true){const player=await ensureMusicPreviewPlayer();const videoId=String(track?.sourceId||'').trim();if(!videoId)throw new Error('La canción no tiene un videoId de YouTube.');musicPreviewYTVideoId=videoId;const seconds=Math.max(0,Number(musicPreviewState?.elapsed||0));player.loadVideoById({videoId,startSeconds:seconds});if(!autoplay)player.pauseVideo();}
   function startMusicPreviewClock(){
     if(musicWidgetSimTimer)return;
     musicWidgetSimTimer=setInterval(()=>{
@@ -2822,6 +2812,13 @@
       const max=Number(musicPreviewState.current?.duration||d); const ps=musicPreviewYTPlayer.getPlayerState?.();
       musicPreviewState={...musicPreviewState,elapsed:Math.min(Math.max(0,e),max),playing:ps===YT.PlayerState.PLAYING,paused:ps===YT.PlayerState.PAUSED,simulated:true};
       updateMusicPreviewDynamic();
+      if(ps===YT.PlayerState.PLAYING||ps===YT.PlayerState.PAUSED){
+        const now=Date.now();
+        if(!window.__sfMusicPreviewLastSync || now-window.__sfMusicPreviewLastSync>1200){
+          window.__sfMusicPreviewLastSync=now;
+          socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+        }
+      }
     },500);
   }
   async function toggleMusicPreviewPlayback(){
@@ -2869,29 +2866,13 @@
       }
       musicSimulationTrack=track;
       musicWidgetSimulating=true;
-      musicPreviewState={current:track,queue:existing.slice(0,10),previous:null,elapsed:0,playing:true,paused:false,simulated:true,source:'simulation'};
+      // La vista previa no se marca como reproduciendo hasta que YouTube emite PLAYING.
+      // Esto evita que el reloj del overlay empiece durante el buffering/carga del iframe.
+      musicPreviewState={current:track,queue:existing.slice(0,10),previous:null,elapsed:0,playing:false,paused:false,simulated:true,source:'simulation'};
       musicPreviewDraw(musicPreviewState);
-      // Ask the server to create the simulation first and use its authoritative
-      // startedAt timestamp for the editor iframe. This makes the preview and
-      // generated overlay share one playback clock instead of starting twice.
-      let sync=null;
-      try{
-        sync=await new Promise((resolve)=>{
-          let settled=false;
-          const finish=(value)=>{if(settled)return;settled=true;resolve(value||null);};
-          socket?.emit?.('music:simulate',{title:track.title,artist:track.artist,thumbnail:track.thumbnail,duration:track.duration,url:track.url,sourceId:track.sourceId,queue:existing.slice(0,10),previous:null},(ack)=>finish(ack?.sync||null));
-          setTimeout(()=>finish(null),2500);
-        });
-      }catch{}
-      if(sync){
-        const syncedElapsed=sync.startedAt&&!sync.paused&&sync.playing?Math.max(0,(Date.now()-Number(sync.startedAt))/1000):Math.max(0,Number(sync.elapsed||0));
-        musicPreviewState={...musicPreviewState,elapsed:syncedElapsed,playing:Boolean(sync.playing&&!sync.paused),paused:Boolean(sync.paused),serverStartedAt:Number(sync.startedAt||0)};
-        musicPreviewDraw(musicPreviewState);
-        await loadMusicPreviewYouTube(track,true,syncedElapsed);
-      }else{
-        socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
-        await loadMusicPreviewYouTube(track,true,0);
-      }
+      // Publicamos el estado estructural primero; el reloj autoritativo empieza en PLAYING.
+      socket?.emit?.('music:previewState',structuredClone(musicPreviewState));
+      await loadMusicPreviewYouTube(track,true);
       if(status){status.textContent='Reproduciendo en la vista previa · sincronizada con el overlay';status.classList.remove('is-loading');}
       $('musicSimulate')?.classList.add('is-hidden');$('musicStopSimulation')?.classList.remove('is-hidden');updatePreviewNavButtons();
       startMusicPreviewClock();
@@ -3689,8 +3670,7 @@
     if(snap?.simulationActive && snap?.simulationCurrent){
       const next=structuredClone(snap.simulationCurrent);
       const sameTrack=String(musicPreviewState?.current?.sourceId||'')===String(next.sourceId||'');
-      const authoritativeElapsed=musicServerSyncElapsed(snap);
-      musicPreviewState={current:next,queue:Array.isArray(snap.simulationQueue)?snap.simulationQueue:[],previous:snap.simulationPrevious||null,elapsed:authoritativeElapsed,playing:Boolean(snap.playing&&!snap.paused),paused:Boolean(snap.paused),simulated:true,source:'simulation',serverStartedAt:Number(snap.startedAt||0)};
+      musicPreviewState={current:next,queue:Array.isArray(snap.simulationQueue)?snap.simulationQueue:[],previous:snap.simulationPrevious||null,elapsed:Number(snap.elapsed||0),playing:Boolean(snap.playing&&!snap.paused),paused:Boolean(snap.paused),simulated:true,source:'simulation'};
       musicSimulationTrack=next;
       if(page==='widgets'&&window.__sfMusicWidgetEditorOpen){
         musicWidgetSimulating=true;
@@ -3699,12 +3679,12 @@
         const status=$('musicSimulationStatus');if(status){status.textContent='Simulación vinculada al overlay · reproducción sincronizada';status.classList.remove('is-hidden','is-loading');}
         ensureMusicPreviewPlayer().then(player=>{
           try{
-            const desired=Math.max(0,musicServerSyncElapsed(snap));
+            const serverElapsed=Math.max(0,Number(snap.elapsed||0));
+            const serverNow=Number(snap.serverNow||0);
+            const networkLead=(snap.playing&&!snap.paused&&serverNow)?Math.max(0,Math.min(2,(Date.now()-serverNow)/1000)):0;
+            const desired=Math.max(0,serverElapsed+networkLead);
             const local=Number(player.getCurrentTime?.()||0);
-            // Both the editor preview and the generated overlay use the same
-            // server startedAt epoch. Correct only meaningful drift so the iframe
-            // does not visibly jump on every telemetry packet.
-            if(Math.abs(local-desired)>0.35){player.seekTo?.(desired,true);syncMusicPreviewVinylAnimation(desired,Boolean(snap.playing&&!snap.paused),String(next.id||next.sourceId||''));}
+            if(Math.abs(local-desired)>1.25){player.seekTo?.(desired,true);syncMusicPreviewVinylAnimation(desired,Boolean(snap.playing&&!snap.paused),String(next.id||next.sourceId||''));}
           }catch{}
           try{
             const shouldPlay=Boolean(snap.playing&&!snap.paused), ps=player.getPlayerState?.();
