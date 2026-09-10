@@ -86,6 +86,9 @@
   let voiceWidgetVisibilityPhase = "visible";
   let voiceWidgetVisibilityPhaseStartedAt = Date.now();
   let voiceWidgetPreviewSignature = '';
+  let voiceWidgetPreviewPendingState = null;
+  let voiceWidgetPreviewFrameUrl = '';
+  let voiceWidgetPreviewFrameReady = false;
   let voiceWidgetDraft = null;
   let pointsWidgetDraft = null;
   let pointsWidgetPreviewSequence = 0;
@@ -1960,6 +1963,45 @@
     mutate?.();
     if(current>0){ track.style.animationDelay=`-${current/1000}s`; }
   }
+  function voiceWidgetPreviewCatalogPayload(){
+    const items = voiceLibraryItems();
+    const seen = new Set();
+    const out = [];
+    for (const v of items) {
+      const rawId = v?.fishId ?? v?.id ?? v?.key ?? '';
+      const rawKey = v?.key ?? rawId;
+      const key = String(rawKey || '').trim();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        key,
+        id: String(v?.id ?? v?.fishId ?? key),
+        fishId: String(v?.fishId ?? (String(key).startsWith('fish:') ? String(key).slice(5) : v?.id ?? key)),
+        label: String(v?.label ?? v?.name ?? v?.key ?? v?.fishId ?? 'Voz'),
+        name: String(v?.name ?? v?.label ?? v?.key ?? 'Voz'),
+        author: String(v?.author ?? ''),
+        tags: Array.isArray(v?.tags) ? v.tags.slice(0, 10) : [],
+        library: v?.library === 'fish' || String(key).startsWith('fish:') ? 'fish' : (v?.library || 'streamfusion')
+      });
+    }
+    return out;
+  }
+
+  function postVoiceWidgetPreviewState(){
+    const frame = $('voiceWidgetPreviewFrame');
+    const pending = voiceWidgetPreviewPendingState;
+    if (!frame?.contentWindow || !pending || !voiceWidgetPreviewFrameReady) return;
+    const signature = JSON.stringify({config:pending.config,catalog:pending.catalog});
+    if (signature === voiceWidgetPreviewSignature) return;
+    voiceWidgetPreviewSignature = signature;
+    frame.contentWindow.postMessage({
+      source: 'streamfusion-voice-list-preview',
+      type: 'state',
+      config: pending.config,
+      catalog: pending.catalog
+    }, '*');
+  }
+
   function syncVoiceWidgetPreview(s, force=false){
     const host = $('voiceWidgetPreview');
     const frame = $('voiceWidgetPreviewFrame');
@@ -1969,10 +2011,10 @@
     if (!voiceWidgetPreviewFrameUrl) {
       buildOverlayUrl('voice-list-overlay.html?preview=1').then(url=>{
         const current=$('voiceWidgetPreviewFrame'); if(!current) return;
-        voiceWidgetPreviewFrameUrl=url; current.src=url;
+        voiceWidgetPreviewFrameUrl=url; voiceWidgetPreviewFrameReady=false; voiceWidgetPreviewSignature=''; current.src=url;
       }).catch(()=>{});
     } else if (frame.src !== voiceWidgetPreviewFrameUrl) {
-      voiceWidgetPreviewFrameReady=false; frame.src=voiceWidgetPreviewFrameUrl;
+      voiceWidgetPreviewFrameReady=false; voiceWidgetPreviewSignature=''; frame.src=voiceWidgetPreviewFrameUrl;
     }
     if (force || voiceWidgetPreviewFrameReady) postVoiceWidgetPreviewState();
   }
