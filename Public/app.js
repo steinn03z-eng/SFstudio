@@ -1961,44 +1961,30 @@
     if(current>0){ track.style.animationDelay=`-${current/1000}s`; }
   }
   function syncVoiceWidgetPreview(s, force=false){
-    const host=$('voiceWidgetPreview'); if(!host) return;
-    if(s.enabled===false){ if(!host.querySelector('.voice-preview-off')) host.innerHTML='<div class="voice-preview-off"><span class="off-dot"></span><strong>Widget desactivado</strong><small>Actívalo para generar contenido en el overlay.</small></div>'; return; }
-    const list=voicePreviewItems();
-    if(s.roulette?.enabled){
-      const html=buildVoicePreviewHtml(s);
-      if(force || host.innerHTML!==html) host.innerHTML=html;
-      return;
+    const host = $('voiceWidgetPreview');
+    const frame = $('voiceWidgetPreviewFrame');
+    if (!host || !frame) return;
+    voiceWidgetPreviewPendingState = {config:structuredClone({...s,preview:true}),catalog:voiceWidgetPreviewCatalogPayload()};
+    host.classList.toggle('preview-disabled',s?.enabled===false);
+    if (!voiceWidgetPreviewFrameUrl) {
+      buildOverlayUrl('voice-list-overlay.html?preview=1').then(url=>{
+        const current=$('voiceWidgetPreviewFrame'); if(!current) return;
+        voiceWidgetPreviewFrameUrl=url; current.src=url;
+      }).catch(()=>{});
+    } else if (frame.src !== voiceWidgetPreviewFrameUrl) {
+      voiceWidgetPreviewFrameReady=false; frame.src=voiceWidgetPreviewFrameUrl;
     }
-    const structure=voiceListStructureKey(s,list);
-    let shell=host.querySelector('.voiceListShell');
-    if(force || !shell || shell.dataset.voiceStructure!==structure){
-      const html=buildVoicePreviewHtml({...s,autoShowEnabled:false,hideAfterShow:false});
-      const wrap=document.createElement('div'); wrap.innerHTML=html;
-      const next=wrap.firstElementChild;
-      if(next?.classList?.contains('voiceListShell')){ host.replaceChildren(next); shell=next; }
-      else { host.innerHTML=html; shell=host.querySelector('.voiceListShell'); }
-      if(shell) shell.dataset.voiceStructure=structure;
-    }
-    if(!shell) return;
-
-    const styleSignature=JSON.stringify({
-      axis:s.axis||s.direction, motion:s.motion, movementDirection:s.movementDirection,
-      fontFamily:s.fontFamily,fontSize:s.fontSize,fontWeight:s.fontWeight,fontStyle:s.fontStyle,
-      textColor:s.textColor,textShadow:s.textShadow,shadowColor:s.shadowColor,
-      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
-      outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
-      letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
-      listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,showIndex:s.showIndex,showId:s.showId,
-      overrides:s.overrides,list:list.map(v=>v.key)
-    });
-    if(force || shell.dataset.voiceStyleSignature!==styleSignature){
-      const hidden=voiceListVisibilityState(s).hidden;
-      preserveVoiceListAnimation(shell.querySelector('.voiceListTrack'),()=>applyVoiceListPreviewStyles(shell,s,hidden),Math.max(4,Number(s.motionSpeed||24)));
-      shell.dataset.voiceStyleSignature=styleSignature;
-    } else {
-      shell.classList.toggle('is-hidden',voiceListVisibilityState(s).hidden);
-    }
+    if (force || voiceWidgetPreviewFrameReady) postVoiceWidgetPreviewState();
   }
+
+  if (window.__sfVoiceListPreviewMessageHandler) window.removeEventListener('message',window.__sfVoiceListPreviewMessageHandler);
+  window.__sfVoiceListPreviewMessageHandler=(event)=>{
+    const data=event?.data;
+    if(!data || data.source!=='streamfusion-voice-list-preview') return;
+    if(data.type==='ready'){voiceWidgetPreviewFrameReady=true;postVoiceWidgetPreviewState();}
+  };
+  window.addEventListener('message',window.__sfVoiceListPreviewMessageHandler);
+
   const voiceLibraryItems=()=>{
     const merged=[]; const seen=new Set();
     for(const v of [...(state.catalog||[]),...(state.voices||[])]){
@@ -2131,6 +2117,7 @@
     const base=pointsWidgetDraft||structuredClone(pointsDraft?.widget||{});
     pointsWidgetDraft={enabled:true,commandPrefix:'!',commandWords:['point'],displaySeconds:5,cooldownMinutes:5,queueEnabled:true,...base};
     const s=pointsWidgetDraft;
+    window.__sfPointsWidgetEditorDirty=false;
     const prefixes=['!','.','@','/','-'].map(v=>`<option value="${esc(v)}" ${s.commandPrefix===v?'selected':''}>${esc(v)}</option>`).join('');
     $('view').innerHTML=`<div class="intro widget-editor-intro"><div><p class="eyebrow">WIDGET / PUNTOS</p><h2>Puntos</h2><p>Configura el comando que activa el aviso de puntos y controla el cooldown para evitar spam.</p></div><button class="btn secondary widget-back-btn" id="backToWidgetsFromPoints">← Volver a Widgets</button></div>
       <div class="widget-editor-layout points-widget-editor-layout"><section class="card widget-controls"><div class="widget-editor-topbar"><div><p class="eyebrow">EDITOR</p><h3>Configuración del widget</h3></div><div class="widget-header-actions"><button class="btn secondary" id="savePointsWidget">Guardar</button><button class="btn primary" id="openPointsWidgetOverlay">Generar Overlay</button></div></div>
@@ -2138,7 +2125,7 @@
       <article class="widget-subsection"><p class="eyebrow">TIEMPOS Y ANTI-SPAM</p>${ctl('Mostrar durante (segundos)','pwDisplaySeconds','input',s.displaySeconds)}${ctl('Cooldown por usuario (minutos)','pwCooldown','input',s.cooldownMinutes)}${ctl('Cola ordenada','pwQueue','check',s.queueEnabled!==false)}<div class="custom-hint"><strong>Cómo funciona</strong><span>Juan puede activar el widget una vez. Si vuelve a comentar antes del cooldown, se ignora. Juan y Julián pueden entrar seguidos y se mostrarán en orden, uno después de otro.</span></div></article></div></section>
       <section class="card widget-preview-card"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA EN TIEMPO REAL</p><h3>Puntos</h3></div><span class="widget-status online"><i></i> SIMULACIÓN</span></div><div id="pointsWidgetPreview" class="points-widget-preview"></div><div class="preview-actions points-widget-preview-actions"><button class="btn primary" id="simulatePointsWidget">＋ Simular comentario</button><span class="muted">Muestra los puntos del usuario y registra ese mismo comentario en Personalización → Chat.</span></div><div class="widget-preview-footer"><span class="muted">Un único overlay por cuenta.</span><code id="pointsOverlayLinkPreview">Genera el overlay para obtener tu enlace.</code></div></section></div>`;
     const updatePreview=()=>{};
-    const bindInput=(id,fn)=>{const el=$(id);if(!el)return; el.addEventListener('input',e=>{fn(e);updatePreview();});el.addEventListener('change',e=>{fn(e);updatePreview();});};
+    const bindInput=(id,fn)=>{const el=$(id);if(!el)return; el.addEventListener('input',e=>{window.__sfPointsWidgetEditorDirty=true;fn(e);updatePreview();});el.addEventListener('change',e=>{window.__sfPointsWidgetEditorDirty=true;fn(e);updatePreview();});};
     bindInput('pwEnabled',e=>pointsWidgetDraft.enabled=e.target.checked);
     bindInput('pwPrefix',e=>pointsWidgetDraft.commandPrefix=e.target.value);
     bindInput('pwWords',e=>{pointsWidgetDraft.commandWords=Array.from(new Set(String(e.target.value||'').split(',').map(v=>v.trim().replace(/^[@.!\/-]+/,'').toLowerCase()).filter(Boolean))).slice(0,12);});
@@ -2195,10 +2182,11 @@
       },chatExpireMs);
       pointsWidgetPreviewTimers.push(pointTimer);
     };
-    $('backToWidgetsFromPoints').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfVoiceWidgetEditorOpen=false;pointsWidgetDraft=null;clearPointsWidgetPreviewTimers();renderWidgets();};
+    $('backToWidgetsFromPoints').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfPointsWidgetLoadRequest='';window.__sfPointsWidgetEditorDirty=false;window.__sfVoiceWidgetEditorOpen=false;pointsWidgetDraft=null;clearPointsWidgetPreviewTimers();renderWidgets();};
     const save=async()=>{
       const result=await api('/api/points/widget',{method:'PUT',body:JSON.stringify({widget:structuredClone(pointsWidgetDraft)})});
       pointsWidgetDraft=structuredClone(result.widget||pointsWidgetDraft);
+      window.__sfPointsWidgetEditorDirty=false;
       settings.points={...(settings.points||{}),widget:structuredClone(pointsWidgetDraft)};
       if(pointsDraft) pointsDraft.widget=structuredClone(pointsWidgetDraft);
       state.previewPointsWidgets = [];
@@ -2986,10 +2974,29 @@
       const total=voiceLibraryItems().length;
       $('view').innerHTML=`<div class="intro"><h2>Widgets</h2><p>Selecciona un widget para abrir su editor sin perder la sesión de tu cuenta.</p></div><div class="widget-launch-grid"><button type="button" class="card widget-launch-card widget-launch-card-premium" id="openVoiceWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">🎙️</span><span class="widget-launch-copy"><span class="widget-launch-kicker">WIDGET DE STREAM</span><strong class="widget-launch-title">Lista de voces</strong><small class="widget-launch-desc">Diseña la lista, movimiento e intro. Todo se guarda en tu cuenta y no necesita conectar TikTok o Twitch.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-music" id="openMusicWidget"><span class="widget-launch-icon music-launch-icon" aria-hidden="true"><svg viewBox="0 0 24 24" role="img" focusable="false"><path d="M9 18.2V5.8l10-2.2v11.6"/><path d="M9 16.2c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Zm10-1c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Z"/></svg><i></i></span><span class="widget-launch-copy"><span class="widget-launch-kicker">REPRODUCTOR</span><strong class="widget-launch-title">Música</strong><small class="widget-launch-desc">Cola de canciones, puntos, comandos y reproductor tipo vinil para OBS.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-points" id="openPointsWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">✦</span><span class="widget-launch-copy"><span class="widget-launch-kicker">INTERACCIÓN</span><strong class="widget-launch-title">Puntos</strong><small class="widget-launch-desc">Muestra los puntos del usuario cuando comenta tu comando, con cooldown y cola anti-spam.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-announcement" id="openAnnouncementWidget"><span class="widget-launch-icon" aria-hidden="true">📢</span><span class="widget-launch-copy"><span class="widget-launch-kicker">PROMOCIÓN</span><strong class="widget-launch-title">Anuncio</strong><small class="widget-launch-desc">Crea anuncios transparentes con texto, imágenes, tiempos y hasta 3 partes.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button></div>`;
       $('openVoiceWidgetEditor').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfVoiceWidgetEditorOpen=true;voiceWidgetPreviewStartAt=Date.now();voiceWidgetVisibilityPhase='visible';voiceWidgetVisibilityPhaseStartedAt=Date.now();try{renderWidgets();}catch(e){console.error('[Widgets] Lista de voces',e);toast('Lista de voces',e.message||'No se pudo abrir el editor.','err');}};
-      $('openPointsWidgetEditor').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=true;try{const data=await api('/api/points/settings');pointsDraft=structuredClone(data.points||{});pointsWidgetDraft=structuredClone(pointsDraft.widget||{});}catch(e){pointsDraft=pointsDraft||{};pointsWidgetDraft=pointsWidgetDraft||{};toast('Puntos',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Puntos',e);toast('Puntos',e.message||'No se pudo abrir el editor.','err');}};
+      $('openPointsWidgetEditor').onclick=()=>{
+        window.__sfVoiceWidgetEditorOpen=false;
+        window.__sfPointsWidgetEditorOpen=true;
+        window.__sfPointsWidgetEditorDirty=false;
+        try { renderWidgets(); } catch(e) { console.error('[Widgets] Puntos',e); toast('Puntos',e.message||'No se pudo abrir el widget.','err'); return; }
+        const requestId=`${Date.now()}-${Math.random()}`;
+        window.__sfPointsWidgetLoadRequest=requestId;
+        api('/api/points/settings').then(data=>{
+          if(window.__sfPointsWidgetLoadRequest!==requestId || !window.__sfPointsWidgetEditorOpen || window.__sfPointsWidgetEditorDirty) return;
+          pointsDraft=structuredClone(data.points||{});
+          pointsWidgetDraft=structuredClone(pointsDraft.widget||{});
+          const enabled=$('pwEnabled'),prefix=$('pwPrefix'),words=$('pwWords'),seconds=$('pwDisplaySeconds'),cooldown=$('pwCooldown'),queue=$('pwQueue');
+          if(enabled) enabled.checked=pointsWidgetDraft.enabled!==false;
+          if(prefix) prefix.value=String(pointsWidgetDraft.commandPrefix||'!');
+          if(words) words.value=pointsWidgetWordsText(pointsWidgetDraft.commandWords);
+          if(seconds) seconds.value=String(pointsWidgetDraft.displaySeconds??5);
+          if(cooldown) cooldown.value=String(pointsWidgetDraft.cooldownMinutes??5);
+          if(queue) queue.checked=pointsWidgetDraft.queueEnabled!==false;
+        }).catch(e=>toast('Puntos',e.message||'No se pudo cargar la configuración.','err'));
+      };
       $('openAnnouncementWidget').onclick=()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=true;try{renderWidgets();}catch(e){console.error('[Widgets] Anuncio',e);toast('Anuncio',e.message||'No se pudo abrir el widget.','err');}};
       $('openMusicWidget').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=false;window.__sfMusicWidgetEditorOpen=true;try{const data=await api('/api/music/settings');musicWidgetDraft=structuredClone(data.music||{});}catch(e){musicWidgetDraft=musicDefault();toast('Música',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Música',e);toast('Música',e.message||'No se pudo abrir el widget.','err');}};
-      if(total===0) loadVoices().then(()=>{if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen)renderWidgets();}).catch(()=>{});
+      if(total===0) loadVoices().catch(()=>{});
       return;
     }
     const s={autoShowEnabled:false,autoShowEvery:30,autoShowFor:6,hideAfterShow:false,...structuredClone(settings.voiceList||{})};
@@ -3009,7 +3016,7 @@
       <article class="widget-subsection"><p class="eyebrow">VISIBILIDAD</p>${voiceCtl('Mostrar índice','vShowIndex','check',s.showIndex)}${voiceCtl('Mostrar ID','vShowId','check',s.showId)}${voiceCtl('Mostrar automáticamente','vAutoShow','check',s.autoShowEnabled)}${voiceCtl('Ocultar al terminar de mostrar la lista','vHideAfterShow','check',s.hideAfterShow===true)}${voiceCtl('Esperar tras ocultar (segundos)','vAutoEvery','input',s.autoShowEvery)}${voiceCtl('Visible durante (segundos)','vAutoFor','input',s.autoShowFor)}</article></div>
       ${voiceRouletteMarkup(s.roulette)}
       </section>
-      <section class="card widget-preview-card"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA EN TIEMPO REAL</p><h3>Lista de Voces</h3></div><span id="voicePreviewStatus">${voiceStatusMarkup()}</span></div><div id="voiceWidgetPreview" class="voice-widget-preview"></div><div class="widget-preview-footer"><span class="muted">La misma configuración guardada se usa en tu overlay único.</span><code>/voice-list-overlay.html</code></div></section></div>`;
+      <section class="card widget-preview-card"><div class="preview-header"><div><p class="eyebrow">VISTA PREVIA EN TIEMPO REAL</p><h3>Lista de Voces</h3></div><span id="voicePreviewStatus">${voiceStatusMarkup()}</span></div><div id="voiceWidgetPreview" class="voice-widget-preview"><iframe id="voiceWidgetPreviewFrame" title="Vista previa Lista de Voces" src="about:blank" loading="eager"></iframe></div><div class="widget-preview-footer"><span class="muted">La misma configuración guardada se usa en tu overlay único.</span><code>/voice-list-overlay.html</code></div></section></div>`;
     syncVoiceWidgetPreview(s,true);
     const map={vEnabled:['enabled','check'],vTransparent:['transparent','check'],vBgOpacity:['backgroundOpacity','num'],vFont:['fontFamily'],vSize:['fontSize','num'],vWeight:['fontWeight','num'],vStyle:['fontStyle'],vColor:['textColor'],vShadow:['textShadow'],vShadowColor:['shadowColor'],vOutline:['outlineWidth','num'],vOutlineColor:['outlineColor'],vTransform:['textTransform'],vLetter:['letterSpacing','num'],vLine:['lineHeight','num'],vGap:['itemGap','num'],vPosition:['__position'],vAxis:['axis'],vMoveDir:['movementDirection'],vMotion:['motion'],vMotionSpeed:['motionSpeed','num'],vShowIndex:['showIndex','check'],vShowId:['showId','check'],vAutoShow:['autoShowEnabled','check'],vHideAfterShow:['hideAfterShow','check'],vAutoEvery:['autoShowEvery','num'],vAutoFor:['autoShowFor','num']};
     const scheduleVoiceWidgetSave=()=>{clearTimeout(voiceWidgetSaveTimer);voiceWidgetSaveTimer=setTimeout(async()=>{try{const result=await api('/api/voice-list/settings',{method:'PUT',body:JSON.stringify(s)});settings.voiceList=merge(settings.voiceList,result.voiceList||s);}catch(e){console.warn('voice widget autosave',e);}},300);};
@@ -3732,9 +3739,11 @@
       // Replacing the editor DOM while an input/range has focus causes visible
       // flicker, caret jumps and makes editing nearly impossible.
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
-      if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){
-        renderWidgets();
-      }else if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
+      // Mientras el usuario está en la pantalla raíz de Widgets, las actualizaciones
+      // de la biblioteca llegan en segundo plano y no necesitan reconstruir el DOM.
+      // Reemplazar las tarjetas durante hover/mousedown provoca parpadeo y puede
+      // cancelar el primer clic. La pantalla se pinta de nuevo solo al entrar a Widgets.
+      if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
         voiceWidgetDraft=merge(voiceWidgetDraft||settings.voiceList,v||{});
         voiceWidgetPreviewSignature='';
       }
@@ -3747,7 +3756,12 @@
       }
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
       if(page==='voices'||page==='customize'||page==='points'){ render(); }
-      else if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){ renderWidgets(); }
+      // En la pantalla raíz de Widgets no reconstruimos el DOM por sincronizaciones
+      // de catálogo durante LIVE: las tarjetas deben permanecer estables mientras
+      // el puntero está encima y hasta que se complete un clic.
+      else if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
+        try { syncVoiceWidgetPreview(voiceWidgetDraft||settings.voiceList||{},true); } catch(e) { console.warn('voice library preview sync',e); }
+      }
     });
     socket.on('voiceListPresence', d=>{state.voiceListPresence={online:Boolean(d?.online),connections:Number(d?.connections||0)};if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){const frag=document.createRange();$('voiceWidgetStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));$('voicePreviewStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));}});
     socket.on('liveEnded', info=>{

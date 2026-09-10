@@ -1799,15 +1799,30 @@ app.get("/api/voices/catalog", (req, res) => {
             };
         }) : [];
         for (const v of custom) {
-            const key = `fish:${v.fishId}`;
+            const fishId = String(v.fishId || "").trim();
+            if (!fishId) continue;
+            const key = `fish:${fishId}`;
             const existing = voices.findIndex((x) => String(x.key || "") === key);
             const item = {
-                key, id: v.fishId, fishId: v.fishId, label: v.label, author: v.author, description: v.description, image: v.imageUrl, tags: v.tags || [],
-                library: "fish", referenceId: v.fishId,
+                key,
+                id: fishId,
+                fishId,
+                label: v.label,
+                author: v.author,
+                description: v.description,
+                image: v.imageUrl,
+                tags: Array.isArray(v.tags) ? v.tags : [],
+                aliases: Array.from(new Set([v.label, fishId, ...(Array.isArray(v.tags) ? v.tags : [])].map((x) => String(x || "").trim()).filter(Boolean))),
+                library: "fish",
+                source: "fish-user",
+                referenceId: fishId,
+                ownerId: ownerId,
+                updatedAt: v.updatedAt || v.createdAt || null,
             };
             if (existing >= 0) voices[existing] = item; else voices.push(item);
         }
-        res.json({ voices });
+        const customVersion = custom.reduce((max, voice) => Math.max(max, Date.parse(String(voice.updatedAt || voice.createdAt || "")) || 0), 0);
+        res.json({ voices, customVersion, ownerId: ownerId || null });
     } catch (error) {
         res.status(500).json({ error: error?.message || "No se pudo cargar el catálogo." });
     }
@@ -2924,7 +2939,13 @@ app.post("/api/voicebot/tts", async (req, res) => {
         const customOwner = ownerId && overlayKey && database.getUserByOverlayKey(overlayKey)?.id === ownerId ? ownerId : "";
         const customVoiceId = voiceId.startsWith("fish:") ? voiceId.slice(5) : "";
         if (customVoiceId && !customOwner) return res.status(403).json({ error: "La voz personalizada no pertenece a esta sesión." });
-        if (customVoiceId && !database.listUserVoices(customOwner).some((voice) => String(voice.fishId) === customVoiceId)) {
+        // La biblioteca de la cuenta es la fuente de verdad para el overlay Chat.
+        // La refrescamos desde SQLite en cada TTS personalizado para que una voz
+        // recién agregada, o una actualización hecha desde otra pestaña, quede
+        // disponible incluso después de reiniciar el servidor.
+        const accountVoices = customOwner ? database.listUserVoices(customOwner) : [];
+        if (customOwner) setCustomVoiceRules(customOwner, accountVoices);
+        if (customVoiceId && !accountVoices.some((voice) => String(voice.fishId) === customVoiceId)) {
             return res.status(404).json({ error: "Esta voz personalizada ya no existe en la biblioteca de esta cuenta." });
         }
         const resolvedVoiceId = customVoiceId || voiceId;

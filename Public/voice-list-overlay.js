@@ -4,7 +4,8 @@
   if (!root) return;
   const widgetParams = new URLSearchParams(location.search);
   const widgetOverlayKey = widgetParams.get("overlayKey") || "";
-  const socket = typeof io === "function" ? io({ auth: { overlayKey: widgetOverlayKey, widget: "voicelist" }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity }) : null;
+  const previewMode = widgetParams.get("preview") === "1";
+  const socket = !previewMode && typeof io === "function" ? io({ auth: { overlayKey: widgetOverlayKey, widget: "voicelist" }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity }) : null;
 
   const DEFAULT_ROULETTE = {
     enabled: false,
@@ -275,6 +276,41 @@
     },100);
   }
 
+  if (previewMode) {
+    window.parent?.postMessage({source:'streamfusion-voice-list-preview',type:'ready'}, '*');
+    window.addEventListener('message', (event) => {
+      const data = event?.data;
+      if (!data || data.source !== 'streamfusion-voice-list-preview') return;
+      if (data.type === 'state' || data.type === 'config') {
+        const incoming = data.config || {};
+        settings = normalizeAxisSettings({
+          ...DEFAULTS,
+          ...incoming,
+          roulette: {...DEFAULT_ROULETTE, ...(incoming.roulette || {})}
+        });
+        if (Array.isArray(data.catalog)) catalog = data.catalog.map((v,i)=>({
+          key:String(v?.key ?? v?.id ?? v?.fishId ?? `preview-${i+1}`),
+          id:String(v?.id ?? v?.fishId ?? ''),
+          fishId:String(v?.fishId ?? v?.id ?? ''),
+          label:String(v?.label ?? v?.name ?? v?.key ?? v?.fishId ?? 'Voz')
+        }));
+        visibilityPhase='visible';
+        visibilityPhaseStartedAt=Date.now();
+        sceneStartAt=Date.now();
+        appliedStyleSignature='';
+        lastRenderKey='';
+        renderRevision += 1;
+        render();
+        startVisibilityTicker();
+      } else if (data.type === 'catalog' && Array.isArray(data.catalog)) {
+        catalog = data.catalog;
+        appliedStyleSignature='';
+        renderRevision += 1;
+        render();
+      }
+    });
+  }
+
   const owner = new URLSearchParams(location.search).get("owner") || "";
   let catalogRequest = 0;
   async function refreshUserVoiceCatalog() {
@@ -291,7 +327,7 @@
       console.warn("[voice-list-overlay] No se pudo actualizar la biblioteca:", error);
     }
   }
-  Promise.all([
+  if (!previewMode) Promise.all([
     fetch(`/api/voices/catalog?owner=${encodeURIComponent(owner)}&overlayKey=${encodeURIComponent(widgetOverlayKey)}&_v=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()),
     fetch(`/api/voice-list/settings?owner=${encodeURIComponent(owner)}&overlayKey=${encodeURIComponent(widgetOverlayKey)}&_v=${Date.now()}`, { cache: "no-store" }).then((r) => r.json()),
   ]).then(([cat, s]) => {
