@@ -124,22 +124,20 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
-  function overrideFor(key) { return key && settings.overrides?.[key] ? settings.overrides[key] : {}; }
-
   function renderItem(v, i, s) {
-    const o = overrideFor(v.key);
-    const shadowType = o.textShadow || s.textShadow;
-    const shadowColor = o.shadowColor || s.shadowColor || "#000000";
-    const outlineWidth = Number(o.outlineWidth ?? s.outlineWidth ?? 0);
-    const outlineColor = o.outlineColor || s.outlineColor || "#000000";
-    const style = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadowValue(shadowType, shadowColor)};-webkit-text-stroke:${outlineValue(outlineWidth, outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};`;
+    const style = `font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow, s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth ?? 0, s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
     return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id)}</small>` : ""}</div>`;
   }
 
-  function renderList(list, s) {
+  function renderList(s, list) {
     if (!list.length) return '<div class="voiceListEmpty">No se encontraron voces.</div>';
-    const repeated = (s.motion === "static") ? list.map((v, i) => renderItem(v, i, s)).join("") : list.map((v, i) => renderItem(v, i, s)).join("") + list.map((v, i) => renderItem(v, i, s)).join("");
-    return `<div class="voiceListStage"><div class="voiceListViewport"><div class="voiceListTrack">${repeated}</div></div></div>`;
+    const axis = s.axis || s.direction || "vertical";
+    const ordered = s.movementDirection === "reverse" ? [...list].reverse() : list;
+    const items = ordered.map((v, i) => renderItem(v, i, s)).join("");
+    // En horizontal el contenido debe ser una sola línea continua.
+    // Repetimos la línea únicamente cuando hay movimiento para permitir un loop fluido.
+    const content = s.motion === "static" ? items : `${items}${items}`;
+    return `<div class="voiceListStage"><div class="voiceListViewport"><div class="voiceListTrack">${content}</div></div></div>`;
   }
 
   function syncVisibilityClock(s, now = Date.now()) {
@@ -197,40 +195,20 @@
     const imagePos = `image-${imageCfg.position || "top"}`;
     const image = imageCfg?.url ? `<div class="voiceListRouletteImageWrap"><img src="${esc(imageCfg.url)}" alt="${esc(imageCfg.alt)}" style="width:${clamp(imageCfg.width, 80, 1200)}px;height:${clamp(imageCfg.height, 80, 1200)}px;object-fit:${esc(imageCfg.fit || "contain")};opacity:${clamp(imageCfg.opacity ?? 1, 0, 1)}" /></div>` : "";
     const intro = `<div class="voiceListRouletteShell ${motionClass} ${imagePos}"><div class="voiceListRouletteCard" style="--vl-roulette-card-bg:rgba(255,255,255,${clamp(r.cardOpacity ?? 0.12, 0, 1)});">${image}<div class="voiceListRouletteCopy"><div class="voiceListRouletteText">${esc(scene.text || r.title)}</div></div></div></div>`;
-    const listBlock = `<div class="voiceListRouletteListWrap">${renderList(list, s)}</div>`;
+    const listBlock = `<div class="voiceListRouletteListWrap">${renderList(s, list)}</div>`;
     return scene.mode === "intro" ? intro : (isListVisible(s) ? listBlock : "");
   }
 
   function listStructureKey(s,list){ return JSON.stringify({axis:s.axis||s.direction||'vertical',motion:s.motion||'static',moveDir:s.movementDirection||'forward',showIndex:s.showIndex===true,showId:s.showId===true,items:list.map(v=>String(v.key||v.id||v.fishId||v.label||''))}); }
-  function applyListStyles(shell, s, list, hidden) {
-    const direction = s.axis || s.direction || "vertical";
-    const nextClassName = `voiceListShell direction-${direction} travel-${s.movementDirection || "forward"} motion-${s.motion || "static"} align-${s.align || "left"} list-position-${s.listPosition || "left"} horizontal-position-${s.horizontalPosition || "center"}${hidden ? " is-hidden" : ""}`;
-    if (shell.className !== nextClassName) shell.className = nextClassName;
-    shell.style.setProperty("--vl-font", s.fontFamily);
-    shell.style.setProperty("--vl-size", `${s.fontSize}px`);
-    shell.style.setProperty("--vl-weight", s.fontWeight);
-    shell.style.setProperty("--vl-style", s.fontStyle);
-    shell.style.setProperty("--vl-color", s.textColor);
-    shell.style.setProperty("--vl-shadow", shadowValue(s.textShadow, s.shadowColor));
-    shell.style.setProperty("--vl-outline-width", `${Math.max(0, Number(s.outlineWidth ?? 0))}px`);
-    shell.style.setProperty("--vl-outline-color", s.outlineColor || "#000000");
-    shell.style.setProperty("--vl-transform", s.textTransform);
-    shell.style.setProperty("--vl-spacing", `${s.letterSpacing}px`);
-    shell.style.setProperty("--vl-line", s.lineHeight);
-    shell.style.setProperty("--vl-gap", `${s.itemGap}px`);
-    shell.style.setProperty("--vl-bg", s.transparent ? `rgba(255,255,255,${s.backgroundOpacity})` : `rgba(255,255,255,${Math.max(.05, s.backgroundOpacity)})`);
-    shell.style.setProperty("--vl-speed", `${s.motionSpeed || 24}s`);
-    shell.style.setProperty("--vl-align", s.align);
-
-    const ordered = s.movementDirection === "reverse" ? [...list].reverse() : list;
-    const items = shell.querySelectorAll(".voiceListItem");
-    items.forEach((item, i) => {
-      const v = ordered[i % Math.max(1, ordered.length)];
-      const o = overrideFor(v?.key) || {};
-      item.style.cssText = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadowValue(o.textShadow || s.textShadow, o.shadowColor || s.shadowColor)};-webkit-text-stroke:${outlineValue(Number(o.outlineWidth ?? s.outlineWidth ?? 0), o.outlineColor || s.outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
-      const idx = item.querySelector(".voiceListIndex"); if (idx) idx.textContent = s.showIndex ? `${(i % ordered.length) + 1}. ` : "";
-      const small = item.querySelector("small"); if (small) small.textContent = s.showId ? String(v?.id || "") : "";
-    });
+  function applyListStyles(rootEl,s,list,hidden){
+    const axis=s.axis||s.direction||'vertical', moveDir=s.movementDirection||'forward', motion=s.motion||'static';
+    rootEl.className=`voiceListShell direction-${axis} travel-${moveDir} motion-${motion} align-${s.align||'left'} list-position-${s.listPosition||'left'} horizontal-position-${s.horizontalPosition||'center'}${hidden?' is-hidden':''}`;
+    rootEl.style.setProperty('--vl-font',s.fontFamily); rootEl.style.setProperty('--vl-size',`${Number(s.fontSize)}px`); rootEl.style.setProperty('--vl-weight',s.fontWeight); rootEl.style.setProperty('--vl-style',s.fontStyle); rootEl.style.setProperty('--vl-color',s.textColor);
+    rootEl.style.setProperty('--vl-shadow',shadow(s.textShadow,s.shadowColor)); rootEl.style.setProperty('--vl-outline-width',`${Math.max(0,Number(s.outlineWidth??0))}px`); rootEl.style.setProperty('--vl-outline-color',s.outlineColor||'#000000'); rootEl.style.setProperty('--vl-transform',s.textTransform);
+    rootEl.style.setProperty('--vl-spacing',`${s.letterSpacing}px`); rootEl.style.setProperty('--vl-line',s.lineHeight); rootEl.style.setProperty('--vl-gap',`${s.itemGap}px`); rootEl.style.setProperty('--vl-bg',s.transparent?`rgba(255,255,255,${s.backgroundOpacity})`:`rgba(255,255,255,${Math.max(.05,s.backgroundOpacity)})`); rootEl.style.setProperty('--vl-speed',`${s.motionSpeed||24}s`); rootEl.style.setProperty('--vl-align',axis==='horizontal'?'center':(s.listPosition||s.align||'left'));
+    const ordered=s.movementDirection==='reverse'?[...list].reverse():list; const items=rootEl.querySelectorAll('.voiceListItem');
+    items.forEach((item,i)=>{ const v=ordered[i%Math.max(1,ordered.length)]; if(!v)return; item.style.cssText=`font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow,s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth??0,s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing||0)}px;line-height:${Number(s.lineHeight||1.2)};`; const index=item.querySelector('.voiceListIndex'); if(index)index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:''; const small=item.querySelector('small'); if(small)small.textContent=s.showId?String(v.id||v.fishId||''):''; });
+    rootEl.dataset.structure=listStructureKey(s,list);
   }
   function preserveAnimation(track,mutate,newDurationSeconds){
     if(!track){ mutate?.(); return; }

@@ -3728,16 +3728,18 @@
     socket.on('announcementsSettings', list=>{settings.announcements=Array.isArray(list)?list:[];if(page==='widgets'&&window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen)renderAnnouncementHub();});
     socket.on('voiceListSettings', v=>{
       settings.voiceList=merge(settings.voiceList,v||{});
-      // Never rebuild Widgets -> Puntos from background voice-list updates.
-      // Replacing the editor DOM while an input/range has focus causes visible
-      // flicker, caret jumps and makes editing nearly impossible.
+      // Las actualizaciones de la biblioteca/lista de voces llegan también durante LIVE.
+      // En la portada de Widgets no hay nada que redibujar: reconstruir el DOM aquí
+      // destruía y creaba de nuevo el botón Puntos, provocando parpadeo y clicks inestables.
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
-      if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){
-        renderWidgets();
-      }else if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
+      if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
         voiceWidgetDraft=merge(voiceWidgetDraft||settings.voiceList,v||{});
         voiceWidgetPreviewSignature='';
+        return;
       }
+      // En la portada de Widgets se conserva el DOM existente. Al volver a entrar
+      // o navegar a otra sección, renderWidgets() ya reconstruye el contenido.
+      if(page==='widgets'){ return; }
     });
     socket.on('voiceLibrary', payload=>{
       applyVoiceLibrarySync(payload||{});
@@ -3747,7 +3749,9 @@
       }
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
       if(page==='voices'||page==='customize'||page==='points'){ render(); }
-      else if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){ renderWidgets(); }
+      // La pantalla raíz de Widgets no depende de la biblioteca de voces.
+      // No la reconstruimos durante LIVE para mantener botones y eventos estables.
+      else if(page==='widgets'){ return; }
     });
     socket.on('voiceListPresence', d=>{state.voiceListPresence={online:Boolean(d?.online),connections:Number(d?.connections||0)};if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){const frag=document.createRange();$('voiceWidgetStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));$('voicePreviewStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));}});
     socket.on('liveEnded', info=>{
