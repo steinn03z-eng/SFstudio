@@ -3069,28 +3069,19 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
         const res = await fetch(`/api/voices/catalog?owner=${encodeURIComponent(overlayOwner)}&overlayKey=${encodeURIComponent(overlayKey)}`, { cache:'no-store' });
         if (!res.ok) throw new Error(`catalog ${res.status}`);
         const data = await res.json();
-        const serverCustomKeys = new Set();
         for(const voice of (data?.voices || [])) {
           const key = String(voice?.key || (voice?.library === 'fish' ? `fish:${voice?.fishId || voice?.id || ''}` : '')).trim();
           const id = String(voice?.id || voice?.fishId || '').trim();
           if(!key || !id) continue;
           const isCustom = String(voice?.library || '').toLowerCase() === 'fish' || key.startsWith('fish:');
-          if (isCustom) serverCustomKeys.add(key);
           voiceCatalog[key] = {
             label: String(voice?.label || id),
             id,
-            aliases: Array.from(new Set([voice?.label || '', voice?.fishId || '', voice?.id || '', ...(Array.isArray(voice?.tags) ? voice.tags : []), ...(Array.isArray(voice?.aliases) ? voice.aliases : [])].filter(Boolean))),
+            aliases: [voice?.label || '', voice?.fishId || '', voice?.id || '', ...(Array.isArray(voice?.tags) ? voice.tags : [])].filter(Boolean),
             source: isCustom ? 'fish-user' : 'streamfusion',
             library: voice?.library || (isCustom ? 'fish' : 'streamfusion'),
             referenceId: String(voice?.referenceId || id),
-            ownerId: String(voice?.ownerId || overlayOwner || ''),
-            updatedAt: voice?.updatedAt || voice?.createdAt || null,
           };
-        }
-        // La cuenta es la fuente de verdad: si una voz personalizada fue eliminada
-        // de la biblioteca, no debe quedar una copia antigua utilizable en el overlay.
-        for (const key of Object.keys(voiceCatalog)) {
-          if (key.startsWith('fish:') && !serverCustomKeys.has(key)) delete voiceCatalog[key];
         }
       } catch (err) {
         console.warn('[VoiceBot] No se pudo cargar la biblioteca privada:', err);
