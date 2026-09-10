@@ -124,30 +124,32 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
-  function overrideFor(s, key) {
-    const overrides = s?.overrides;
-    if (!overrides || typeof overrides !== "object") return {};
-    return overrides[key] || {};
+  function overrideFor(key, s) {
+    const overrides = s?.overrides && typeof s.overrides === "object" ? s.overrides : {};
+    const value = key != null ? overrides[String(key)] : null;
+    return value && typeof value === "object" ? value : {};
   }
 
   function itemStyle(v, s) {
-    const o = overrideFor(s, v?.key || v?.id || v?.fishId || v?.label);
-    const fontFamily = o.fontFamily || s.fontFamily || "Inter, Arial, sans-serif";
-    const fontSize = Number(o.fontSize ?? s.fontSize ?? 28);
-    const fontWeight = Number(o.fontWeight ?? s.fontWeight ?? 700);
-    const fontStyle = o.fontStyle || s.fontStyle || "normal";
-    const color = o.color || s.textColor || "#000000";
-    const textShadow = o.textShadow || s.textShadow || "none";
+    const o = overrideFor(v?.key ?? v?.id ?? v?.fishId, s);
+    const fontFamily = o.fontFamily || s.fontFamily;
+    const fontSize = o.fontSize ?? s.fontSize;
+    const fontWeight = o.fontWeight ?? s.fontWeight;
+    const fontStyle = o.fontStyle || s.fontStyle;
+    const textColor = o.color || s.textColor;
+    const textShadow = o.textShadow || s.textShadow;
     const shadowColor = o.shadowColor || s.shadowColor || "#000000";
-    const outlineWidth = Number(o.outlineWidth ?? s.outlineWidth ?? 0);
+    const outlineWidth = o.outlineWidth ?? s.outlineWidth ?? 0;
     const outlineColor = o.outlineColor || s.outlineColor || "#000000";
-    const textTransform = o.textTransform || s.textTransform || "none";
-    return `font-family:${esc(fontFamily)};font-size:${fontSize}px;font-weight:${fontWeight};font-style:${esc(fontStyle)};color:${esc(color)};text-shadow:${shadow(textShadow, shadowColor)};-webkit-text-stroke:${outline(outlineWidth, outlineColor)};paint-order:stroke fill;text-transform:${esc(textTransform)};letter-spacing:${Number(s.letterSpacing ?? 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
+    const textTransform = o.textTransform || s.textTransform;
+    return `font-family:${esc(fontFamily)};font-size:${Number(fontSize)}px;font-weight:${Number(fontWeight)};font-style:${esc(fontStyle)};color:${esc(textColor)};text-shadow:${shadow(textShadow, shadowColor)};-webkit-text-stroke:${outline(outlineWidth, outlineColor)};paint-order:stroke fill;text-transform:${esc(textTransform)};letter-spacing:${Number(s.letterSpacing ?? 0)}px;line-height:${Number(s.lineHeight ?? 1.2)};`;
   }
 
   function renderItem(v, i, s) {
     const style = itemStyle(v, s);
-    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id || v.fishId || "")}</small>` : ""}</div>`;
+    const id = v?.id ?? v?.fishId ?? "";
+    const label = v?.label ?? v?.name ?? v?.key ?? v?.fishId ?? "Voz";
+    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(label)}${s.showId ? `<small>${esc(id)}</small>` : ""}</div>`;
   }
 
   function renderList(s, list) {
