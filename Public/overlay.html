@@ -2819,7 +2819,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
   <script>
     const overlayParams = new URLSearchParams(location.search);
     const overlayKey = overlayParams.get("overlayKey") || "";
-    let overlayOwner = overlayParams.get("owner") || "";
+    const overlayOwner = overlayParams.get("owner") || "";
     const socket = io({ auth: { overlayKey }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
     const list = document.getElementById('list');
     const SETTINGS_KEY = "streamfusion.ui.overlay-settings.v1";
@@ -3064,16 +3064,11 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
       }
 
       rebuildVoiceCatalogSearchIndex();
-      if(!overlayKey) return;
+      if(!overlayOwner || !overlayKey) return;
       try {
-        const catalogUrl = `/api/voices/catalog?${overlayOwner ? `owner=${encodeURIComponent(overlayOwner)}&` : ''}overlayKey=${encodeURIComponent(overlayKey)}`;
-        const res = await fetch(catalogUrl, { cache:'no-store' });
+        const res = await fetch(`/api/voices/catalog?owner=${encodeURIComponent(overlayOwner)}&overlayKey=${encodeURIComponent(overlayKey)}`, { cache:'no-store' });
         if (!res.ok) throw new Error(`catalog ${res.status}`);
         const data = await res.json();
-        // El servidor resuelve la cuenta desde overlayKey. Conservamos ese ID
-        // para TTS y para cualquier sincronización posterior, incluso en URLs
-        // antiguas que no traían ?owner=.
-        if (data?.ownerId) overlayOwner = String(data.ownerId);
         for(const voice of (data?.voices || [])) {
           const key = String(voice?.key || (voice?.library === 'fish' ? `fish:${voice?.fishId || voice?.id || ''}` : '')).trim();
           const id = String(voice?.id || voice?.fishId || '').trim();
@@ -6353,10 +6348,7 @@ function fetchVoiceAudio(text, voiceId, emotion = "", item = null){
       voiceBotPreparingCount += 1;
       const resolved = resolveQueuedVoice(entry);
       entry.preparedVoiceKey = resolved.voiceKey;
-      const resolvedTtsVoiceId = (resolved.voiceKey === RANDOM_VOICE_KEY || String(resolved.voice?.library || "").toLowerCase() === "fish" || String(resolved.voice?.source || "").toLowerCase() === "fish-user" || String(resolved.voiceKey || "").startsWith("fish:"))
-        ? resolved.voiceKey
-        : resolved.voice.id;
-      entry.audioPromise = fetchVoiceAudio(entry.text, resolvedTtsVoiceId, entry.emotion || "", entry.sourceItem)
+      entry.audioPromise = fetchVoiceAudio(entry.text, resolved.voice.id, entry.emotion || "", entry.sourceItem)
         .then((response) => {
           entry.response = response;
           entry.ready = true;

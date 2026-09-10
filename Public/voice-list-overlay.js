@@ -227,6 +227,8 @@
       textColor:s.textColor,textShadow:s.textShadow,shadowColor:s.shadowColor,
       outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
       letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
+      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
+      autoShowEnabled:s.autoShowEnabled,autoShowEvery:s.autoShowEvery,autoShowFor:s.autoShowFor,hideAfterShow:s.hideAfterShow,
       listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,showIndex:s.showIndex,showId:s.showId,
       overrides:s.overrides,list:list.map(v=>v.key)
     });
@@ -254,7 +256,10 @@
     }
     if(!shell) return;
     const signature=styleSignatureFor(s,list);
-    const hidden=isListVisible(s);
+    // isListVisible() returns true when the list must be on screen.  The
+    // previous inverse was only corrected by the ticker afterwards, causing a
+    // visible flash and a preview/overlay mismatch whenever styles changed.
+    const hidden=!isListVisible(s);
     if(appliedStyleSignature!==signature){
       preserveAnimation(shell.querySelector('.voiceListTrack'),()=>applyListStyles(shell,s,list,hidden),Math.max(4,Number(s.motionSpeed||24)));
       appliedStyleSignature=signature;

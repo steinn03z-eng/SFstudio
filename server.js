@@ -1777,17 +1777,12 @@ app.get("/api/voices/catalog", (req, res) => {
         const base = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
         const requestedOwner = String(req.query?.owner || "").trim();
         const overlayKey = String(req.query?.overlayKey || "").trim();
-        // Para los overlays públicos, overlayKey es la credencial de la cuenta.
-        // No dependemos de que el cliente conserve además el parámetro owner.
         let ownerId = req.user?.id || null;
-        let ownerFromOverlay = null;
-        if (overlayKey) {
-            ownerFromOverlay = database.getUserByOverlayKey(overlayKey);
-            if (ownerFromOverlay?.id && (!ownerId || ownerId !== ownerFromOverlay.id)) ownerId = ownerFromOverlay.id;
+        if (!ownerId && requestedOwner && overlayKey) {
+            const owner = database.getUserByOverlayKey(overlayKey);
+            if (owner?.id === requestedOwner) ownerId = owner.id;
         }
-        // Si no hay overlayKey, solo aceptamos el owner explícitamente pedido
-        // cuando coincide con una sesión autenticada.
-        if (!ownerId && requestedOwner && req.user?.id === requestedOwner) ownerId = requestedOwner;
+        if (!ownerId) ownerId = requestedOwner ? null : null;
         const custom = ownerId ? database.listUserVoices(ownerId) : [];
         const globalMatchers = new Map((VOICE_RULE_MATCHERS || []).map((rule) => [String(rule.voiceLabel || "").trim().toLowerCase(), rule]));
         const voices = Array.isArray(base?.voices) ? base.voices.map((v) => {
@@ -1812,7 +1807,7 @@ app.get("/api/voices/catalog", (req, res) => {
             };
             if (existing >= 0) voices[existing] = item; else voices.push(item);
         }
-        res.json({ voices, ownerId: ownerId || null });
+        res.json({ voices });
     } catch (error) {
         res.status(500).json({ error: error?.message || "No se pudo cargar el catálogo." });
     }
@@ -2924,13 +2919,9 @@ app.post("/api/voicebot/tts", async (req, res) => {
 
         const text = String(req.body?.text || "").trim();
         const voiceId = String(req.body?.voiceId || "").trim();
-        const requestedOwnerId = String(req.body?.ownerId || "").trim();
+        const ownerId = String(req.body?.ownerId || "").trim();
         const overlayKey = String(req.body?.overlayKey || "").trim();
-        // En un overlay público, el overlayKey identifica de forma segura al
-        // propietario. Así una voz fish:<id> siempre se valida contra la misma
-        // cuenta que cargó su biblioteca personal.
-        const ownerFromOverlay = overlayKey ? database.getUserByOverlayKey(overlayKey) : null;
-        const customOwner = ownerFromOverlay?.id ? ownerFromOverlay.id : "";
+        const customOwner = ownerId && overlayKey && database.getUserByOverlayKey(overlayKey)?.id === ownerId ? ownerId : "";
         const customVoiceId = voiceId.startsWith("fish:") ? voiceId.slice(5) : "";
         if (customVoiceId && !customOwner) return res.status(403).json({ error: "La voz personalizada no pertenece a esta sesión." });
         if (customVoiceId && !database.listUserVoices(customOwner).some((voice) => String(voice.fishId) === customVoiceId)) {
