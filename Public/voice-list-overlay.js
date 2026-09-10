@@ -124,9 +124,30 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
+  function overrideFor(s, key) {
+    const overrides = s?.overrides;
+    if (!overrides || typeof overrides !== "object") return {};
+    return overrides[key] || {};
+  }
+
+  function itemStyle(v, s) {
+    const o = overrideFor(s, v?.key || v?.id || v?.fishId || v?.label);
+    const fontFamily = o.fontFamily || s.fontFamily || "Inter, Arial, sans-serif";
+    const fontSize = Number(o.fontSize ?? s.fontSize ?? 28);
+    const fontWeight = Number(o.fontWeight ?? s.fontWeight ?? 700);
+    const fontStyle = o.fontStyle || s.fontStyle || "normal";
+    const color = o.color || s.textColor || "#000000";
+    const textShadow = o.textShadow || s.textShadow || "none";
+    const shadowColor = o.shadowColor || s.shadowColor || "#000000";
+    const outlineWidth = Number(o.outlineWidth ?? s.outlineWidth ?? 0);
+    const outlineColor = o.outlineColor || s.outlineColor || "#000000";
+    const textTransform = o.textTransform || s.textTransform || "none";
+    return `font-family:${esc(fontFamily)};font-size:${fontSize}px;font-weight:${fontWeight};font-style:${esc(fontStyle)};color:${esc(color)};text-shadow:${shadow(textShadow, shadowColor)};-webkit-text-stroke:${outline(outlineWidth, outlineColor)};paint-order:stroke fill;text-transform:${esc(textTransform)};letter-spacing:${Number(s.letterSpacing ?? 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
+  }
+
   function renderItem(v, i, s) {
-    const style = `font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow, s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth ?? 0, s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
-    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id)}</small>` : ""}</div>`;
+    const style = itemStyle(v, s);
+    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id || v.fishId || "")}</small>` : ""}</div>`;
   }
 
   function renderList(s, list) {
@@ -207,7 +228,7 @@
     rootEl.style.setProperty('--vl-shadow',shadow(s.textShadow,s.shadowColor)); rootEl.style.setProperty('--vl-outline-width',`${Math.max(0,Number(s.outlineWidth??0))}px`); rootEl.style.setProperty('--vl-outline-color',s.outlineColor||'#000000'); rootEl.style.setProperty('--vl-transform',s.textTransform);
     rootEl.style.setProperty('--vl-spacing',`${s.letterSpacing}px`); rootEl.style.setProperty('--vl-line',s.lineHeight); rootEl.style.setProperty('--vl-gap',`${s.itemGap}px`); rootEl.style.setProperty('--vl-bg',s.transparent?`rgba(255,255,255,${s.backgroundOpacity})`:`rgba(255,255,255,${Math.max(.05,s.backgroundOpacity)})`); rootEl.style.setProperty('--vl-speed',`${s.motionSpeed||24}s`); rootEl.style.setProperty('--vl-align',axis==='horizontal'?'center':(s.listPosition||s.align||'left'));
     const ordered=s.movementDirection==='reverse'?[...list].reverse():list; const items=rootEl.querySelectorAll('.voiceListItem');
-    items.forEach((item,i)=>{ const v=ordered[i%Math.max(1,ordered.length)]; if(!v)return; item.style.cssText=`font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow,s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth??0,s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing||0)}px;line-height:${Number(s.lineHeight||1.2)};`; const index=item.querySelector('.voiceListIndex'); if(index)index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:''; const small=item.querySelector('small'); if(small)small.textContent=s.showId?String(v.id||v.fishId||''):''; });
+    items.forEach((item,i)=>{ const v=ordered[i%Math.max(1,ordered.length)]; if(!v)return; item.style.cssText=itemStyle(v,s); const index=item.querySelector('.voiceListIndex'); if(index)index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:''; const small=item.querySelector('small'); if(small)small.textContent=s.showId?String(v.id||v.fishId||''):''; });
     rootEl.dataset.structure=listStructureKey(s,list);
   }
   function preserveAnimation(track,mutate,newDurationSeconds){
@@ -228,6 +249,7 @@
       outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
       letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
       listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,showIndex:s.showIndex,showId:s.showId,
+      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
       overrides:s.overrides,list:list.map(v=>v.key)
     });
   }

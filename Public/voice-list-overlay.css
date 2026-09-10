@@ -321,7 +321,7 @@ html,body{background:transparent!important;overflow:hidden;}
 /* StreamFusion positioning: one Position control, interpreted by axis.
    vertical displacement -> left / center / right
    horizontal displacement -> top / center / bottom */
-.voiceListShell{width:100%;height:100%;min-width:0;min-height:0;box-sizing:border-box;display:flex!important;overflow:hidden!important;background:transparent!important}
+.voiceListShell{width:100%;height:100%;min-width:0;min-height:0;box-sizing:border-box;display:flex!important;overflow:hidden!important;background:var(--vl-bg,transparent)!important}
 .voiceListShell .voiceListStage,.voiceListShell .voiceListViewport{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-sizing:border-box!important;overflow:hidden!important}
 .voiceListShell .voiceListStage{display:flex!important}
 .voiceListShell .voiceListViewport{display:flex!important}
