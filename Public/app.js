@@ -86,10 +86,6 @@
   let voiceWidgetVisibilityPhase = "visible";
   let voiceWidgetVisibilityPhaseStartedAt = Date.now();
   let voiceWidgetPreviewSignature = '';
-  let voiceWidgetPreviewFrame = null;
-  let voiceWidgetPreviewFrameReady = false;
-  let voiceWidgetPreviewFrameUrl = '';
-  let voiceWidgetPreviewFrameInit = null;
   let voiceWidgetDraft = null;
   let pointsWidgetDraft = null;
   let pointsWidgetPreviewSequence = 0;
@@ -1965,56 +1961,43 @@
     if(current>0){ track.style.animationDelay=`-${current/1000}s`; }
   }
   function syncVoiceWidgetPreview(s, force=false){
-    const host=$('voiceWidgetPreview');
-    if(!host) return;
-
-    // The editor preview is the real overlay renderer inside an iframe. This prevents
-    // CSS/DOM drift between Preview and the generated OBS overlay.
-    if(!voiceWidgetPreviewFrame || !host.contains(voiceWidgetPreviewFrame)){
-      voiceWidgetPreviewFrameReady=false;
-      voiceWidgetPreviewFrame=document.createElement('iframe');
-      voiceWidgetPreviewFrame.title='Vista previa Lista de Voces';
-      voiceWidgetPreviewFrame.setAttribute('aria-label','Vista previa Lista de Voces');
-      voiceWidgetPreviewFrame.style.cssText='border:0;width:100%;height:100%;display:block;background:transparent;';
-      voiceWidgetPreviewFrame.addEventListener('load',()=>{
-        voiceWidgetPreviewFrameReady=true;
-        try{
-          voiceWidgetPreviewFrame.contentWindow?.postMessage({
-            source:'streamfusion-voice-list-preview',
-            type:'config',
-            config:structuredClone(s||{}),
-            resetClock:true,
-            previewStartAt:voiceWidgetPreviewStartAt||Date.now(),
-            visibilityStartAt:voiceWidgetVisibilityPhaseStartedAt||Date.now()
-          }, '*');
-        }catch{}
-      });
-      host.replaceChildren(voiceWidgetPreviewFrame);
-      voiceWidgetPreviewFrameInit=buildOverlayUrl('voice-list-overlay.html?preview=1').then(url=>{
-        voiceWidgetPreviewFrameUrl=url;
-        if(voiceWidgetPreviewFrame) voiceWidgetPreviewFrame.src=url;
-        return url;
-      }).catch(err=>{
-        voiceWidgetPreviewFrame=null;
-        voiceWidgetPreviewFrameReady=false;
-        throw err;
-      });
+    const host=$('voiceWidgetPreview'); if(!host) return;
+    if(s.enabled===false){ if(!host.querySelector('.voice-preview-off')) host.innerHTML='<div class="voice-preview-off"><span class="off-dot"></span><strong>Widget desactivado</strong><small>Actívalo para generar contenido en el overlay.</small></div>'; return; }
+    const list=voicePreviewItems();
+    if(s.roulette?.enabled){
+      const html=buildVoicePreviewHtml(s);
+      if(force || host.innerHTML!==html) host.innerHTML=html;
+      return;
     }
+    const structure=voiceListStructureKey(s,list);
+    let shell=host.querySelector('.voiceListShell');
+    if(force || !shell || shell.dataset.voiceStructure!==structure){
+      const html=buildVoicePreviewHtml({...s,autoShowEnabled:false,hideAfterShow:false});
+      const wrap=document.createElement('div'); wrap.innerHTML=html;
+      const next=wrap.firstElementChild;
+      if(next?.classList?.contains('voiceListShell')){ host.replaceChildren(next); shell=next; }
+      else { host.innerHTML=html; shell=host.querySelector('.voiceListShell'); }
+      if(shell) shell.dataset.voiceStructure=structure;
+    }
+    if(!shell) return;
 
-    const payload={
-      source:'streamfusion-voice-list-preview',
-      type:'config',
-      config:structuredClone(s||{}),
-      resetClock:Boolean(force),
-      previewStartAt:voiceWidgetPreviewStartAt||Date.now(),
-      visibilityStartAt:voiceWidgetVisibilityPhaseStartedAt||Date.now()
-    };
-    const send=()=>{
-      if(!voiceWidgetPreviewFrame) return;
-      try{voiceWidgetPreviewFrame.contentWindow?.postMessage(payload,'*');}catch{}
-    };
-    if(voiceWidgetPreviewFrameReady) send();
-    else if(voiceWidgetPreviewFrameInit) voiceWidgetPreviewFrameInit.then(send).catch(()=>{});
+    const styleSignature=JSON.stringify({
+      axis:s.axis||s.direction, motion:s.motion, movementDirection:s.movementDirection,
+      fontFamily:s.fontFamily,fontSize:s.fontSize,fontWeight:s.fontWeight,fontStyle:s.fontStyle,
+      textColor:s.textColor,textShadow:s.textShadow,shadowColor:s.shadowColor,
+      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
+      outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
+      letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
+      listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,showIndex:s.showIndex,showId:s.showId,
+      overrides:s.overrides,list:list.map(v=>v.key)
+    });
+    if(force || shell.dataset.voiceStyleSignature!==styleSignature){
+      const hidden=voiceListVisibilityState(s).hidden;
+      preserveVoiceListAnimation(shell.querySelector('.voiceListTrack'),()=>applyVoiceListPreviewStyles(shell,s,hidden),Math.max(4,Number(s.motionSpeed||24)));
+      shell.dataset.voiceStyleSignature=styleSignature;
+    } else {
+      shell.classList.toggle('is-hidden',voiceListVisibilityState(s).hidden);
+    }
   }
   const voiceLibraryItems=()=>{
     const merged=[]; const seen=new Set();
@@ -3002,7 +2985,7 @@
       voiceWidgetDraft=null;
       const total=voiceLibraryItems().length;
       $('view').innerHTML=`<div class="intro"><h2>Widgets</h2><p>Selecciona un widget para abrir su editor sin perder la sesión de tu cuenta.</p></div><div class="widget-launch-grid"><button type="button" class="card widget-launch-card widget-launch-card-premium" id="openVoiceWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">🎙️</span><span class="widget-launch-copy"><span class="widget-launch-kicker">WIDGET DE STREAM</span><strong class="widget-launch-title">Lista de voces</strong><small class="widget-launch-desc">Diseña la lista, movimiento e intro. Todo se guarda en tu cuenta y no necesita conectar TikTok o Twitch.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-music" id="openMusicWidget"><span class="widget-launch-icon music-launch-icon" aria-hidden="true"><svg viewBox="0 0 24 24" role="img" focusable="false"><path d="M9 18.2V5.8l10-2.2v11.6"/><path d="M9 16.2c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Zm10-1c0 1.55-1.8 2.8-4 2.8s-4-1.25-4-2.8 1.8-2.8 4-2.8 4 1.25 4 2.8Z"/></svg><i></i></span><span class="widget-launch-copy"><span class="widget-launch-kicker">REPRODUCTOR</span><strong class="widget-launch-title">Música</strong><small class="widget-launch-desc">Cola de canciones, puntos, comandos y reproductor tipo vinil para OBS.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-points" id="openPointsWidgetEditor"><span class="widget-launch-icon" aria-hidden="true">✦</span><span class="widget-launch-copy"><span class="widget-launch-kicker">INTERACCIÓN</span><strong class="widget-launch-title">Puntos</strong><small class="widget-launch-desc">Muestra los puntos del usuario cuando comenta tu comando, con cooldown y cola anti-spam.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button><button type="button" class="card widget-launch-card widget-launch-card-announcement" id="openAnnouncementWidget"><span class="widget-launch-icon" aria-hidden="true">📢</span><span class="widget-launch-copy"><span class="widget-launch-kicker">PROMOCIÓN</span><strong class="widget-launch-title">Anuncio</strong><small class="widget-launch-desc">Crea anuncios transparentes con texto, imágenes, tiempos y hasta 3 partes.</small></span><span class="widget-launch-arrow" aria-hidden="true">→</span></button></div>`;
-      $('openVoiceWidgetEditor').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfVoiceWidgetEditorOpen=true;voiceWidgetPreviewStartAt=Date.now();voiceWidgetVisibilityPhase='visible';voiceWidgetVisibilityPhaseStartedAt=Date.now();voiceWidgetPreviewFrame=null;voiceWidgetPreviewFrameReady=false;voiceWidgetPreviewFrameUrl='';voiceWidgetPreviewFrameInit=null;try{renderWidgets();}catch(e){console.error('[Widgets] Lista de voces',e);toast('Lista de voces',e.message||'No se pudo abrir el editor.','err');}};
+      $('openVoiceWidgetEditor').onclick=()=>{window.__sfPointsWidgetEditorOpen=false;window.__sfVoiceWidgetEditorOpen=true;voiceWidgetPreviewStartAt=Date.now();voiceWidgetVisibilityPhase='visible';voiceWidgetVisibilityPhaseStartedAt=Date.now();try{renderWidgets();}catch(e){console.error('[Widgets] Lista de voces',e);toast('Lista de voces',e.message||'No se pudo abrir el editor.','err');}};
       $('openPointsWidgetEditor').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=true;try{const data=await api('/api/points/settings');pointsDraft=structuredClone(data.points||{});pointsWidgetDraft=structuredClone(pointsDraft.widget||{});}catch(e){pointsDraft=pointsDraft||{};pointsWidgetDraft=pointsWidgetDraft||{};toast('Puntos',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Puntos',e);toast('Puntos',e.message||'No se pudo abrir el editor.','err');}};
       $('openAnnouncementWidget').onclick=()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=true;try{renderWidgets();}catch(e){console.error('[Widgets] Anuncio',e);toast('Anuncio',e.message||'No se pudo abrir el widget.','err');}};
       $('openMusicWidget').onclick=async()=>{window.__sfVoiceWidgetEditorOpen=false;window.__sfPointsWidgetEditorOpen=false;window.__sfAnnouncementHubOpen=false;window.__sfMusicWidgetEditorOpen=true;try{const data=await api('/api/music/settings');musicWidgetDraft=structuredClone(data.music||{});}catch(e){musicWidgetDraft=musicDefault();toast('Música',e.message||'No se pudo cargar la configuración.','err');}try{renderWidgets();}catch(e){console.error('[Widgets] Música',e);toast('Música',e.message||'No se pudo abrir el widget.','err');}};
@@ -3062,7 +3045,7 @@
       voiceWidgetDraft=s;
       return result.voiceList||s;
     };
-    $('backToWidgets').onclick=()=>{ window.__sfVoiceWidgetEditorOpen=false; voiceWidgetDraft=null; voiceWidgetPreviewSignature=''; voiceWidgetPreviewFrame=null; voiceWidgetPreviewFrameReady=false; voiceWidgetPreviewFrameUrl=''; voiceWidgetPreviewFrameInit=null; if(voiceWidgetPreviewTimer){clearInterval(voiceWidgetPreviewTimer);voiceWidgetPreviewTimer=0;} renderWidgets(); };
+    $('backToWidgets').onclick=()=>{ window.__sfVoiceWidgetEditorOpen=false; voiceWidgetDraft=null; voiceWidgetPreviewSignature=''; if(voiceWidgetPreviewTimer){clearInterval(voiceWidgetPreviewTimer);voiceWidgetPreviewTimer=0;} renderWidgets(); };
     $('saveVoiceWidget').onclick=async()=>{ try{ await persistVoiceWidget(); toast('Widget guardado','Todos los cambios de Lista de Voces quedaron guardados.'); }catch(e){ toast('No se pudo guardar',e.message,'err'); } };
     $('openVoiceWidget').onclick=async()=>{ try{ await persistVoiceWidget(); await openOverlay('voice-list-overlay.html','streamfusionVoiceList'); }catch(e){ toast('Overlay',e.message||'No se pudo generar el overlay.','err'); } };
     loadVoices().then(()=>{if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen&&voiceLibraryItems().length!==library.length)renderWidgets();}).catch(()=>{});
@@ -3749,7 +3732,9 @@
       // Replacing the editor DOM while an input/range has focus causes visible
       // flicker, caret jumps and makes editing nearly impossible.
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
-      if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
+      if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){
+        renderWidgets();
+      }else if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){
         voiceWidgetDraft=merge(voiceWidgetDraft||settings.voiceList,v||{});
         voiceWidgetPreviewSignature='';
       }
@@ -3762,6 +3747,7 @@
       }
       if(page==='widgets'&&window.__sfPointsWidgetEditorOpen){ return; }
       if(page==='voices'||page==='customize'||page==='points'){ render(); }
+      else if(page==='widgets'&&!window.__sfVoiceWidgetEditorOpen&&!window.__sfPointsWidgetEditorOpen&&!window.__sfAnnouncementHubOpen&&!window.__sfAnnouncementEditorOpen&&!window.__sfMusicWidgetEditorOpen){ renderWidgets(); }
     });
     socket.on('voiceListPresence', d=>{state.voiceListPresence={online:Boolean(d?.online),connections:Number(d?.connections||0)};if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){const frag=document.createRange();$('voiceWidgetStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));$('voicePreviewStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));}});
     socket.on('liveEnded', info=>{

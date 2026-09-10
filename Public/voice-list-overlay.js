@@ -4,7 +4,6 @@
   if (!root) return;
   const widgetParams = new URLSearchParams(location.search);
   const widgetOverlayKey = widgetParams.get("overlayKey") || "";
-  const previewMode = widgetParams.get("preview") === "1";
   const socket = typeof io === "function" ? io({ auth: { overlayKey: widgetOverlayKey, widget: "voicelist" }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity }) : null;
 
   const DEFAULT_ROULETTE = {
@@ -86,8 +85,6 @@
 
   let catalog = [];
   let settings = { ...DEFAULTS };
-  let previewOverrideRevision = 0;
-
   function normalizeAxisSettings(input) {
     const s = input || {};
     s.axis = s.axis === "horizontal" ? "horizontal" : (s.direction === "horizontal" ? "horizontal" : "vertical");
@@ -309,28 +306,7 @@
     startVisibilityTicker();
   }).catch(() => {});
 
-  window.addEventListener("message", (event) => {
-    const data = event?.data;
-    if (!data || data.source !== "streamfusion-voice-list-preview" || data.type !== "config" || !previewMode) return;
-    const incoming = data.config && typeof data.config === "object" ? data.config : {};
-    previewOverrideRevision += 1;
-    const prevVisibility = `${settings.autoShowEnabled}|${settings.hideAfterShow}`;
-    settings = normalizeAxisSettings({ ...DEFAULTS, ...incoming, roulette: { ...DEFAULT_ROULETTE, ...(incoming.roulette || {}) } });
-    const nextVisibility = `${settings.autoShowEnabled}|${settings.hideAfterShow}`;
-    if (prevVisibility !== nextVisibility || data.resetClock === true) {
-      sceneStartAt = Number(data.previewStartAt || Date.now());
-      visibilityPhase = "visible";
-      visibilityPhaseStartedAt = Number(data.visibilityStartAt || sceneStartAt);
-    }
-    appliedStyleSignature = "";
-    lastRenderKey = "";
-    renderRevision += 1;
-    render();
-    startVisibilityTicker();
-  });
-
   socket?.on("voiceListSettings", (s) => {
-    if (previewMode && previewOverrideRevision > 0) return;
     const incoming = s || {};
     const prevVisibility = settings && `${settings.autoShowEnabled}|${settings.hideAfterShow}`;
     settings = normalizeAxisSettings({ ...DEFAULTS, ...incoming, roulette: { ...DEFAULT_ROULETTE, ...(incoming.roulette || {}) } });
