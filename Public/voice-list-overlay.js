@@ -124,15 +124,12 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
-  function voiceListItemStyle(cfg) {
-    return `font-family:${esc(cfg.fontFamily || "Inter, Arial, sans-serif")};font-size:${Number(cfg.fontSize ?? 28)}px;font-weight:${Number(cfg.fontWeight ?? 700)};font-style:${esc(cfg.fontStyle || "normal")};color:${esc(cfg.textColor || "#000000")};text-shadow:${shadow(cfg.textShadow, cfg.shadowColor)};-webkit-text-stroke:${Math.max(0, Number(cfg.outlineWidth ?? 0))}px ${esc(cfg.outlineColor || "#000000")};paint-order:stroke fill;text-transform:${esc(cfg.textTransform || "none")};letter-spacing:${Number(cfg.letterSpacing ?? 0)}px;line-height:${Number(cfg.lineHeight || 1.2)};`;
-  }
+  function overrideFor(key) { return key && settings.overrides?.[key] ? settings.overrides[key] : {}; }
 
   function renderItem(v, i, s) {
-    const style = voiceListItemStyle(s);
-    const label = v?.label || v?.name || v?.key || v?.fishId || "Voz";
-    const id = v?.id || v?.fishId || "";
-    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(label)}${s.showId ? `<small>${esc(id)}</small>` : ""}</div>`;
+    const o = overrideFor(v?.key) || {};
+    const style = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadow(o.textShadow || s.textShadow, o.shadowColor || s.shadowColor)};-webkit-text-stroke:${outline(Number(o.outlineWidth ?? s.outlineWidth ?? 0), o.outlineColor || s.outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};`;
+    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id)}</small>` : ""}</div>`;
   }
 
   function renderList(s, list) {
@@ -202,103 +199,91 @@
     return scene.mode === "intro" ? intro : (isListVisible(s) ? listBlock : "");
   }
 
-  function listStructureKey(s, list) {
-    return JSON.stringify({
-      axis: s.axis || s.direction || "vertical",
-      motion: s.motion || "static",
-      moveDir: s.movementDirection || "forward",
-      showIndex: s.showIndex === true,
-      showId: s.showId === true,
-      items: list.map(v => String(v.key || v.id || v.fishId || v.label || ""))
+  function listStructureKey(s,list){ return JSON.stringify({axis:s.axis||s.direction||'vertical',motion:s.motion||'static',moveDir:s.movementDirection||'forward',showIndex:s.showIndex===true,showId:s.showId===true,items:list.map(v=>String(v.key||v.id||v.fishId||v.label||''))}); }
+  function applyListStyles(shell, s, list, hidden) {
+    const direction = s.axis || s.direction || "vertical";
+    const nextClassName = `voiceListShell direction-${direction} travel-${s.movementDirection || "forward"} motion-${s.motion || "static"} align-${s.align || "left"} list-position-${s.listPosition || "left"} horizontal-position-${s.horizontalPosition || "center"}${hidden ? " is-hidden" : ""}`;
+    if (shell.className !== nextClassName) shell.className = nextClassName;
+    shell.style.setProperty("--vl-font", s.fontFamily);
+    shell.style.setProperty("--vl-size", `${s.fontSize}px`);
+    shell.style.setProperty("--vl-weight", s.fontWeight);
+    shell.style.setProperty("--vl-style", s.fontStyle);
+    shell.style.setProperty("--vl-color", s.textColor);
+    shell.style.setProperty("--vl-shadow", shadow(s.textShadow, s.shadowColor));
+    shell.style.setProperty("--vl-outline-width", `${Math.max(0, Number(s.outlineWidth ?? 0))}px`);
+    shell.style.setProperty("--vl-outline-color", s.outlineColor || "#000000");
+    shell.style.setProperty("--vl-transform", s.textTransform);
+    shell.style.setProperty("--vl-spacing", `${s.letterSpacing}px`);
+    shell.style.setProperty("--vl-line", s.lineHeight);
+    shell.style.setProperty("--vl-gap", `${s.itemGap}px`);
+    shell.style.setProperty("--vl-bg", s.transparent ? `rgba(255,255,255,${s.backgroundOpacity})` : `rgba(255,255,255,${Math.max(.05, s.backgroundOpacity)})`);
+    shell.style.setProperty("--vl-speed", `${s.motionSpeed || 24}s`);
+    shell.style.setProperty("--vl-align", s.align);
+
+    const ordered = s.movementDirection === "reverse" ? [...list].reverse() : list;
+    const items = shell.querySelectorAll(".voiceListItem");
+    items.forEach((item, i) => {
+      const v = ordered[i % Math.max(1, ordered.length)];
+      const o = overrideFor(v?.key) || {};
+      item.style.cssText = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadow(o.textShadow || s.textShadow, o.shadowColor || s.shadowColor)};-webkit-text-stroke:${outline(Number(o.outlineWidth ?? s.outlineWidth ?? 0), o.outlineColor || s.outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
+      const idx = item.querySelector(".voiceListIndex"); if (idx) idx.textContent = s.showIndex ? `${(i % ordered.length) + 1}. ` : "";
+      const small = item.querySelector("small"); if (small) small.textContent = s.showId ? String(v?.id || "") : "";
     });
   }
 
-  function applyListStyles(rootEl, s, hidden) {
-    const axis = s.axis || s.direction || "vertical";
-    const moveDir = s.movementDirection || "forward";
-    const motion = ["static","scroll","slide","marquee","crawl","starwars","slide-down","slide-up","float"].includes(String(s.motion || "")) ? String(s.motion) : "static";
-    const bgAlpha = s.transparent ? Number(s.backgroundOpacity || 0) : Math.max(0.05, Number(s.backgroundOpacity || 0.08));
-    rootEl.className = `voiceListShell direction-${esc(axis)} travel-${esc(moveDir)} motion-${esc(motion)} align-${esc(s.align || "left")} list-position-${esc(s.listPosition || "left")} horizontal-position-${esc(s.horizontalPosition || "center")}${hidden ? " is-hidden" : ""}`;
-    rootEl.style.setProperty("--vl-font", s.fontFamily || "Inter, Arial, sans-serif");
-    rootEl.style.setProperty("--vl-size", `${Number(s.fontSize ?? 28)}px`);
-    rootEl.style.setProperty("--vl-weight", Number(s.fontWeight ?? 700));
-    rootEl.style.setProperty("--vl-style", s.fontStyle || "normal");
-    rootEl.style.setProperty("--vl-color", s.textColor || "#000000");
-    rootEl.style.setProperty("--vl-shadow", shadow(s.textShadow, s.shadowColor));
-    rootEl.style.setProperty("--vl-outline-width", `${Math.max(0, Number(s.outlineWidth ?? 0))}px`);
-    rootEl.style.setProperty("--vl-outline-color", s.outlineColor || "#000000");
-    rootEl.style.setProperty("--vl-transform", s.textTransform || "none");
-    rootEl.style.setProperty("--vl-spacing", `${Number(s.letterSpacing ?? 0)}px`);
-    rootEl.style.setProperty("--vl-line", Number(s.lineHeight || 1.2));
-    rootEl.style.setProperty("--vl-gap", `${Math.max(0, Number(s.itemGap || 10))}px`);
-    rootEl.style.setProperty("--vl-speed", `${Math.max(4, Number(s.motionSpeed || 24))}s`);
-    rootEl.style.setProperty("--vl-align", s.align || "left");
-    rootEl.style.setProperty("--vl-bg", `rgba(255,255,255,${bgAlpha})`);
+  function preserveAnimation(track,mutate,newDurationSeconds){
+    if(!track){ mutate?.(); return; }
+    const animation=track.getAnimations?.().find(a=>a&&a.animationName);
+    const duration=Number(animation?.effect?.getComputedTiming?.().duration);
+    const current=Number(animation?.currentTime);
+    const progress=Number.isFinite(current)&&Number.isFinite(duration)&&duration>0?((((current%duration)+duration)%duration)/duration):0;
+    mutate?.();
+    requestAnimationFrame(()=>{ track.style.animationDelay = (progress > 0 && newDurationSeconds) ? `${-(progress*Number(newDurationSeconds))}s` : ""; });
   }
 
-  function styleSignatureFor(s, list) {
+  function styleSignatureFor(s,list) {
     return JSON.stringify({
-      axis:s.axis||s.direction, motion:s.motion, movementDirection:s.movementDirection,
+      enabled:s.enabled,transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
+      axis:s.axis||s.direction,motion:s.motion,movementDirection:s.movementDirection,
       fontFamily:s.fontFamily,fontSize:s.fontSize,fontWeight:s.fontWeight,fontStyle:s.fontStyle,
       textColor:s.textColor,textShadow:s.textShadow,shadowColor:s.shadowColor,
-      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
       outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
       letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
       listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,
-      showIndex:s.showIndex,showId:s.showId,list:list.map(v=>v.key)
+      autoShowEnabled:s.autoShowEnabled,autoShowEvery:s.autoShowEvery,autoShowFor:s.autoShowFor,hideAfterShow:s.hideAfterShow,
+      showIndex:s.showIndex,showId:s.showId,overrides:s.overrides,roulette:s.roulette,
+      list:list.map(v=>v.key)
     });
   }
 
   function render() {
-    if (settings.enabled === false) {
-      root.innerHTML = "";
-      root.className = "";
+    if (settings.enabled === false) { root.innerHTML = ""; root.className = ""; return; }
+    const s=settings, list=Array.isArray(catalog)?catalog:[];
+    if(s.roulette?.enabled){
+      const scene=currentScene(s);
+      const html=renderRoulette(s,list,scene);
+      const wantedKey=`roulette:${scene.mode}:${scene.step}:${JSON.stringify(s.roulette)}`;
+      if(wantedKey!==lastRenderKey) root.innerHTML=html;
+      lastRenderKey=wantedKey;
       return;
     }
-    const s = settings;
-    const list = Array.isArray(catalog) ? catalog : [];
-
-    if (s.roulette?.enabled) {
-      const scene = currentScene(s);
-      const html = renderRoulette(s, list, scene);
-      const wantedKey = `roulette:${scene.mode}:${scene.step}:${JSON.stringify(s.roulette)}`;
-      if (wantedKey !== lastRenderKey) root.innerHTML = html;
-      lastRenderKey = wantedKey;
-      return;
+    if(!list.length){ if(!root.querySelector('.voiceListEmpty')) root.innerHTML='<div class="voiceListEmpty">No se encontraron voces.</div>'; return; }
+    const structure=listStructureKey(s,list);
+    let shell=root.querySelector('.voiceListShell');
+    if(!shell || root.dataset.structure!==structure){
+      root.innerHTML=renderList(s,list);
+      shell=root.querySelector('.voiceListShell');
+      root.dataset.structure=structure;
+      appliedStyleSignature='';
     }
-
-    if (!list.length) {
-      if (!root.querySelector(".voiceListEmpty")) root.innerHTML = '<div class="voiceListEmpty">No se encontraron voces.</div>';
-      return;
-    }
-
-    const structure = listStructureKey(s, list);
-    let shell = root.querySelector(".voiceListShell");
-    if (!shell || root.dataset.structure !== structure) {
-      root.innerHTML = renderList(s, list);
-      shell = root.querySelector(".voiceListShell");
-      root.dataset.structure = structure;
-      appliedStyleSignature = "";
-    }
-    if (!shell) return;
-
-    const signature = styleSignatureFor(s, list);
-    const hidden = !isListVisible(s);
-    if (appliedStyleSignature !== signature || !shell.dataset.voiceStyleSignature) {
-      const track = shell.querySelector(".voiceListTrack");
-      const anim = track?.getAnimations?.().find(a => a && a.animationName);
-      const duration = Number(anim?.effect?.getComputedTiming?.().duration);
-      const current = Number(anim?.currentTime);
-      const progress = Number.isFinite(current) && Number.isFinite(duration) && duration > 0 ? ((((current % duration) + duration) % duration) / duration) : 0;
-      applyListStyles(shell, s, hidden);
-      shell.querySelectorAll(".voiceListItem").forEach((item, i) => { item.style.cssText = voiceListItemStyle(s); });
-      shell.dataset.voiceStyleSignature = signature;
-      requestAnimationFrame(() => {
-        if (track && progress > 0) track.style.animationDelay = `${-(progress * Math.max(4, Number(s.motionSpeed || 24)))}s`;
-      });
-      appliedStyleSignature = signature;
-    } else {
-      shell.classList.toggle("is-hidden", hidden);
+    if(!shell) return;
+    const signature=styleSignatureFor(s,list);
+    const hidden=isListVisible(s);
+    if(appliedStyleSignature!==signature){
+      preserveAnimation(shell.querySelector('.voiceListTrack'),()=>applyListStyles(shell,s,list,hidden),Math.max(4,Number(s.motionSpeed||24)));
+      appliedStyleSignature=signature;
+    }else{
+      shell.classList.toggle('is-hidden',hidden);
     }
   }
 
