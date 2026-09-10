@@ -125,9 +125,31 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
+  function effectiveItemStyle(v, s) {
+    const o = (s.overrides && typeof s.overrides === "object" && s.overrides[v?.key]) ? s.overrides[v.key] : {};
+    return {
+      fontFamily: o.fontFamily || s.fontFamily,
+      fontSize: Number(o.fontSize ?? s.fontSize),
+      fontWeight: Number(o.fontWeight ?? s.fontWeight),
+      fontStyle: o.fontStyle || s.fontStyle,
+      textColor: o.color || s.textColor,
+      textShadow: o.textShadow || s.textShadow,
+      shadowColor: o.shadowColor || s.shadowColor || "#000000",
+      outlineWidth: Number(o.outlineWidth ?? s.outlineWidth ?? 0),
+      outlineColor: o.outlineColor || s.outlineColor || "#000000",
+      textTransform: o.textTransform || s.textTransform,
+      letterSpacing: Number(s.letterSpacing || 0),
+      lineHeight: Number(s.lineHeight || 1.2),
+    };
+  }
+
+  function itemStyleText(v, s) {
+    const e = effectiveItemStyle(v, s);
+    return `font-family:${esc(e.fontFamily)};font-size:${e.fontSize}px;font-weight:${e.fontWeight};font-style:${esc(e.fontStyle)};color:${esc(e.textColor)};text-shadow:${shadow(e.textShadow, e.shadowColor)};-webkit-text-stroke:${outline(e.outlineWidth, e.outlineColor)};paint-order:stroke fill;text-transform:${esc(e.textTransform)};letter-spacing:${e.letterSpacing}px;line-height:${e.lineHeight};`;
+  }
+
   function renderItem(v, i, s) {
-    const style = `font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow, s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth ?? 0, s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
-    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id)}</small>` : ""}</div>`;
+    return `<div class="voiceListItem" style="${itemStyleText(v, s)}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id || v.fishId || "")}</small>` : ""}</div>`;
   }
 
   function renderList(s, list) {
@@ -208,7 +230,7 @@
     rootEl.style.setProperty('--vl-shadow',shadow(s.textShadow,s.shadowColor)); rootEl.style.setProperty('--vl-outline-width',`${Math.max(0,Number(s.outlineWidth??0))}px`); rootEl.style.setProperty('--vl-outline-color',s.outlineColor||'#000000'); rootEl.style.setProperty('--vl-transform',s.textTransform);
     rootEl.style.setProperty('--vl-spacing',`${s.letterSpacing}px`); rootEl.style.setProperty('--vl-line',s.lineHeight); rootEl.style.setProperty('--vl-gap',`${s.itemGap}px`); rootEl.style.setProperty('--vl-bg',s.transparent?`rgba(255,255,255,${s.backgroundOpacity})`:`rgba(255,255,255,${Math.max(.05,s.backgroundOpacity)})`); rootEl.style.setProperty('--vl-speed',`${s.motionSpeed||24}s`); rootEl.style.setProperty('--vl-align',axis==='horizontal'?'center':(s.listPosition||s.align||'left'));
     const ordered=s.movementDirection==='reverse'?[...list].reverse():list; const items=rootEl.querySelectorAll('.voiceListItem');
-    items.forEach((item,i)=>{ const v=ordered[i%Math.max(1,ordered.length)]; if(!v)return; item.style.cssText=`font-family:${esc(s.fontFamily)};font-size:${Number(s.fontSize)}px;font-weight:${Number(s.fontWeight)};font-style:${esc(s.fontStyle)};color:${esc(s.textColor)};text-shadow:${shadow(s.textShadow,s.shadowColor)};-webkit-text-stroke:${outline(s.outlineWidth??0,s.outlineColor)};paint-order:stroke fill;text-transform:${esc(s.textTransform)};letter-spacing:${Number(s.letterSpacing||0)}px;line-height:${Number(s.lineHeight||1.2)};`; const index=item.querySelector('.voiceListIndex'); if(index)index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:''; const small=item.querySelector('small'); if(small)small.textContent=s.showId?String(v.id||v.fishId||''):''; });
+    items.forEach((item,i)=>{ const v=ordered[i%Math.max(1,ordered.length)]; if(!v)return; item.style.cssText=itemStyleText(v,s); const index=item.querySelector('.voiceListIndex'); if(index)index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:''; const small=item.querySelector('small'); if(small)small.textContent=s.showId?String(v.id||v.fishId||''):''; });
     rootEl.dataset.structure=listStructureKey(s,list);
   }
   function preserveAnimation(track,mutate,newDurationSeconds){
@@ -283,22 +305,31 @@
       if (!data || data.source !== 'streamfusion-voice-list-preview') return;
       if (data.type === 'state' || data.type === 'config') {
         const incoming = data.config || {};
-        settings = normalizeAxisSettings({
+        const nextSettings = normalizeAxisSettings({
           ...DEFAULTS,
           ...incoming,
           roulette: {...DEFAULT_ROULETTE, ...(incoming.roulette || {})}
         });
+        const nextSettingsSignature = JSON.stringify(nextSettings);
+        const previousSettingsSignature = JSON.stringify(settings);
+        const catalogChanged = Array.isArray(data.catalog)
+          ? JSON.stringify(data.catalog.map((v,i)=>String(v?.key ?? v?.id ?? v?.fishId ?? `preview-${i+1}`))) !== JSON.stringify(catalog.map(v=>String(v?.key ?? v?.id ?? v?.fishId ?? v?.label ?? '')))
+          : false;
+        settings = nextSettings;
         if (Array.isArray(data.catalog)) catalog = data.catalog.map((v,i)=>({
           key:String(v?.key ?? v?.id ?? v?.fishId ?? `preview-${i+1}`),
           id:String(v?.id ?? v?.fishId ?? ''),
           fishId:String(v?.fishId ?? v?.id ?? ''),
           label:String(v?.label ?? v?.name ?? v?.key ?? v?.fishId ?? 'Voz')
         }));
-        visibilityPhase='visible';
-        visibilityPhaseStartedAt=Date.now();
-        sceneStartAt=Date.now();
-        appliedStyleSignature='';
-        lastRenderKey='';
+        const semanticStateChanged = nextSettingsSignature !== previousSettingsSignature || catalogChanged;
+        if (semanticStateChanged) {
+          visibilityPhase='visible';
+          visibilityPhaseStartedAt=Date.now();
+          sceneStartAt=Date.now();
+          appliedStyleSignature='';
+          lastRenderKey='';
+        }
         renderRevision += 1;
         render();
         startVisibilityTicker();
