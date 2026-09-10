@@ -86,18 +86,21 @@
   let catalog = [];
   let settings = { ...DEFAULTS };
   function normalizeAxisSettings(input) {
-    const s=input||{};
-    const axis=String(s.axis||s.direction||"vertical")==="horizontal"?"horizontal":"vertical";
-    s.axis=axis; s.direction=axis;
-    if(axis==='horizontal'){
-      if(!['top','center','bottom'].includes(String(s.horizontalPosition||''))){
-        const legacy=String(s.listPosition||'center');
-        s.horizontalPosition=legacy==='left'?'top':legacy==='right'?'bottom':'center';
+    const s = input || {};
+    s.axis = s.axis === "horizontal" ? "horizontal" : (s.direction === "horizontal" ? "horizontal" : "vertical");
+    s.direction = s.axis;
+    s.movementDirection = s.movementDirection === "reverse" ? "reverse" : "forward";
+    if (s.axis === "horizontal") {
+      if (!["top","center","bottom"].includes(String(s.horizontalPosition || ""))) {
+        const legacy = String(s.listPosition || "center");
+        s.horizontalPosition = legacy === "left" ? "top" : legacy === "right" ? "bottom" : "center";
       }
-      if(!['top','center','bottom'].includes(String(s.horizontalPosition||''))) s.horizontalPosition='center';
-    }else{
-      if(!['left','center','right'].includes(String(s.listPosition||''))) s.listPosition='center';
+      s.horizontalPosition = ["top","center","bottom"].includes(String(s.horizontalPosition || "")) ? s.horizontalPosition : "center";
+    } else {
+      s.listPosition = ["left","center","right"].includes(String(s.listPosition || "")) ? s.listPosition : "center";
     }
+    s.motion = ["static","scroll","slide","marquee","crawl","starwars","slide-down","slide-up","float"].includes(s.motion) ? s.motion : "static";
+    if(!["top","center","bottom"].includes(String(s.horizontalPosition||""))){ const legacy=String(s.listPosition||"center"); s.horizontalPosition=legacy==="left"?"top":legacy==="right"?"bottom":"center"; }
     return s;
   }
 
@@ -121,19 +124,22 @@
   const outline = (width = 0, color = "#000000") => `${Math.max(0, Number(width || 0))}px ${String(color || "#000000")}`;
   const normRoulette = (r = {}) => ({ ...DEFAULT_ROULETTE, ...(r || {}) });
 
-  const voiceListItemStyle=(cfg)=>`font-family:${esc(cfg.fontFamily||'Inter, Arial, sans-serif')};font-size:${Number(cfg.fontSize??28)}px;font-weight:${Number(cfg.fontWeight??700)};font-style:${esc(cfg.fontStyle||'normal')};color:${esc(cfg.textColor||'#000000')};text-shadow:${shadow(cfg.textShadow,cfg.shadowColor)};-webkit-text-stroke:${Math.max(0,Number(cfg.outlineWidth??0))}px ${esc(cfg.outlineColor||'#000000')};paint-order:stroke fill;text-transform:${esc(cfg.textTransform||'none')};letter-spacing:${Number(cfg.letterSpacing??0)}px;line-height:${Number(cfg.lineHeight||1.2)};`;
-  function renderItem(v,i,s){
-    const style=voiceListItemStyle(s);
-    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex?`${i+1}. `:''}</span>${esc(v.label||v.name||v.key||v.fishId||'Voz')}${s.showId?`<small>${esc(v.id||v.fishId||'')}</small>`:''}</div>`;
+  function overrideFor(key) { return key && settings.overrides?.[key] ? settings.overrides[key] : {}; }
+
+  function renderItem(v, i, s) {
+    const o = overrideFor(v.key);
+    const shadowType = o.textShadow || s.textShadow;
+    const shadowColor = o.shadowColor || s.shadowColor || "#000000";
+    const outlineWidth = Number(o.outlineWidth ?? s.outlineWidth ?? 0);
+    const outlineColor = o.outlineColor || s.outlineColor || "#000000";
+    const style = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadowValue(shadowType, shadowColor)};-webkit-text-stroke:${outlineValue(outlineWidth, outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};`;
+    return `<div class="voiceListItem" style="${style}"><span class="voiceListIndex">${s.showIndex ? `${i + 1}. ` : ""}</span>${esc(v.label)}${s.showId ? `<small>${esc(v.id)}</small>` : ""}</div>`;
   }
-  function renderList(s,list){
-    if(!list.length) return '<div class="voiceListEmpty">No se encontraron voces.</div>';
-    const moveDir=s.movementDirection||'forward';
-    const motion=['static','scroll','slide','marquee','crawl','starwars','slide-down','slide-up','float'].includes(String(s.motion||''))?String(s.motion):'static';
-    const ordered=moveDir==='reverse'?[...list].reverse():list;
-    const items=ordered.map((v,i)=>renderItem(v,i,s)).join('');
-    const content=motion==='static'?items:`${items}${items}`;
-    return `<div class="voiceListStage"><div class="voiceListViewport"><div class="voiceListTrack">${content}</div></div></div>`;
+
+  function renderList(list, s) {
+    if (!list.length) return '<div class="voiceListEmpty">No se encontraron voces.</div>';
+    const repeated = (s.motion === "static") ? list.map((v, i) => renderItem(v, i, s)).join("") : list.map((v, i) => renderItem(v, i, s)).join("") + list.map((v, i) => renderItem(v, i, s)).join("");
+    return `<div class="voiceListStage"><div class="voiceListViewport"><div class="voiceListTrack">${repeated}</div></div></div>`;
   }
 
   function syncVisibilityClock(s, now = Date.now()) {
@@ -191,37 +197,39 @@
     const imagePos = `image-${imageCfg.position || "top"}`;
     const image = imageCfg?.url ? `<div class="voiceListRouletteImageWrap"><img src="${esc(imageCfg.url)}" alt="${esc(imageCfg.alt)}" style="width:${clamp(imageCfg.width, 80, 1200)}px;height:${clamp(imageCfg.height, 80, 1200)}px;object-fit:${esc(imageCfg.fit || "contain")};opacity:${clamp(imageCfg.opacity ?? 1, 0, 1)}" /></div>` : "";
     const intro = `<div class="voiceListRouletteShell ${motionClass} ${imagePos}"><div class="voiceListRouletteCard" style="--vl-roulette-card-bg:rgba(255,255,255,${clamp(r.cardOpacity ?? 0.12, 0, 1)});">${image}<div class="voiceListRouletteCopy"><div class="voiceListRouletteText">${esc(scene.text || r.title)}</div></div></div></div>`;
-    const listBlock = `<div class="voiceListRouletteListWrap">${renderList(s, list)}</div>`;
+    const listBlock = `<div class="voiceListRouletteListWrap">${renderList(list, s)}</div>`;
     return scene.mode === "intro" ? intro : (isListVisible(s) ? listBlock : "");
   }
 
   function listStructureKey(s,list){ return JSON.stringify({axis:s.axis||s.direction||'vertical',motion:s.motion||'static',moveDir:s.movementDirection||'forward',showIndex:s.showIndex===true,showId:s.showId===true,items:list.map(v=>String(v.key||v.id||v.fishId||v.label||''))}); }
-  function applyListStyles(rootEl,s,list,hidden=false){
-    if(!rootEl) return;
-    const axis=s.axis||s.direction||'vertical', moveDir=s.movementDirection||'forward', motion=String(s.motion||'static');
-    rootEl.className=`voiceListShell direction-${esc(axis)} travel-${esc(moveDir)} motion-${esc(motion)} align-${esc(s.align||'left')} list-position-${esc(s.listPosition||'left')} horizontal-position-${esc(s.horizontalPosition||'center')}${hidden?' is-hidden':''}`;
-    const bgAlpha=s.transparent?Number(s.backgroundOpacity||0):Math.max(.05,Number(s.backgroundOpacity||.08));
-    rootEl.style.setProperty('--vl-font',s.fontFamily||'Inter, Arial, sans-serif');
-    rootEl.style.setProperty('--vl-size',`${Number(s.fontSize??28)}px`);
-    rootEl.style.setProperty('--vl-weight',Number(s.fontWeight??700));
-    rootEl.style.setProperty('--vl-style',s.fontStyle||'normal');
-    rootEl.style.setProperty('--vl-color',s.textColor||'#000000');
-    rootEl.style.setProperty('--vl-shadow',shadow(s.textShadow,s.shadowColor));
-    rootEl.style.setProperty('--vl-outline-width',`${Math.max(0,Number(s.outlineWidth??0))}px`);
-    rootEl.style.setProperty('--vl-outline-color',s.outlineColor||'#000000');
-    rootEl.style.setProperty('--vl-transform',s.textTransform||'none');
-    rootEl.style.setProperty('--vl-spacing',`${Number(s.letterSpacing??0)}px`);
-    rootEl.style.setProperty('--vl-line',Number(s.lineHeight||1.2));
-    rootEl.style.setProperty('--vl-gap',`${Math.max(0,Number(s.itemGap||10))}px`);
-    rootEl.style.setProperty('--vl-speed',`${Math.max(4,Number(s.motionSpeed||24))}s`);
-    rootEl.style.setProperty('--vl-align',axis==='horizontal'?'center':(s.listPosition||s.align||'left'));
-    rootEl.style.setProperty('--vl-bg',`rgba(255,255,255,${bgAlpha})`);
-    const ordered=s.movementDirection==='reverse'?[...list].reverse():list;
-    rootEl.querySelectorAll('.voiceListItem').forEach((item,i)=>{
-      const v=ordered[i%Math.max(1,ordered.length)]; if(!v) return;
-      item.style.cssText=voiceListItemStyle(s);
-      const index=item.querySelector('.voiceListIndex'); if(index) index.textContent=s.showIndex?`${(i%ordered.length)+1}. `:'';
-      const small=item.querySelector('small'); if(small) small.textContent=s.showId?String(v.id||v.fishId||''):'';
+  function applyListStyles(shell, s, list, hidden) {
+    const direction = s.axis || s.direction || "vertical";
+    const nextClassName = `voiceListShell direction-${direction} travel-${s.movementDirection || "forward"} motion-${s.motion || "static"} align-${s.align || "left"} list-position-${s.listPosition || "left"} horizontal-position-${s.horizontalPosition || "center"}${hidden ? " is-hidden" : ""}`;
+    if (shell.className !== nextClassName) shell.className = nextClassName;
+    shell.style.setProperty("--vl-font", s.fontFamily);
+    shell.style.setProperty("--vl-size", `${s.fontSize}px`);
+    shell.style.setProperty("--vl-weight", s.fontWeight);
+    shell.style.setProperty("--vl-style", s.fontStyle);
+    shell.style.setProperty("--vl-color", s.textColor);
+    shell.style.setProperty("--vl-shadow", shadowValue(s.textShadow, s.shadowColor));
+    shell.style.setProperty("--vl-outline-width", `${Math.max(0, Number(s.outlineWidth ?? 0))}px`);
+    shell.style.setProperty("--vl-outline-color", s.outlineColor || "#000000");
+    shell.style.setProperty("--vl-transform", s.textTransform);
+    shell.style.setProperty("--vl-spacing", `${s.letterSpacing}px`);
+    shell.style.setProperty("--vl-line", s.lineHeight);
+    shell.style.setProperty("--vl-gap", `${s.itemGap}px`);
+    shell.style.setProperty("--vl-bg", s.transparent ? `rgba(255,255,255,${s.backgroundOpacity})` : `rgba(255,255,255,${Math.max(.05, s.backgroundOpacity)})`);
+    shell.style.setProperty("--vl-speed", `${s.motionSpeed || 24}s`);
+    shell.style.setProperty("--vl-align", s.align);
+
+    const ordered = s.movementDirection === "reverse" ? [...list].reverse() : list;
+    const items = shell.querySelectorAll(".voiceListItem");
+    items.forEach((item, i) => {
+      const v = ordered[i % Math.max(1, ordered.length)];
+      const o = overrideFor(v?.key) || {};
+      item.style.cssText = `font-family:${esc(o.fontFamily || s.fontFamily)};font-size:${Number(o.fontSize ?? s.fontSize)}px;font-weight:${Number(o.fontWeight ?? s.fontWeight)};font-style:${esc(o.fontStyle || s.fontStyle)};color:${esc(o.color || s.textColor)};text-shadow:${shadowValue(o.textShadow || s.textShadow, o.shadowColor || s.shadowColor)};-webkit-text-stroke:${outlineValue(Number(o.outlineWidth ?? s.outlineWidth ?? 0), o.outlineColor || s.outlineColor)};paint-order:stroke fill;text-transform:${esc(o.textTransform || s.textTransform)};letter-spacing:${Number(s.letterSpacing || 0)}px;line-height:${Number(s.lineHeight || 1.2)};`;
+      const idx = item.querySelector(".voiceListIndex"); if (idx) idx.textContent = s.showIndex ? `${(i % ordered.length) + 1}. ` : "";
+      const small = item.querySelector("small"); if (small) small.textContent = s.showId ? String(v?.id || "") : "";
     });
   }
   function preserveAnimation(track,mutate,newDurationSeconds){
@@ -239,11 +247,10 @@
       axis:s.axis||s.direction,motion:s.motion,movementDirection:s.movementDirection,
       fontFamily:s.fontFamily,fontSize:s.fontSize,fontWeight:s.fontWeight,fontStyle:s.fontStyle,
       textColor:s.textColor,textShadow:s.textShadow,shadowColor:s.shadowColor,
-      transparent:s.transparent,backgroundOpacity:s.backgroundOpacity,
       outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,textTransform:s.textTransform,
       letterSpacing:s.letterSpacing,lineHeight:s.lineHeight,itemGap:s.itemGap,align:s.align,
       listPosition:s.listPosition,horizontalPosition:s.horizontalPosition,motionSpeed:s.motionSpeed,showIndex:s.showIndex,showId:s.showId,
-      list:list.map(v=>v.key||v.id||v.fishId||v.label)
+      overrides:s.overrides,list:list.map(v=>v.key)
     });
   }
 

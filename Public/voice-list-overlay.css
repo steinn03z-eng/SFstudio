@@ -1,8 +1,6 @@
-/* StreamFusion Voice List overlay: exact rules from the Widgets preview. */
 html,body{margin:0;width:100%;height:100%;min-height:100%;background:transparent!important;overflow:hidden}
 body{font-family:Inter,Arial,sans-serif}
 #voiceListOverlay{position:relative;width:100%;height:100%;display:block;overflow:hidden;background:transparent!important}
-.voiceListShell{min-height:0!important}
 /* Widget preview uses the same DOM model and motion math as the generated overlay. */
 .voiceListShell{
   width:100%;height:100%;min-height:560px;contain:layout paint;overscroll-behavior:contain;
@@ -49,6 +47,9 @@ body{font-family:Inter,Arial,sans-serif}
 @keyframes sfVoiceListCrawlYForward{from{transform:translate3d(0,calc(-50% - var(--vl-gap,10px)),0)}to{transform:translate3d(0,0,0)}}
 @keyframes sfVoiceListCrawlYReverse{from{transform:translate3d(0,0,0)}to{transform:translate3d(0,calc(-50% - var(--vl-gap,10px)),0)}}
 @keyframes sfVoiceListFloatY{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+
+
+
 /* Roulette/intro preview parity with the generated voice-list overlay. */
 .voiceListRouletteShell{width:100%;min-height:560px;display:flex;align-items:center;justify-content:center;padding:12px;box-sizing:border-box}
 .voiceListRouletteCard{width:min(100%,980px);border-radius:28px;padding:22px;display:grid;gap:18px;background:var(--vl-roulette-card-bg,rgba(255,255,255,.12));box-shadow:0 20px 60px rgba(0,0,0,.18);backdrop-filter:blur(14px);border:1px solid rgba(0,0,0,.12);color:#000;overflow:hidden}
@@ -74,10 +75,13 @@ body{font-family:Inter,Arial,sans-serif}
 @keyframes sfVoiceRouletteZoom{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:scale(1)}}
 @keyframes sfVoiceRouletteType{from{max-width:0}to{max-width:100%}}
 @keyframes sfVoiceRouletteStarWars{from{opacity:0;transform:translateY(60%) rotateX(72deg) scale(.96)}to{opacity:1;transform:none}}
+
+
 /* Lista de voces: ocultación sin desmontar el DOM, para evitar parpadeos en la vista previa. */
 .voiceListShell.is-hidden{opacity:0!important;visibility:hidden!important;pointer-events:none!important;}
 .voiceListShell:not(.is-hidden){opacity:1;visibility:visible;}
 .voiceListShell{transition:opacity .12s linear;will-change:opacity;}
+
 /* v10: preview horizontal centrado + movimiento continuo como una línea de texto. */
 .voiceListShell.direction-horizontal .voiceListViewport{
   align-items:center;
@@ -132,6 +136,8 @@ body{font-family:Inter,Arial,sans-serif}
   backface-visibility:hidden;
   transform:translate3d(0,0,0);
 }
+
+
 /* v11: posición vertical semántica para desplazamiento horizontal. */
 .voiceListShell.direction-horizontal .voiceListViewport{
   justify-content:center !important;
@@ -148,6 +154,7 @@ body{font-family:Inter,Arial,sans-serif}
 .voiceListShell.direction-horizontal .voiceListTrack{
   min-height:0 !important;
 }
+
 /* FIX FINAL: horizontal voice list = centered viewport + true continuous text travel. */
 .voiceListShell.direction-horizontal .voiceListStage,
 .voiceListShell.direction-horizontal .voiceListViewport{
@@ -198,6 +205,7 @@ body{font-family:Inter,Arial,sans-serif}
   margin:0 !important;
   white-space:nowrap !important;
 }
+
 @keyframes sfVoiceListHorizontalForwardFinal{
   from{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}
   to{transform:translate3d(0,0,0)}
@@ -222,12 +230,4 @@ body{font-family:Inter,Arial,sans-serif}
   animation:none !important;
   transform:none !important;
 }
-/* Lista de voces: posiciones separadas por eje. Vertical usa Posición; horizontal usa Posición horizontal. */
-.voiceListShell.direction-horizontal{justify-content:center !important;}
-.voiceListShell.direction-horizontal .voiceListStage,
-.voiceListShell.direction-horizontal .voiceListViewport{width:100%;height:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
-.voiceListShell.direction-horizontal .voiceListViewport{justify-content:center !important;}
-.voiceListShell.direction-horizontal.horizontal-position-top .voiceListViewport{align-items:flex-start !important;}
-.voiceListShell.direction-horizontal.horizontal-position-center .voiceListViewport{align-items:center !important;}
-.voiceListShell.direction-horizontal.horizontal-position-bottom .voiceListViewport{align-items:flex-end !important;}
-.voiceListShell.direction-horizontal .voiceListTrack{min-height:0 !important;}
+
