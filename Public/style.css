@@ -547,32 +547,6 @@
 .voice-widget-preview .voiceListShell:not(.is-hidden){opacity:1;visibility:visible;}
 .voice-widget-preview .voiceListShell{transition:opacity .12s linear;will-change:opacity;}
 
-/* Voice-list preview: mirror the generated overlay's final positioning rules.
-   Keeping these rules scoped prevents the transparent OBS canvas styles from
-   leaking into the dashboard, while making both renderers use the same axis
-   and alignment geometry. */
-.voice-widget-preview .voiceListShell{width:100%!important;height:100%!important;min-width:0;min-height:0;box-sizing:border-box;display:flex!important;overflow:hidden!important;background:transparent!important}
-.voice-widget-preview .voiceListShell .voiceListStage,.voice-widget-preview .voiceListShell .voiceListViewport{width:100%!important;height:100%!important;min-width:0!important;min-height:0!important;box-sizing:border-box!important;overflow:hidden!important}
-.voice-widget-preview .voiceListShell .voiceListStage{display:flex!important}
-.voice-widget-preview .voiceListShell .voiceListViewport{display:flex!important}
-.voice-widget-preview .voiceListShell.direction-vertical .voiceListViewport{flex-direction:row!important;justify-content:flex-start!important;align-items:flex-start!important}
-.voice-widget-preview .voiceListShell.direction-vertical.list-position-left .voiceListViewport{justify-content:flex-start!important}
-.voice-widget-preview .voiceListShell.direction-vertical.list-position-center .voiceListViewport{justify-content:center!important}
-.voice-widget-preview .voiceListShell.direction-vertical.list-position-right .voiceListViewport{justify-content:flex-end!important}
-.voice-widget-preview .voiceListShell.direction-vertical .voiceListTrack{width:max-content!important;min-width:0!important;max-width:100%!important;height:max-content!important;min-height:0!important;flex:0 0 auto!important;flex-direction:column!important;align-items:flex-start!important;justify-content:flex-start!important;box-sizing:border-box!important}
-.voice-widget-preview .voiceListShell.direction-horizontal .voiceListStage{align-items:stretch!important;justify-content:stretch!important}
-.voice-widget-preview .voiceListShell.direction-horizontal .voiceListViewport{flex-direction:column!important;justify-content:flex-start!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.horizontal-position-top .voiceListViewport{align-items:flex-start!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.horizontal-position-center .voiceListViewport{align-items:center!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.horizontal-position-bottom .voiceListViewport{align-items:flex-end!important}
-.voice-widget-preview .voiceListShell.direction-horizontal .voiceListTrack{width:max-content!important;min-width:max-content!important;max-width:none!important;height:max-content!important;min-height:0!important;flex:0 0 auto!important;flex-direction:row!important;align-items:center!important;justify-content:flex-start!important;flex-wrap:nowrap!important;white-space:nowrap!important;box-sizing:border-box!important}
-.voice-widget-preview .voiceListShell.direction-horizontal .voiceListItem{flex:0 0 auto!important;width:auto!important;max-width:none!important;display:inline-flex!important;white-space:nowrap!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.motion-static .voiceListTrack{animation:none!important;transform:none!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.motion-scroll.travel-forward .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-slide.travel-forward .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-marquee.travel-forward .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-crawl.travel-forward .voiceListTrack{animation-name:sfVoiceHorizontalForward!important}
-.voice-widget-preview .voiceListShell.direction-horizontal.motion-scroll.travel-reverse .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-slide.travel-reverse .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-marquee.travel-reverse .voiceListTrack,.voice-widget-preview .voiceListShell.direction-horizontal.motion-crawl.travel-reverse .voiceListTrack{animation-name:sfVoiceHorizontalReverse!important}
-@keyframes sfVoiceHorizontalForward{from{transform:translate3d(0,0,0)}to{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}}
-@keyframes sfVoiceHorizontalReverse{from{transform:translate3d(calc(-50% - (var(--vl-gap,10px) / 2)),0,0)}to{transform:translate3d(0,0,0)}}
-
 /* v10: preview horizontal centrado + movimiento continuo como una línea de texto. */
 .voice-widget-preview .voiceListShell.direction-horizontal .voiceListViewport{
   align-items:center;
