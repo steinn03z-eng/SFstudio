@@ -2834,7 +2834,8 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     const overlayParams = new URLSearchParams(location.search);
     const overlayKey = overlayParams.get("overlayKey") || "";
     const overlayOwner = overlayParams.get("owner") || "";
-    const socket = io({ auth: { overlayKey, owner: overlayOwner }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
+    const socket = io({ auth: { overlayKey, owner: overlayOwner }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity, timeout: 10000 });
+    socket.on('connect_error', (err) => { console.warn('[Overlay] Socket.IO connect_error:', err?.message || err); });
     const list = document.getElementById('list');
     const SETTINGS_KEY = "streamfusion.ui.overlay-settings.v1";
     const LEGACY_SETTINGS_KEY = "streamfusion.ui.settings.v1";
@@ -6913,28 +6914,35 @@ function currentViewSettingsKey(){
     }
     function lookupGiftCatalog(name) { const key = normalizeGiftKey(name); return key ? (giftCatalogIndex.get(key) || null) : null; }
     function avatarForItem(item){
-      const direct = item?.avatar || item?.avatarUrl || item?.profilePictureUrl || item?.profile_picture_url || item?.profile_picture || item?.profilepic || item?.profile_pic || item?.profile_thumb || item?.profile_thumb_url || item?.avatar_url;
-      if (direct) return normalizeImageSource(direct);
-      const nested = [item?.sender,item?.follower,item?.subscriber,item?.gifter,item?.user,item?.author,item?.userDetails].find((u)=>u && typeof u==='object');
-      return normalizeImageSource(nested?.profilePictureUrl || nested?.profilePicture || nested?.profile_picture || nested?.profilepic || nested?.profile_pic || nested?.profile_thumb || nested?.profile_thumb_url || nested?.avatarUrl || nested?.avatar_url || nested?.avatar || nested?.picture || nested?.picture_url || nested?.profilePhoto || nested?.profile_photo || '');
+      const candidates = [
+        item?.avatar,item?.avatarUrl,item?.profilePictureUrl,item?.profile_picture_url,item?.profile_picture,item?.profilepic,item?.profile_pic,item?.profile_thumb,item?.profile_thumb_url,item?.avatar_url,
+      ];
+      const nested = [item?.sender,item?.follower,item?.subscriber,item?.gifter,item?.redeemer,item?.user,item?.author,item?.userDetails].find((u)=>u && typeof u==='object');
+      candidates.push(nested?.profilePictureUrl,nested?.profilePicture,nested?.profile_picture,nested?.profilepic,nested?.profile_pic,nested?.profile_thumb,nested?.profile_thumb_url,nested?.avatarUrl,nested?.avatar_url,nested?.avatar,nested?.picture,nested?.picture_url,nested?.profilePhoto,nested?.profile_photo);
+      for(const candidate of candidates){
+        const src=normalizeImageSource(candidate);
+        if(src && !/default-profile-pictures|default-avatar[-_]/i.test(src)) return src;
+      }
+      return '';
     }
     const overlayKickAvatarCache = new Map();
     const overlayKickAvatarPending = new Map();
-    function overlayKickAvatarKey(username){ return String(username||'').trim().replace(/^@+/,'').toLowerCase(); }
-    async function resolveOverlayKickAvatar(username){
-      const clean=overlayKickAvatarKey(username);
-      if(!clean) return '';
-      if(overlayKickAvatarCache.has(clean)) return overlayKickAvatarCache.get(clean)||'';
-      if(overlayKickAvatarPending.has(clean)) return overlayKickAvatarPending.get(clean);
+    function overlayKickAvatarKey(username,userId=''){ const id=Number(userId)>0?String(Math.trunc(Number(userId))):''; return `${String(username||'').trim().replace(/^@+/,'').toLowerCase()}|${id}`; }
+    async function resolveOverlayKickAvatar(username, userId = ""){
+      const clean=String(username||'').trim().replace(/^@+/,'').toLowerCase();
+      const cacheKey=overlayKickAvatarKey(username,userId);
+      if(!clean && !(Number(userId)>0)) return '';
+      if(overlayKickAvatarCache.has(cacheKey)) return overlayKickAvatarCache.get(cacheKey)||'';
+      if(overlayKickAvatarPending.has(cacheKey)) return overlayKickAvatarPending.get(cacheKey);
       const promise=(async()=>{
         const kickSession = loadOverlaySession()?.kick || {};
         const kickChannel = String(kickSession.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
         const urls=[];
         if(kickChannel){
           try{
-            const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}`;
+            const itemUserId = Number(userId)>0 ? Number(userId) : 0; const idParam=itemUserId>0?`&userId=${encodeURIComponent(String(Math.trunc(itemUserId)))}`:''; const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}${idParam}`;
             const pr=await fetch(proxy,{credentials:'same-origin',cache:'no-store',method:'HEAD'});
-            if(pr.ok){ overlayKickAvatarCache.set(clean,proxy); return proxy; }
+            if(pr.ok){ overlayKickAvatarCache.set(cacheKey,proxy); return proxy; }
           }catch{}
         }
         if(kickChannel){
@@ -6949,17 +6957,18 @@ function currentViewSettingsKey(){
             const data=await r.json().catch(()=>null);
             const profile=data?.user||data?.data?.user||data?.data||data?.profile||data||{};
             const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
-            if(/^https?:\/\//i.test(avatar)){ overlayKickAvatarCache.set(clean,avatar); return avatar; }
+            if(/^https?:\/\//i.test(avatar) && !/default-profile-pictures|default-avatar[-_]/i.test(avatar)){ overlayKickAvatarCache.set(cacheKey,avatar); return avatar; }
           }catch{}
         }
         try{
           const channelParam = kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
-          const r=await fetch(`/api/avatar?platform=kick&username=${encodeURIComponent(clean)}${channelParam}`,{credentials:'same-origin',cache:'no-store'});
-          if(r.ok){ const data=await r.json(); const avatar=String(data?.avatarUrl||'').trim(); if(/^https?:\/\//i.test(avatar)){ overlayKickAvatarCache.set(clean,avatar); return avatar; } }
+          const userParam = Number(userId)>0 ? `&userId=${encodeURIComponent(String(Math.trunc(Number(userId))))}` : '';
+          const r=await fetch(`/api/avatar?platform=kick&username=${encodeURIComponent(clean)}${channelParam}${userParam}`,{credentials:'same-origin',cache:'no-store'});
+          if(r.ok){ const data=await r.json(); const avatar=String(data?.avatarUrl||'').trim(); if(/^https?:\/\//i.test(avatar) && !/default-profile-pictures|default-avatar[-_]/i.test(avatar)){ overlayKickAvatarCache.set(cacheKey,avatar); return avatar; } }
         }catch{}
         return '';
-      })().finally(()=>overlayKickAvatarPending.delete(clean));
-      overlayKickAvatarPending.set(clean,promise);
+      })().finally(()=>overlayKickAvatarPending.delete(cacheKey));
+      overlayKickAvatarPending.set(cacheKey,promise);
       return promise;
     }
     function enrichOverlayAvatar(item){
@@ -6969,18 +6978,32 @@ function currentViewSettingsKey(){
       const currentText = String(currentAvatar || '');
       if(currentAvatar && !/default-profile-pictures|default-avatar[-_]/i.test(currentText)) return;
       const username=item?.username||item?.uniqueId||item?.user||item?.displayName||'';
+      const userId = Number(item?.userId)>0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId)>0 ? String(Math.trunc(Number(item.uniqueId))) : '');
       if(!username) return;
-      resolveOverlayKickAvatar(username).then((url)=>{
+      resolveOverlayKickAvatar(username,userId).then((url)=>{
         if(!url) return;
         item.avatar=item.avatarUrl=item.profilePictureUrl=url;
         render();
       });
     }
+    function kickAvatarProbeUrl(item){
+      if(String(item?.platform||'').toLowerCase()!=='kick') return '';
+      const username=normalizeUsername(item?.username||item?.user||item?.displayName||'');
+      const userId=Number(item?.userId||0)>0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId||0)>0 ? String(Math.trunc(Number(item.uniqueId))) : '');
+      const kickSession=loadOverlaySession()?.kick||{};
+      const channel=normalizeUsername(kickSession.username || settings.connectionProfiles?.kick?.username || '');
+      if(!username && !userId) return '';
+      const params=[]; if(username) params.push(`username=${encodeURIComponent(username)}`); if(channel) params.push(`channel=${encodeURIComponent(channel)}`); if(userId) params.push(`userId=${encodeURIComponent(userId)}`);
+      return `/api/kick-avatar?${params.join('&')}`;
+    }
     function avatarFallbackMarkup(item, name){
       const platform=String(item?.platform||'tiktok').toLowerCase();
       const letter=String(name||item?.username||item?.user||platform||'U').trim().charAt(0).toUpperCase() || platformShort(platform);
       const identity = avatarIdentity(item);
-      return `<span class="chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" aria-label="${esc(name)}">${esc(letter)}</span>`;
+      const avatarUserId = Number(item?.userId || 0) > 0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId || 0) > 0 ? String(Math.trunc(Number(item.uniqueId))) : '');
+      const probe=kickAvatarProbeUrl(item);
+      const fallback=`<span class="${probe?'hidden ':''}chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserId)}" aria-label="${esc(name)}">${esc(letter)}</span>`;
+      return probe ? `<img src="${esc(probe)}" alt="${esc(name)}" class="kick-avatar-probe" loading="lazy" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden')">${fallback}` : fallback;
     }
     function timeLabel(ts){ return new Date(ts || Date.now()).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }); }
     function platformTag(platform){ return `<span class="platformTag ${platform}">${platformShort(platform)}</span>`; }
@@ -7609,7 +7632,7 @@ function currentViewSettingsKey(){
       overlayRecentKeys.set(key, now);
       return false;
     }
-    function pushChat(data){ registerActivityBadges(data); rememberSupporter(data); rememberPersistentFrameProfile(data); const direction = settings.personal?.chatDirection || 'down'; rememberOverlayChatScroll(direction); const item = { ...data, platform: data?.platform || 'tiktok', uniqueId: data?.uniqueId || data?.username || data?.user || data?.sender?.uniqueId || data?.sender?.id || '', username: data?.username || data?.uniqueId || data?.user || data?.sender?.username || data?.sender?.slug || '', user: data?.user || data?.displayName || data?.uniqueId || data?.username || data?.sender?.username || 'Usuario', displayName: data?.displayName || data?.nickname || data?.user || data?.uniqueId || data?.username || data?.sender?.display_name || data?.sender?.username || 'Usuario', avatar: String(data?.avatar || data?.avatarUrl || data?.profilePictureUrl || data?.profile_picture_url || data?.profile_picture || data?.profile_pic || data?.profile_thumb || data?.sender?.profile_picture || data?.sender?.profilepic || data?.sender?.profile_pic || data?.sender?.avatar || ''), message: data?.message || data?.comment || data?.content || '', badges: data?.badges || data?.sender?.identity?.badges || [], action: data?.action || 'Comentario', timestamp: data?.timestamp || data?.created_at || Date.now(), id: data?.id || data?.messageId || data?.commentId || data?.sender?.id || '' }; if(shouldSkipOverlayDuplicate('chat', item)) return; state.chat.push(item); enrichOverlayAvatar(item); if(state.chat.length > 240) state.chat.splice(0, state.chat.length - 240); state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds); render(); }
+    function pushChat(data){ registerActivityBadges(data); rememberSupporter(data); rememberPersistentFrameProfile(data); const direction = settings.personal?.chatDirection || 'down'; rememberOverlayChatScroll(direction); const item = { ...data, platform: data?.platform || 'tiktok', uniqueId: data?.uniqueId || data?.username || data?.user || data?.sender?.uniqueId || data?.sender?.id || '', username: data?.username || data?.uniqueId || data?.user || data?.sender?.username || data?.sender?.slug || '', user: data?.user || data?.displayName || data?.uniqueId || data?.username || data?.sender?.username || 'Usuario', displayName: data?.displayName || data?.nickname || data?.user || data?.uniqueId || data?.username || data?.sender?.display_name || data?.sender?.username || 'Usuario', avatar: String(data?.avatar || data?.avatarUrl || data?.profilePictureUrl || data?.profile_picture_url || data?.profile_picture || data?.profile_pic || data?.profile_thumb || data?.sender?.profile_picture || data?.sender?.profilepic || data?.sender?.profile_pic || data?.sender?.avatar || ''), message: data?.message || data?.comment || data?.content || '', badges: data?.badges || data?.sender?.identity?.badges || [], action: data?.action || 'Comentario', timestamp: data?.timestamp || data?.created_at || Date.now(), id: data?.id || data?.messageId || data?.commentId || data?.sender?.id || '', userId: data?.userId || data?.sender?.user_id || data?.sender?.id || '' }; if(shouldSkipOverlayDuplicate('chat', item)) return; state.chat.push(item); enrichOverlayAvatar(item); if(state.chat.length > 240) state.chat.splice(0, state.chat.length - 240); state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds); render(); }
     function normalizeOverlayActivity(data, fallbackType='event'){
       const raw = data || {};
       const type = String(raw.type || fallbackType || 'event').trim().toLowerCase();
@@ -7618,7 +7641,7 @@ function currentViewSettingsKey(){
       const user = String(raw.user || raw.displayName || raw.nickname || uniqueId || 'Usuario').trim() || 'Usuario';
       const avatar = String(raw.avatar || raw.avatarUrl || raw.profilePictureUrl || raw.profile_picture_url || raw.profile_picture || raw.profile_pic || raw.profile_thumb || raw.avatar_url || raw.sender?.profile_picture || raw.sender?.profile_pic || raw.sender?.avatar || raw.follower?.profile_picture || raw.subscriber?.profile_picture || raw.gifter?.profile_picture || '').trim();
       const action = raw.action || (type === 'share' ? 'Compartió' : type === 'follow' ? 'Follow' : type === 'like' ? 'Like' : type === 'join' ? 'Entrada' : type === 'gift' ? 'Regalo' : 'Evento');
-      return { ...raw, platform:String(raw.platform || 'tiktok').toLowerCase(), identityKey:normalizeUsername(raw.identityKey || uniqueId || user).toLowerCase(), uniqueId:uniqueId || user, username:raw.username || uniqueId || user, user, displayName:raw.displayName || user, nickname:raw.nickname || user, avatar, avatarUrl:avatar, profilePictureUrl:avatar, badges:raw.badges || [], type, group, action, emoji:raw.emoji || (type === 'share' ? '🗣️' : type === 'follow' ? '👤' : type === 'like' ? '❤️' : type === 'join' ? '👻' : raw.emoji || ''), timestamp:raw.timestamp || Date.now(), id:raw.id || raw.messageId || raw.eventId || raw.msgId || '' };
+      return { ...raw, platform:String(raw.platform || 'tiktok').toLowerCase(), identityKey:normalizeUsername(raw.identityKey || uniqueId || user).toLowerCase(), uniqueId:uniqueId || user, username:raw.username || uniqueId || user, user, displayName:raw.displayName || user, nickname:raw.nickname || user, avatar, avatarUrl:avatar, profilePictureUrl:avatar, userId:raw.userId || (raw.uniqueId && /^\d+$/.test(String(raw.uniqueId)) ? raw.uniqueId : ''), badges:raw.badges || [], type, group, action, emoji:raw.emoji || (type === 'share' ? '🗣️' : type === 'follow' ? '👤' : type === 'like' ? '❤️' : type === 'join' ? '👻' : raw.emoji || ''), timestamp:raw.timestamp || Date.now(), id:raw.id || raw.messageId || raw.eventId || raw.msgId || '' };
     }
     function pushEvent(data){ const item = normalizeOverlayActivity(data,'event'); registerActivityBadges(item); rememberSupporter(item); rememberPersistentFrameProfile(item); if(shouldSkipOverlayDuplicate('event', item)) return; state.events.unshift(item); enrichOverlayAvatar(item); if(state.events.length > 240) state.events.length = 240; state.events = clearByAge(state.events, settings.personal.eventsAutoClear, settings.personal.eventsClearSeconds); render(); }
     function pushGift(data){ registerActivityBadges(data); rememberSupporter(data); rememberPersistentFrameProfile(data); const item = normalizeOverlayActivity(data,'gift'); rememberPersistentFrameProfile(item); item.group='gift'; item.type=item.type==='share'?'gift':item.type; item.action=item.action||'Regalo'; if(shouldSkipOverlayDuplicate('gift', item)) return; registerVoiceTriggerForItem(item); state.gifts.push(item); enrichOverlayAvatar(item); if(state.gifts.length > 240) state.gifts.length = 240; state.gifts = clearByAge(state.gifts, settings.personal.giftsAutoClear, settings.personal.giftsClearSeconds); render(); }
@@ -7714,13 +7737,15 @@ function currentViewSettingsKey(){
     socket.on('kickAvatarUpdate', (data) => {
       if (String(data?.platform || '').toLowerCase() !== 'kick') return;
       const username = String(data?.username || data?.uniqueId || '').trim().replace(/^@+/, '').toLowerCase();
-      const messageId = String(data?.messageId || '').trim();
+      const userId = Number(data?.userId || 0);
+      const messageId = String(data?.messageId || data?.eventId || '').trim();
       const avatar = String(data?.avatar || data?.avatarUrl || data?.profilePictureUrl || '').trim();
       if (!avatar) return;
       const patch = (item) => {
         const id = String(item?.id || item?.messageId || '').trim();
         const itemUser = String(item?.username || item?.uniqueId || item?.user || '').trim().replace(/^@+/, '').toLowerCase();
-        if ((messageId && id === messageId) || (!messageId && username && itemUser === username)) {
+        const itemUserId = Number(item?.userId || 0);
+        if ((messageId && id === messageId) || (userId>0 && itemUserId===userId) || (!messageId && !(userId>0) && username && itemUser === username)) {
           item.avatar = item.avatarUrl = item.profilePictureUrl = avatar;
           return true;
         }
@@ -7730,7 +7755,10 @@ function currentViewSettingsKey(){
       state.chat.forEach(item => { if (patch(item)) changed = true; });
       state.events.forEach(item => { if (patch(item)) changed = true; });
       state.gifts.forEach(item => { if (patch(item)) changed = true; });
-      if (changed) render();
+      if (changed) {
+        try { if (username) overlayKickAvatarCache.set(overlayKickAvatarKey(username,userId), avatar); } catch {}
+        render();
+      }
     });
     function normalizeOverlaySocketEvent(data){
       const raw = data || {};

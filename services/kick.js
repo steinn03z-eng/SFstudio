@@ -26,6 +26,19 @@ const KICK_BASE = "https://kick.com";
 const KICK_PUSHER_URL =
   "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
+const KICK_API_BASE = "https://api.kick.com/public/v1";
+const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
+const KICK_CLIENT_ID = String(process.env.KICK_CLIENT_ID || "").trim();
+const KICK_CLIENT_SECRET = String(process.env.KICK_CLIENT_SECRET || "").trim();
+let kickAppToken = "";
+let kickAppTokenExpiresAt = 0;
+let kickAppTokenPromise = null;
+const kickUserApiCache = new Map();
+const kickUserApiInflight = new Map();
+const globalSeenChatIds = new Map();
+const globalSeenEventIds = new Map();
+const webhookOwners = new Map();
+const webhookSeenIds = new Map();
 
 function cleanChannel(value) {
   let channel = String(value || "").trim();
@@ -47,6 +60,93 @@ function decodeMaybeJson(value) {
   } catch {
     return value;
   }
+}
+
+function trimSeenMap(map, ttlMs, maxSize = 5000) {
+  const now = Date.now();
+  for (const [key, at] of map) {
+    if (now - Number(at || 0) > ttlMs) map.delete(key);
+  }
+  while (map.size > maxSize) {
+    const first = map.keys().next().value;
+    if (first === undefined) break;
+    map.delete(first);
+  }
+}
+
+async function getKickAppAccessToken() {
+  if (!KICK_CLIENT_ID || !KICK_CLIENT_SECRET) return "";
+  if (kickAppToken && Date.now() < kickAppTokenExpiresAt - 60_000) return kickAppToken;
+  if (kickAppTokenPromise) return kickAppTokenPromise;
+
+  kickAppTokenPromise = (async () => {
+    const body = new URLSearchParams({
+      grant_type: "client_credentials",
+      client_id: KICK_CLIENT_ID,
+      client_secret: KICK_CLIENT_SECRET,
+    });
+    const response = await fetch(KICK_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
+      body,
+    });
+    const text = await response.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch {}
+    if (!response.ok || !data?.access_token) {
+      throw new Error(`Kick App Access Token HTTP ${response.status}: ${data?.error || data?.message || text.slice(0, 200)}`);
+    }
+    kickAppToken = String(data.access_token);
+    kickAppTokenExpiresAt = Date.now() + Number(data.expires_in || 3600) * 1000;
+    return kickAppToken;
+  })().finally(() => { kickAppTokenPromise = null; });
+
+  return kickAppTokenPromise;
+}
+
+async function kickPublicApi(pathname, options = {}) {
+  const token = await getKickAppAccessToken();
+  if (!token) return null;
+  const response = await fetch(`${KICK_API_BASE}${pathname}`, {
+    method: options.method || "GET",
+    headers: { accept: "application/json", authorization: `Bearer ${token}`, ...(options.headers || {}) },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+  const text = await response.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch {}
+  if (!response.ok) throw new Error(`Kick API HTTP ${response.status}: ${data?.message || data?.error || text.slice(0, 200)}`);
+  return data;
+}
+
+async function getKickUserById(userId) {
+  const id = Number(userId);
+  if (!Number.isFinite(id) || id <= 0) return null;
+  const key = String(Math.trunc(id));
+  const cached = kickUserApiCache.get(key);
+  if (cached) {
+    const ttl = cached.profile ? 86_400_000 : 15_000;
+    if (Date.now() - cached.updatedAt < ttl) return cached.profile || null;
+  }
+  if (kickUserApiInflight.has(key)) return kickUserApiInflight.get(key);
+  const promise = (async () => {
+    try {
+      const data = await kickPublicApi(`/users?id=${encodeURIComponent(key)}`);
+      const profile = Array.isArray(data?.data) ? data.data.find((u) => Number(u?.user_id) === id) : null;
+      if (profile) {
+        kickUserApiCache.set(key, { profile, updatedAt: Date.now() });
+        return profile;
+      }
+    } catch (error) {
+      // Official API enrichment is optional; legacy website fallback remains below.
+    }
+    // Do not cache a failed/unauthenticated lookup for a long period:
+    // credentials can be added/reloaded and Kick can transiently reject requests.
+    kickUserApiCache.set(key, { profile: null, updatedAt: Date.now() });
+    return null;
+  })().finally(() => kickUserApiInflight.delete(key));
+  kickUserApiInflight.set(key, promise);
+  return promise;
 }
 
 function normalizeBadges(badges) {
@@ -114,9 +214,10 @@ function resolveSender(data, preferred = []) {
     sender.display_name || sender.displayName || sender.name || username,
   ).trim();
 
-  const uniqueId = String(
-    sender.id || sender.user_id || sender.userId || data?.user_id || data?.gifter_id || username,
+  const userId = String(
+    sender.user_id || sender.userId || sender.id || data?.user_id || data?.gifter_id || data?.follower?.user_id || data?.subscriber?.user_id || data?.gifter?.user_id || data?.redeemer?.user_id || data?.banned_user?.user_id || data?.moderator?.user_id || data?.hoster?.user_id || data?.raider?.user_id || "",
   ).trim();
+  const uniqueId = userId || username;
   const color = String(
     identity.color || identity.username_color || sender.username_color || sender.color || "",
   ).trim();
@@ -135,6 +236,11 @@ function resolveSender(data, preferred = []) {
       sender.picture ||
       sender.picture_url ||
       sender.profile_picture_url ||
+      sender.profileImage ||
+      sender.profile_image ||
+      sender.photo ||
+      sender.image ||
+      sender.image_url ||
       "",
   ).trim();
 
@@ -142,13 +248,32 @@ function resolveSender(data, preferred = []) {
     identity.badges || sender.badges || sender.follower_badges || data?.badges || [],
   );
 
-  return { username, displayName, uniqueId, color, avatar, badges };
+  return { username, displayName, uniqueId, userId, color, avatar, badges };
 }
 
-function kickAvatarProxyUrl(channel, username) {
+function kickAvatarProxyUrl(channel, username, userId = "") {
+  const c = cleanChannel(channel);
+  const u = String(username || "").trim().replace(/^@+/, "").toLowerCase();
+  const id = Number(userId);
+  const idParam = Number.isFinite(id) && id > 0 ? `&userId=${encodeURIComponent(String(Math.trunc(id)))}` : "";
+  if (!c || (!u && !idParam)) return "";
+  const userParam = u ? `username=${encodeURIComponent(u)}&` : "";
+  return `/api/kick-avatar?${userParam}channel=${encodeURIComponent(c)}${idParam}`;
+}
+
+function isRealKickAvatar(url) {
+  const value = String(url || '').trim();
+  return /^https?:\/\//i.test(value) && !/default-profile-pictures|default-avatar[-_]/i.test(value);
+}
+
+function rememberKickAvatarLocal(channel, username, userId, avatarUrl) {
+  const avatar = String(avatarUrl || '').trim();
+  if (!isRealKickAvatar(avatar)) return;
   const c = cleanChannel(channel);
   const u = String(username || '').trim().replace(/^@+/, '').toLowerCase();
-  return c && u ? `/api/kick-avatar?username=${encodeURIComponent(u)}&channel=${encodeURIComponent(c)}` : '';
+  const id = Number(userId);
+  if (c && u) userAvatarCache.set(`${c}:${Number.isFinite(id) && id > 0 ? Math.trunc(id) : ''}:${u}`, { avatarUrl: avatar, updatedAt: Date.now() });
+  return avatar;
 }
 
 function timestampOf(data) {
@@ -271,7 +396,7 @@ function normalizeIncomingKickEvent(data, eventName) {
     type === "gift" ? "Regalo" : ""
   );
   const eventId = firstNonEmpty(payload?.id, payload?.event_id, payload?.eventId, payload?.message_id, payload?.gift_transaction_id, payload?.correlation_id);
-  const eventText = firstNonEmpty(payload?.message, payload?.content, payload?.description, payload?.user_input);
+  const eventText = firstNonEmpty(payload?.message, payload?.content, payload?.description, payload?.user_input, gift?.message);
 
   let action = "Evento";
   let message = eventText;
@@ -340,7 +465,9 @@ function normalizeIncomingKickEvent(data, eventName) {
       const cost = Number(reward?.cost ?? payload?.cost ?? redemption?.cost ?? 0) || 0;
       action = title;
       const existing = firstNonEmpty(payload?.message, payload?.reason, payload?.description, payload?.user_input, redemption?.user_input);
-      message = existing || `${sender.username || "Alguien"} canjeó ${title}${cost > 0 ? ` · ${cost.toLocaleString("es-ES")} puntos` : "."}`;
+      const status = firstNonEmpty(payload?.status, redemption?.status).toLowerCase();
+      const statusLabel = status === 'accepted' ? ' · aceptado' : status === 'rejected' ? ' · rechazado' : status === 'pending' ? ' · pendiente' : '';
+      message = existing || `${sender.username || "Alguien"} canjeó ${title}${cost > 0 ? ` · ${cost.toLocaleString("es-ES")} puntos` : ""}${statusLabel}.`;
       if (!message.toLowerCase().includes((sender.username || "alguien").toLowerCase()) && sender.username) message = `${sender.username} · ${message}`;
       icon = "🎟️";
       group = "event";
@@ -408,7 +535,7 @@ function normalizeIncomingKickEvent(data, eventName) {
       break;
     case "stream-status": {
       const isLive = payload?.is_live === true || payload?.isLive === true || String(payload?.status || '').toLowerCase() === 'live';
-      action = isLive ? "Directo iniciado" : "Directo actualizado";
+      action = isLive ? "Directo iniciado" : (payload?.ended_at || payload?.is_live === false || payload?.isLive === false ? "Directo finalizado" : "Estado del directo");
       message = isLive ? "El directo de Kick ha comenzado." : firstNonEmpty(payload?.ended_at ? "El directo de Kick ha terminado." : "El estado del directo cambió.");
       icon = isLive ? "🔴" : "📡";
       group = "event";
@@ -459,6 +586,7 @@ function normalizeIncomingKickEvent(data, eventName) {
     avatar: sender.avatar,
     avatarUrl: sender.avatar,
     profilePictureUrl: sender.avatar,
+    userId: sender.userId || undefined,
     color: sender.color,
     badges: sender.badges,
     verified: Boolean(payload?.is_verified || sender?.verified || payload?.verified),
@@ -669,17 +797,38 @@ const userAvatarInflight = new Map();
 const USER_AVATAR_TTL = 24 * 60 * 60 * 1000;
 const KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS = 4;
 
-async function lookupKickUserAvatar(channelName, username) {
+async function lookupKickUserAvatar(channelName, username, userId = "") {
   const channel = cleanChannel(channelName);
   const user = String(username || '').trim().replace(/^@+/, '').toLowerCase();
   if (!channel || !user) return '';
-  const key = `${channel}:${user}`;
+  const numericUserId = Number(userId);
+  const stableId = Number.isFinite(numericUserId) && numericUserId > 0 ? String(Math.trunc(numericUserId)) : '';
+  const key = `${channel}:${stableId}:${user}`;
+
+  // Reuse avatars already learned by server.js from another event (for example a
+  // gift may contain profile_picture even when the chat frame does not).
+  try {
+    const sharedCache = globalThis.__STREAMFUSION_KICK_AVATAR_CACHE__;
+    if (sharedCache) {
+      const shared = stableId ? sharedCache.get(`id:${stableId}`) : sharedCache.get(user);
+      if (shared?.avatarUrl && isRealKickAvatar(shared.avatarUrl)) return shared.avatarUrl;
+    }
+  } catch {}
   const cached = userAvatarCache.get(key);
   const ttl = cached?.avatarUrl ? USER_AVATAR_TTL : 30_000;
   if (cached && Date.now() - Number(cached.updatedAt || 0) < ttl) return cached.avatarUrl || '';
   if (userAvatarInflight.has(key)) return userAvatarInflight.get(key);
 
   const promise = (async () => {
+    // Prefer the official Public API when the chat/event payload contains a user id.
+    // App Access Tokens are server-to-server and do not require a Kick login from the streamer.
+    const officialProfile = await getKickUserById(userId);
+    const officialAvatar = String(officialProfile?.profile_picture || officialProfile?.profile_picture_url || '').trim();
+    if (isRealKickAvatar(officialAvatar)) {
+      rememberKickAvatarLocal(channel, user, userId, officialAvatar);
+      return officialAvatar;
+    }
+
     const endpoints = [
       // The web client exposes the viewer profile in the context of the channel.
       // This is preferable for chatters because it is the same resource Kick uses
@@ -713,6 +862,8 @@ async function lookupKickUserAvatar(channelName, username) {
     } finally {
       userAvatarInflight.delete(key);
     }
+    // Negative results are intentionally short-lived so a temporary Kick/API
+    // failure never locks a chatter into the initials fallback for the session.
     userAvatarCache.set(key, { avatarUrl: '', updatedAt: Date.now() });
     return '';
   })();
@@ -822,7 +973,24 @@ async function emitChat(client, payload) {
   ).trim();
   if (!content || content === "[object Object]") return;
 
-  if (messageId && client.seenMessageIds.has(messageId)) return;
+  trimSeenMap(globalSeenChatIds, 30_000, 5000);
+  const globalChatKey = messageId ? `${client.ownerId}|${messageId}` : '';
+  const incomingAvatar = sender.avatar || '';
+  const emitDuplicateAvatarPatch = () => {
+    if (!incomingAvatar || !isRealKickAvatar(incomingAvatar) || !sender.username) return;
+    globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
+      platform:'kick', username:sender.username, uniqueId:sender.uniqueId, userId:sender.userId || undefined,
+      avatar:incomingAvatar, displayName:sender.displayName,
+    });
+    const proxyUrl = kickAvatarProxyUrl(client.channelName, sender.username, sender.userId) || incomingAvatar;
+    emitScoped(client.io, client.ownerId, 'kickAvatarUpdate', {
+      platform:'kick', username:sender.username, uniqueId:sender.uniqueId, userId:sender.userId || undefined,
+      avatar:proxyUrl, avatarUrl:proxyUrl, profilePictureUrl:proxyUrl, messageId:messageId || undefined,
+    });
+  };
+  if (globalChatKey && globalSeenChatIds.has(globalChatKey)) { emitDuplicateAvatarPatch(); return; }
+  if (globalChatKey) globalSeenChatIds.set(globalChatKey, Date.now());
+  if (messageId && client.seenMessageIds.has(messageId)) { emitDuplicateAvatarPatch(); return; }
   if (messageId) {
     client.seenMessageIds.add(messageId);
     if (client.seenMessageIds.size > 1500) {
@@ -845,6 +1013,7 @@ async function emitChat(client, payload) {
     platform: "kick",
     username: sender.username,
     uniqueId: sender.uniqueId,
+    userId: sender.userId || undefined,
     avatar,
     displayName: sender.displayName,
   });
@@ -857,7 +1026,10 @@ async function emitChat(client, payload) {
     username: sender.username,
     displayName: sender.displayName,
     uniqueId: sender.uniqueId,
+    userId: sender.userId || undefined,
     avatar,
+    avatarUrl: avatar || undefined,
+    profilePictureUrl: avatar || undefined,
     color: sender.color,
     badges: sender.badges,
     comment: content,
@@ -876,7 +1048,7 @@ async function emitChat(client, payload) {
   // asynchronously and send a small patch event so the dashboard/overlay can
   // replace the fallback avatar once Kick's profile endpoint answers.
   if (sender.username) {
-    void lookupKickUserAvatar(client.channelName, sender.username).then((avatarUrl) => {
+    void lookupKickUserAvatar(client.channelName, sender.username, sender.userId).then((avatarUrl) => {
       if (!avatarUrl) return;
       globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
         platform: "kick",
@@ -885,13 +1057,15 @@ async function emitChat(client, payload) {
         avatar: avatarUrl,
         displayName: sender.displayName,
       });
+      const proxyUrl = kickAvatarProxyUrl(client.channelName, sender.username, sender.userId) || avatarUrl;
       emitScoped(client.io, client.ownerId, "kickAvatarUpdate", {
         platform: "kick",
         username: sender.username,
         uniqueId: sender.uniqueId,
-        avatar: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
-        avatarUrl: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
-        profilePictureUrl: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
+        avatar: proxyUrl,
+        avatarUrl: proxyUrl,
+        profilePictureUrl: proxyUrl,
+        userId: sender.userId || undefined,
         messageId: enrichedPayload?.id || undefined,
       });
     }).catch(() => {});
@@ -925,27 +1099,43 @@ function eventFingerprint(eventName, payload) {
 
 function emitEvent(client, eventName, payload) {
   const dedupKey = eventFingerprint(eventName, payload);
+  trimSeenMap(globalSeenEventIds, 30_000, 5000);
+  const globalEventId = normalizeEvent(payload, eventName)?.eventId;
+  const globalKey = `${client.ownerId}|${String(globalEventId || dedupKey)}`;
+  const emitDuplicateEventAvatar = () => {
+    const duplicate = normalizeEvent(payload, eventName);
+    if (!duplicate?.username || !duplicate?.avatar || !isRealKickAvatar(duplicate.avatar)) return;
+    globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(duplicate);
+    const proxyUrl = kickAvatarProxyUrl(client.channelName, duplicate.username, duplicate.userId || duplicate.uniqueId) || duplicate.avatar;
+    emitScoped(client.io, client.ownerId, 'kickAvatarUpdate', {
+      platform:'kick', username:duplicate.username, uniqueId:duplicate.uniqueId, userId:duplicate.userId || undefined,
+      avatar:proxyUrl, avatarUrl:proxyUrl, profilePictureUrl:proxyUrl,
+      eventId:duplicate.eventId || undefined, messageId:duplicate.messageId || undefined,
+    });
+  };
+  if (globalSeenEventIds.has(globalKey)) { emitDuplicateEventAvatar(); return; }
+  globalSeenEventIds.set(globalKey, Date.now());
   const now = Date.now();
   for (const [key, at] of client.seenEventKeys) {
     if (now - at > 15000) client.seenEventKeys.delete(key);
   }
-  if (client.seenEventKeys.has(dedupKey)) return;
+  if (client.seenEventKeys.has(dedupKey)) { emitDuplicateEventAvatar(); return; }
   client.seenEventKeys.set(dedupKey, now);
 
   const normalized = normalizeEvent(payload, eventName);
   globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(normalized);
   if (normalized?.platform === 'kick' && normalized?.username) {
-    const proxy = kickAvatarProxyUrl(client.channelName, normalized.username);
+    const proxy = kickAvatarProxyUrl(client.channelName, normalized.username, normalized.uniqueId);
     if (proxy && (!normalized.avatar || String(normalized.avatar).includes('default-avatar') || String(normalized.avatar).includes('default-profile-pictures'))) {
       normalized.avatar = normalized.avatarUrl = normalized.profilePictureUrl = proxy;
     }
-    void lookupKickUserAvatar(client.channelName, normalized.username).then((avatarUrl) => {
+    void lookupKickUserAvatar(client.channelName, normalized.username, normalized.uniqueId).then((avatarUrl) => {
       if (!avatarUrl) return;
-      const proxyUrl = kickAvatarProxyUrl(client.channelName, normalized.username) || avatarUrl;
+      const proxyUrl = kickAvatarProxyUrl(client.channelName, normalized.username, normalized.userId || normalized.uniqueId) || avatarUrl;
       emitScoped(client.io, client.ownerId, 'kickAvatarUpdate', {
-        platform:'kick', username:normalized.username, uniqueId:normalized.uniqueId,
+        platform:'kick', username:normalized.username, uniqueId:normalized.uniqueId, userId:normalized.userId || undefined,
         avatar:proxyUrl, avatarUrl:proxyUrl, profilePictureUrl:proxyUrl,
-        eventId:normalized.eventId || undefined,
+        eventId:normalized.eventId || undefined, messageId: normalized.messageId || undefined,
       });
     }).catch(()=>{});
   }
@@ -1042,6 +1232,45 @@ function scheduleReconnect(client) {
       scheduleReconnect(client);
     });
   }, delay);
+}
+
+function webhookClient(ownerId, io, channelName = "", broadcasterUserId = 0) {
+  const key = ownerKey(ownerId);
+  let client = webhookOwners.get(key);
+  if (!client) {
+    client = {
+      ownerId: key, io, channelName: cleanChannel(channelName), channelId: Number(broadcasterUserId) || 0, broadcasterUserId: Number(broadcasterUserId) || 0,
+      chatroomId: 0, ws: null, reconnectDelay: 5000, manualDisconnect: false,
+      seenMessageIds: new Set(), seenMessageFingerprints: new Map(), seenEventKeys: new Map(),
+    };
+    webhookOwners.set(key, client);
+  } else {
+    client.io = io || client.io;
+    if (channelName) client.channelName = cleanChannel(channelName);
+    if (broadcasterUserId) { client.channelId = Number(broadcasterUserId); client.broadcasterUserId = Number(broadcasterUserId); }
+  }
+  return client;
+}
+
+export async function handleWebhookEvent(ownerId, io, eventName, payload, meta = {}) {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const broadcaster = data?.broadcaster && typeof data.broadcaster === "object" ? data.broadcaster : {};
+  const channel = cleanChannel(meta.channelSlug || broadcaster?.channel_slug || data?.channel_slug || "");
+  const broadcasterUserId = Number(meta.broadcasterUserId || broadcaster?.user_id || 0);
+  const client = webhookClient(ownerId, io, channel, broadcasterUserId);
+  const messageId = String(meta.messageId || "").trim();
+  if (messageId) {
+    trimSeenMap(webhookSeenIds, 86_400_000, 10_000);
+    if (webhookSeenIds.has(messageId)) return { ok: true, duplicate: true };
+    webhookSeenIds.set(messageId, Date.now());
+  }
+  const lower = String(eventName || "").toLowerCase();
+  if (lower === "chat.message.sent" || lower.includes("chatmessage")) {
+    await emitChat(client, data);
+    return { ok: true, type: "chat" };
+  }
+  emitEvent(client, eventName, data);
+  return { ok: true, type: "event" };
 }
 
 async function openSocket(client) {
@@ -1160,6 +1389,7 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
     io,
     channelName: slug,
     channelId,
+    broadcasterUserId: Number(supplied?.broadcasterUserId || channelInfo?.user?.id || channelInfo?.broadcaster_user_id || 0),
     chatroomId,
     channelInfo,
     ws: null,
@@ -1173,6 +1403,7 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
   };
 
   clients.set(id, client);
+  if (client.broadcasterUserId) webhookOwners.set(id, client);
 
   try {
     await openSocket(client);
@@ -1243,4 +1474,4 @@ export function getState(ownerId) {
   };
 }
 
-export { cleanChannel, getChannelInfo, lookupKickUserAvatar };
+export { cleanChannel, getChannelInfo, lookupKickUserAvatar, getKickAppAccessToken, getKickUserById, normalizeEvent, normalizeIncomingKickEvent };

@@ -285,7 +285,9 @@
   }
 
   function avatarIdentity(item = {}) {
-    return normalizeUsername(item.uniqueId || item.username || item.user || item.displayName || 'user');
+    // Kick legacy chat often uses uniqueId=userId. Avatar lookup needs the public
+    // username first; using the numeric uniqueId as a username makes profile lookup fail.
+    return normalizeUsername(item.username || item.user || item.uniqueId || item.displayName || 'user');
   }
 
   function avatarKey(platform, username) { return `${String(platform||'').toLowerCase()}:${normalizeUsername(username).toLowerCase()}`; }
@@ -295,10 +297,11 @@
     const src = String(value || '').trim();
     if (!src) return false;
     if (/coin-logo\.png/i.test(src)) return false;
+    if (/default-profile-pictures|default-avatar[-_]/i.test(src)) return false;
     return /^https?:\/\//i.test(src) || /^\/profile-photo\//i.test(src) || /^\/api\/kick-avatar(?:\?|$)/i.test(src);
   }
 
-  async function resolveAvatar(platform, username) {
+  async function resolveAvatar(platform, username, userId = "") {
     const clean = normalizeUsername(username);
     if (!clean) return '';
     const key = avatarKey(platform, clean);
@@ -308,7 +311,7 @@
       if(String(platform).toLowerCase()==='kick'){
         const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
         if(kickChannel){
-          const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}`;
+          const idParam=Number(userId)>0?`&userId=${encodeURIComponent(String(Math.trunc(Number(userId))))}`:""; const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}${idParam}`;
           try{ const pr=await fetch(proxy,{credentials:'same-origin',cache:'no-store',method:'HEAD'}); if(pr.ok) return proxy; }catch{}
         }
         const kickUrls = [];
@@ -330,7 +333,8 @@
       }
       const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
       const channelParam = String(platform).toLowerCase()==='kick' && kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
-      const d=await api(`/api/avatar?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(clean)}${channelParam}`).catch(()=>null);
+      const userParam = String(platform).toLowerCase()==='kick' && Number(userId)>0 ? `&userId=${encodeURIComponent(String(Math.trunc(Number(userId))))}` : '';
+      const d=await api(`/api/avatar?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(clean)}${channelParam}${userParam}`).catch(()=>null);
       return isUsableViewerAvatar(d?.avatarUrl) ? d.avatarUrl : '';
     })().then(url=>{if(url) state.avatarCache.set(key,url); else state.avatarCache.delete(key); return url;}).finally(()=>state.avatarPending.delete(key));
     state.avatarPending.set(key,promise);
@@ -341,7 +345,8 @@
     root.querySelectorAll('[data-avatar-platform][data-avatar-user]').forEach(node => {
       const platform = node.dataset.avatarPlatform;
       const username = node.dataset.avatarUser;
-      resolveAvatar(platform, username).then(url => {
+      const userId = node.dataset.avatarUserId || '';
+      resolveAvatar(platform, username, userId).then(url => {
         if (!node.isConnected || !url) return;
         if (node.tagName === 'IMG') {
           node.src = url;
@@ -722,6 +727,19 @@
     return entry;
   }
 
+  function kickAvatarProbeUrl(item){
+    if(String(item?.platform||'').toLowerCase()!=='kick') return '';
+    const username=normalizeUsername(item?.username||item?.user||item?.displayName||'');
+    const userId=avatarUserIdForItem(item);
+    const channel=normalizeUsername(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '');
+    if(!username && !userId) return '';
+    const params=[];
+    if(username) params.push(`username=${encodeURIComponent(username)}`);
+    if(channel) params.push(`channel=${encodeURIComponent(channel)}`);
+    if(userId) params.push(`userId=${encodeURIComponent(userId)}`);
+    return `/api/kick-avatar?${params.join('&')}`;
+  }
+
   function messageRow(item, kind='chat') {
     const p = settings.personalization || {};
     const platform = String(item.platform || 'tiktok').toLowerCase();
@@ -738,11 +756,15 @@
     const showPlatform = p.showPlatformPill !== false;
     const theme = p.chatTheme || 'cloud';
     const animation = kind==='event' ? (p.eventsMode || 'slide') : kind==='gift' ? (p.giftsMode || 'slide') : (p.animation || 'slide');
+    const kickProbe = !avatar && platform==='kick' && item.preview !== true ? kickAvatarProbeUrl(item) : '';
+    const avatarFallback = `<span class="${kickProbe?'hidden ':''}avatar-initial-fallback" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserIdForItem(item))}" aria-label="${esc(userName)}">${esc(String(userName).trim().charAt(0).toUpperCase() || platformShort(platform))}</span>`;
     const avatarHtml = avatar
       ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy">`
       : (item.preview === true
         ? `<img src="${esc(previewAvatarUrl(item))}" alt="${esc(userName)}" loading="lazy">`
-        : `<span class="avatar-initial-fallback" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" aria-label="${esc(userName)}">${esc(String(userName).trim().charAt(0).toUpperCase() || platformShort(platform))}</span>`);
+        : (kickProbe
+          ? `<img src="${esc(kickProbe)}" alt="${esc(userName)}" class="kick-avatar-probe" loading="lazy" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden')">${avatarFallback}`
+          : avatarFallback));
     const messageHtml = isGift ? giftMedia(item) : (body ? esc(body) : '');
     const rowKey = eventFingerprint(item, kind);
     return `<article class="stream-row ${kind} ${platform} ${isGift ? 'gift-row' : ''} chat-theme-${theme} chat-anim-${animation} ${isSupporter(item) ? 'supporter-gold' : ''} ${p.chatAdjustMessages !== false ? 'chat-adjust' : 'chat-no-adjust'}" data-stream-key="${esc(rowKey)}" style="${styleVars(item, kind)}">
@@ -793,13 +815,17 @@
     return { icon:'✨', title:String(item?.action || item?.event || 'EVENTO KICK').toUpperCase(), message:item?.message || `Evento de Kick: ${item?.action || item?.event || 'evento'}.` };
   }
 
+  function avatarUserIdForItem(item){ const direct=Number(item?.userId||0); if(Number.isFinite(direct)&&direct>0)return String(Math.trunc(direct)); const uid=String(item?.uniqueId||'').trim(); return /^\d+$/.test(uid)?uid:''; }
+
   function streamActivityRow(item, kind='event') {
     const p=settings.personalization||{};
     const platform=String(item.platform||'tiktok').toLowerCase();
     const userName=displayNameForActivity(item);
     const identity=avatarIdentity(item);
     const avatar=isUsableViewerAvatar(item.avatar)?item.avatar:'';
-    const avatarHtml=avatar ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy">` : `<span class="avatar-initial-fallback" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" aria-label="${esc(userName)}">${esc(String(userName).trim().charAt(0).toUpperCase() || platformShort(platform))}</span>`;
+    const kickProbe = !avatar && platform==='kick' ? kickAvatarProbeUrl(item) : '';
+    const avatarFallback = `<span class="${kickProbe?'hidden ':''}avatar-initial-fallback" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserIdForItem(item))}" aria-label="${esc(userName)}">${esc(String(userName).trim().charAt(0).toUpperCase() || platformShort(platform))}</span>`;
+    const avatarHtml=avatar ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy">` : (kickProbe ? `<img src="${esc(kickProbe)}" alt="${esc(userName)}" class="kick-avatar-probe" loading="lazy" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden')">${avatarFallback}` : avatarFallback);
     const isGift=kind==='gift';
     const itemType=String(item?.type||'').toLowerCase();
     const kickView = platform==='kick' ? kickActivityPresentation(item, kind) : null;
@@ -1228,6 +1254,7 @@
           username:String(user?.username || user?.slug || data?.slug || data?.channel?.slug || slug).replace(/^@+/,'') || slug,
           displayName:String(user?.name || user?.display_name || user?.username || data?.name || data?.slug || slug) || slug,
           avatarUrl:String(user?.profile_pic || user?.profile_picture || user?.profilePicture || user?.avatar || user?.avatar_url || data?.profile_pic || data?.profile_picture || '').trim(),
+          broadcasterUserId:pickNumber(data?.broadcaster_user_id, data?.user_id, user?.id, data?.channel?.broadcaster_user_id),
           isLive:Boolean(data?.livestream?.is_live || data?.livestream?.isLive || data?.livestream || data?.is_live)
         };
       }catch(error){ lastError=error?.message || String(error); }
@@ -1249,7 +1276,7 @@
       if(platform==='kick'){
         if(button) button.textContent='Resolviendo Kick…';
         const resolved=await resolveKickChannelInBrowser(value);
-        payload={channel:resolved.slug, channelId:resolved.channelId, chatroomId:resolved.chatroomId, profile:resolved};
+        payload={channel:resolved.slug, channelId:resolved.channelId, broadcasterUserId:resolved.broadcasterUserId, chatroomId:resolved.chatroomId, profile:resolved};
       }
       ready.emit(emitEvent, payload, (ack) => {
         if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
@@ -3800,10 +3827,11 @@
   }
   async function openLibraryPage(){ try{await loadLibrary();}catch(e){toast('Biblioteca',e.message,'err');} renderLibrary(); }
 
-  function kickAvatarCacheSet(username, avatar){
+  function kickAvatarCacheSet(username, avatar, userId=''){
     const clean=normalizeUsername(username).toLowerCase();
-    if(!clean || !avatar) return;
+    if(!clean || !avatar || /default-profile-pictures|default-avatar[-_]/i.test(String(avatar))) return;
     state.avatarCache.set(avatarKey('kick', clean), avatar);
+    if(Number(userId)>0) state.avatarCache.set(avatarKey('kick', `id:${Math.trunc(Number(userId))}`), avatar);
   }
 
   function render(){ applyAppearance(); activateNav(); renderTop(); if(page==='dashboard')renderDashboard(); else if(page==='connections')renderConnections(); else if(page==='customize')renderCustomize(); else if(page==='overlays')renderOverlays(); else if(page==='roulette')renderRoulette(); else if(page==='voices')renderVoices(); else if(page==='points')renderPoints(); else if(page==='widgets')renderWidgets(); else if(page==='library')openLibraryPage(); else renderSettings(); }
@@ -4023,20 +4051,22 @@
     socket.on('kickAvatarUpdate',d=>{
       if(String(d?.platform||'').toLowerCase()!=='kick') return;
       const username=normalizeUsername(d?.username||d?.uniqueId||'').toLowerCase();
-      const messageId=String(d?.messageId||'').trim();
+      const userId=Number(d?.userId || 0);
+      const messageId=String(d?.messageId||d?.eventId||'').trim();
       const avatar=String(d?.avatar||d?.avatarUrl||d?.profilePictureUrl||'').trim();
       if(!avatar) return;
       let changed=false;
       for(const item of state.chat){
         const id=String(item?.id||item?.messageId||'').trim();
         const itemUser=normalizeUsername(item?.username||item?.uniqueId||item?.user||'').toLowerCase();
-        if((messageId && id===messageId) || (!messageId && username && itemUser===username)) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; changed=true; }
+        const itemUserId=Number(item?.userId || 0);
+        if((messageId && id===messageId) || (userId>0 && itemUserId===userId) || (!messageId && !(userId>0) && username && itemUser===username)) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; item.userId=item.userId|| (userId>0 ? userId : undefined); changed=true; }
       }
       for(const item of [...state.events,...state.gifts]){
         const itemUser=normalizeUsername(item?.username||item?.uniqueId||item?.user||'').toLowerCase();
         if(username && itemUser===username) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; changed=true; }
       }
-      if(changed){ kickAvatarCacheSet(username, avatar); if(page==='dashboard') updateDashboardFeeds(); else render(); }
+      if(changed){ kickAvatarCacheSet(username, avatar, userId); if(page==='dashboard') updateDashboardFeeds(); else render(); }
     });
     socket.on('event',d=>acceptEvent(d||{}));
     socket.on('roulette:sync',s=>{

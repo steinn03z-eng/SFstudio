@@ -11,7 +11,7 @@ import cors from "cors";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import ffmpegStatic from "ffmpeg-static";
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, createPublicKey, createVerify } from "node:crypto";
 
 import * as database from "./services/database.js";
 import * as liveSession from "./services/live-session.js";
@@ -40,6 +40,38 @@ const __dirname = path.dirname(__filename);
 const FISH_AUDIO_API_KEY = process.env.FISH_AUDIO_API_KEY || "";
 const FISH_AUDIO_MODEL = process.env.FISH_AUDIO_MODEL || "s2.1-pro-free";
 const FISH_AUDIO_VOICE_CHANGER_WS = process.env.FISH_AUDIO_VOICE_CHANGER_WS || "";
+const KICK_CLIENT_ID = String(process.env.KICK_CLIENT_ID || "").trim();
+const KICK_CLIENT_SECRET = String(process.env.KICK_CLIENT_SECRET || "").trim();
+const KICK_WEBHOOK_ENABLED = String(process.env.KICK_WEBHOOK_ENABLED || "true").toLowerCase() !== "false";
+const KICK_WEBHOOK_URL = String(
+    process.env.KICK_WEBHOOK_URL ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, '').replace(/\/$/, '')}/api/kick/webhook` : '')
+).trim();
+const KICK_OFFICIAL_WEBHOOK_EVENTS = [
+    'chat.message.sent',
+    'channel.followed',
+    'channel.subscription.new',
+    'channel.subscription.renewal',
+    'channel.subscription.gifts',
+    'channel.reward.redemption.updated',
+    'livestream.status.updated',
+    'livestream.metadata.updated',
+    'moderation.banned',
+    'kicks.gifted',
+];
+const kickWebhookSubscriptionEnsure = new Map();
+const KICK_WEBHOOK_PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq/+l1WnlRrGSolDMA+A8
+6rAhMbQGmQ2SapVcGM3zq8ANXjnhDWocMqfWcTd95btDydITa10kDvHzw9WQOqp2
+MZI7ZyrfzJuz5nhTPCiJwTwnEtWft7nV14BYRDHvlfqPUaZ+1KR4OCaO/wWIk/rQ
+L/TjY0M70gse8rlBkbo2a8rKhu69RQTRsoaf4DVhDPEeSeI5jVrRDGAMGL3cGuyY
+6CLKGdjVEM78g3JfYOvDU/RvfqD7L89TZ3iN94jrmWdGz34JNlEI5hqK8dd7C5EF
+BEbZ5jgB8s8ReQV8H+MkuffjdAj3ajDDX3DOJMIut1lBrUVD1AaSrGCKHooWoL2e
+twIDAQAB
+-----END PUBLIC KEY-----`;
+const kickWebhookOwnerByBroadcaster = new Map();
+const kickWebhookEventSeen = new Map();
+const kickWebhookPublicKey = createPublicKey(KICK_WEBHOOK_PUBLIC_KEY);
 
 const accountStateDefaults = {
     tiktok: { username: "", connected: false, live: false, mode: "saved", clearFeeds: false, stateReason: "initial" },
@@ -59,12 +91,15 @@ globalThis.__STREAMFUSION_KICK_AVATAR_CACHE__ = kickAvatarCache;
 function rememberKickAvatar(payload = {}) {
     if (String(payload?.platform || '').toLowerCase() !== 'kick') return;
     const username = cleanUser(payload?.username || payload?.uniqueId || '');
-    const avatarUrl = String(payload?.avatar || payload?.avatarUrl || payload?.profilePictureUrl || payload?.profile_picture || payload?.profilepic || '').trim();
-    if (!username || !/^https?:\/\//i.test(avatarUrl)) return;
-    kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
-    if (kickAvatarCache.size > 5000) {
+    const userId = Number(payload?.userId || (String(payload?.uniqueId || '').match(/^\d+$/)?.[0]) || 0);
+    const avatarUrl = String(payload?.avatar || payload?.avatarUrl || payload?.profilePictureUrl || payload?.profile_picture || payload?.profilepic || payload?.profile_picture_url || '').trim();
+    if (!/^https?:\/\//i.test(avatarUrl) || isKickDefaultAvatarUrl(avatarUrl)) return;
+    const record = { avatarUrl, userId: userId > 0 ? userId : undefined, username: username || undefined, updatedAt: Date.now() };
+    if (username) kickAvatarCache.set(username.toLowerCase(), record);
+    if (userId > 0) kickAvatarCache.set(`id:${userId}`, record);
+    if (kickAvatarCache.size > 6000) {
         const first = kickAvatarCache.keys().next().value;
-        kickAvatarCache.delete(first);
+        if (first !== undefined) kickAvatarCache.delete(first);
     }
 }
 
@@ -1093,7 +1128,7 @@ app.use(
         contentSecurityPolicy: false,
     })
 );
-app.use(express.json({ limit: "12mb" }));
+app.use(express.json({ limit: "12mb", verify: (req, _res, buf) => { if (String(req.path || "") === "/api/kick/webhook") req.rawBody = Buffer.from(buf); } }));
 app.use(express.static(path.join(__dirname, "Public")));
 
 function bearerToken(req) {
@@ -1179,6 +1214,39 @@ function resolveOverlayHistoryOwner(req) {
     const owner = database.getUserByOverlayKey(overlayKey);
     return owner?.id && String(owner.id) === ownerId ? String(owner.id) : "";
 }
+
+app.post("/api/kick/webhook", async (req, res) => {
+    const raw = Buffer.isBuffer(req.body) ? req.body : (Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {})));
+    if (KICK_WEBHOOK_ENABLED && !verifyKickWebhook({ ...req, rawBody: raw })) return res.status(401).json({ ok: false, error: "Firma de webhook de Kick inválida." });
+    let payload = {};
+    try { payload = JSON.parse(raw.toString("utf8") || "{}"); } catch { return res.status(400).json({ ok: false, error: "Webhook JSON inválido." }); }
+    const eventName = String(req.get("Kick-Event-Type") || payload?.event || "").trim().toLowerCase();
+    const messageId = String(req.get("Kick-Event-Message-Id") || payload?.id || payload?.message_id || payload?.gift_transaction_id || "").trim();
+    if (!eventName) return res.status(400).json({ ok: false, error: "Falta Kick-Event-Type." });
+    const broadcasterId = Number(payload?.broadcaster?.user_id || payload?.broadcaster_user_id || payload?.channel?.broadcaster_user_id || 0) || 0;
+    let ownerId = broadcasterId ? kickWebhookOwnerByBroadcaster.get(String(broadcasterId)) || "" : "";
+    if (!ownerId && broadcasterId) {
+        try { ownerId = database.findUserIdByKickBroadcasterUserId?.(broadcasterId) || ""; } catch {}
+    }
+    if (!ownerId) {
+        return res.status(202).json({ ok: true, ignored: true, reason: "Broadcaster no está asociado a una sesión StreamFusion activa." });
+    }
+    if (messageId) {
+        const now = Date.now();
+        for (const [key, at] of kickWebhookEventSeen) if (now - at > 86_400_000) kickWebhookEventSeen.delete(key);
+        if (kickWebhookEventSeen.has(messageId)) return res.json({ ok: true, duplicate: true });
+        kickWebhookEventSeen.set(messageId, now);
+    }
+    try {
+        const result = await kick.handleWebhookEvent(ownerId, io, eventName, payload, {
+            messageId, broadcasterUserId: broadcasterId, channelSlug: payload?.broadcaster?.channel_slug || payload?.channel_slug || "",
+        });
+        return res.json(result);
+    } catch (error) {
+        console.error("[Kick webhook]", error);
+        return res.status(500).json({ ok: false, error: "No se pudo procesar el evento de Kick." });
+    }
+});
 
 app.get("/api/live-history", (req, res, next) => {
     const ownerId = resolveOverlayHistoryOwner(req);
@@ -1790,6 +1858,105 @@ async function resolveKickUserAvatarViaCurl(username, channelName = "") {
 }
 
 
+function kickAvatarFromCache(username, userId = 0) {
+    const id = Number(userId);
+    if (Number.isFinite(id) && id > 0) {
+        const byId = kickAvatarCache.get(`id:${Math.trunc(id)}`);
+        if (byId?.avatarUrl && !isKickDefaultAvatarUrl(byId.avatarUrl)) return byId.avatarUrl;
+    }
+    const key = cleanUser(username).toLowerCase();
+    const byName = key ? kickAvatarCache.get(key) : null;
+    return byName?.avatarUrl && !isKickDefaultAvatarUrl(byName.avatarUrl) ? byName.avatarUrl : "";
+}
+
+async function ensureKickWebhookSubscriptions(broadcasterUserId) {
+    const broadcasterId = Number(broadcasterUserId);
+    if (!KICK_WEBHOOK_ENABLED || !KICK_CLIENT_ID || !KICK_CLIENT_SECRET || !broadcasterId) return { enabled: false, reason: 'missing-config' };
+    const key = String(broadcasterId);
+    const existingPromise = kickWebhookSubscriptionEnsure.get(key);
+    if (existingPromise) return existingPromise;
+
+    const task = (async () => {
+        const token = await kick.getKickAppAccessToken();
+        if (!token) return { enabled: false, reason: 'no-app-token' };
+        const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
+        let existing = [];
+        try {
+            const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers });
+            if (response.ok) {
+                const body = await response.json().catch(() => ({}));
+                existing = Array.isArray(body?.data) ? body.data : Array.isArray(body?.subscriptions) ? body.subscriptions : [];
+            }
+        } catch (error) {
+            console.warn('[Kick] No se pudieron consultar las suscripciones de eventos:', error?.message || error);
+        }
+        const activeNames = new Set(existing.map((item) => String(item?.name || item?.event || '').toLowerCase()).filter(Boolean));
+        const missing = KICK_OFFICIAL_WEBHOOK_EVENTS.filter((name) => !activeNames.has(name));
+        if (!missing.length) return { enabled: true, created: 0, existing: existing.length };
+
+        const response = await fetch('https://api.kick.com/public/v1/events/subscriptions', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                broadcaster_user_id: broadcasterId,
+                method: 'webhook',
+                events: missing.map((name) => ({ name, version: 1 })),
+            }),
+        });
+        const body = await response.text();
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.slice(0, 300)}`);
+        console.log(`[Kick] Webhooks asegurados para ${broadcasterId}: ${missing.join(', ')}`);
+        return { enabled: true, created: missing.length, existing: existing.length };
+    })().catch((error) => {
+        console.warn(`[Kick] No se pudieron registrar webhooks para ${broadcasterId}:`, error?.message || error);
+        return { enabled: false, reason: String(error?.message || error) };
+    }).finally(() => {
+        kickWebhookSubscriptionEnsure.delete(key);
+    });
+    kickWebhookSubscriptionEnsure.set(key, task);
+    return task;
+}
+
+function verifyKickWebhook(req) {
+    const body = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {}));
+    const messageId = String(req.get("Kick-Event-Message-Id") || "").trim();
+    const timestamp = String(req.get("Kick-Event-Message-Timestamp") || "").trim();
+    const signature = String(req.get("Kick-Event-Signature") || "").trim();
+    if (!messageId || !timestamp || !signature) return false;
+    const signed = Buffer.from(`${messageId}.${timestamp}.${body.toString("utf8")}`, "utf8");
+    try {
+        const verifier = createVerify("RSA-SHA256");
+        verifier.update(signed);
+        verifier.end();
+        return verifier.verify(kickWebhookPublicKey, Buffer.from(signature, "base64"));
+    } catch { return false; }
+}
+
+async function handleKickUserAvatarLookup(username, userId = 0, channel = "") {
+    const cached = kickAvatarFromCache(username, userId);
+    if (cached) return cached;
+
+    // Resolve arbitrary chatter avatars from Kick's public website context first.
+    // The official /public/v1/users endpoint is not a general directory for arbitrary
+    // users, so a default profile from that endpoint must not be treated as authoritative.
+    try {
+        const avatar = await resolveKickUserAvatarViaCurl(username, channel);
+        if (avatar && !isKickDefaultAvatarUrl(avatar)) {
+            rememberKickAvatar({ platform: "kick", username, userId, avatar });
+            return avatar;
+        }
+    } catch {}
+
+    try {
+        const avatar = await kick.lookupKickUserAvatar(channel, username, userId);
+        if (avatar && !isKickDefaultAvatarUrl(avatar)) {
+            rememberKickAvatar({ platform: "kick", username, userId, avatar });
+            return avatar;
+        }
+    } catch {}
+    return "";
+}
+
 app.get("/api/avatar", async (req, res) => {
     const platform = String(req.query.platform || "").toLowerCase();
     const username = cleanUser(req.query.username);
@@ -1814,18 +1981,9 @@ app.get("/api/avatar", async (req, res) => {
         source = avatarUrl ? "tiktok" : "fallback";
     } else if (platform === "kick") {
         const channel = cleanUser(req.query.channel);
-        const cached = kickAvatarCache.get(username.toLowerCase());
-        if (cached?.avatarUrl && Date.now() - Number(cached.updatedAt || 0) < 24 * 60 * 60 * 1000) {
-            avatarUrl = cached.avatarUrl;
-            source = "kick-cache";
-        } else {
-            // A chatter's avatar is a USER resource, not the channel resource.
-            // Never call getChannelInfo(username) here: that resolves a channel
-            // named after the chatter (or hits Kick's protected channel endpoint).
-            avatarUrl = await resolveKickUserAvatarViaCurl(username, channel);
-            source = avatarUrl ? "kick-user" : "fallback";
-            if (avatarUrl) kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
-        }
+        const userId = Number(req.query.userId || 0) || 0;
+        avatarUrl = await handleKickUserAvatarLookup(username, userId, channel);
+        source = avatarUrl ? (userId ? "kick-user-api" : "kick-user") : "fallback";
     }
 
     res.json({
@@ -1841,9 +1999,10 @@ app.get("/api/avatar", async (req, res) => {
 app.get("/api/kick-avatar", async (req, res) => {
     const username = cleanUser(req.query.username);
     const channel = cleanUser(req.query.channel);
-    if (!username) return res.status(400).end();
+    const userId = Number(req.query.userId || 0) || 0;
+    if (!username && !userId) return res.status(400).end();
     try {
-        let avatarUrl = await resolveKickUserAvatarViaCurl(username, channel);
+        let avatarUrl = await handleKickUserAvatarLookup(username, userId, channel);
         if (!avatarUrl) return res.status(404).end();
         const parsed = new URL(avatarUrl);
         const allowed = new Set([
@@ -1947,6 +2106,9 @@ function saveConnectionProfile(ownerId, platform, profile = {}) {
         ...(merged.connectionProfiles[key] || {}),
         username: String(profile.username || merged.connectionProfiles[key]?.username || "").trim(),
         avatarUrl: String(profile.avatarUrl || merged.connectionProfiles[key]?.avatarUrl || "").trim(),
+        channelId: Number(profile.channelId || merged.connectionProfiles[key]?.channelId || 0) || 0,
+        broadcasterUserId: Number(profile.broadcasterUserId || merged.connectionProfiles[key]?.broadcasterUserId || 0) || 0,
+        chatroomId: Number(profile.chatroomId || merged.connectionProfiles[key]?.chatroomId || 0) || 0,
     };
     database.saveUserSettings(owner, merged);
     io.to(`user:${owner}`).emit("settings", merged);
@@ -3303,6 +3465,28 @@ app.get("/api/realtime-voice/config", (req, res) => {
     });
 });
 
+app.get("/api/kick/official-status", requireUser, async (req, res) => {
+    const hasAppCredentials = Boolean(KICK_CLIENT_ID && KICK_CLIENT_SECRET);
+    const kickProfile = getSavedConnectionProfile(req.user.id, "kick");
+    let appToken = false;
+    let subscriptions = null;
+    let error = "";
+    if (hasAppCredentials) {
+        try {
+            appToken = Boolean(await kick.getKickAppAccessToken());
+            const broadcasterId = Number(kickProfile?.broadcasterUserId || 0);
+            if (appToken && broadcasterId > 0) {
+                const token = await kick.getKickAppAccessToken();
+                const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+                const body = await response.json().catch(() => ({}));
+                subscriptions = response.ok ? (Array.isArray(body?.data) ? body.data : []) : null;
+                if (!response.ok) error = `HTTP ${response.status}`;
+            }
+        } catch (e) { error = String(e?.message || e); }
+    }
+    res.json({ ok:true, officialApi:{ configured:hasAppCredentials, token:appToken, broadcasterUserId:Number(kickProfile?.broadcasterUserId||0)||0, subscriptions, webhookUrlConfigured:Boolean(KICK_WEBHOOK_URL), error } });
+});
+
 app.get("/api/status", (req, res) => {
     res.json({
         online: true,
@@ -3368,8 +3552,17 @@ io.on("connection", (socket) => {
     console.log("Cliente conectado");
 
     if (socket.user) {
-        if (socket.isOverlay) socket.join(`overlay:${socket.user.id}`);
-        else socket.join(`user:${socket.user.id}`);
+        if (socket.isOverlay) {
+            // Overlay connections are authenticated by their per-user overlayKey.
+            // Join both the dedicated overlay room and the canonical user room so
+            // overlays receive every event emitted by legacy and new platform
+            // adapters. This keeps TikTok/Twitch compatibility while ensuring Kick
+            // chat/events/gifts are visible immediately.
+            socket.join(`overlay:${socket.user.id}`);
+            socket.join(`user:${socket.user.id}`);
+        } else {
+            socket.join(`user:${socket.user.id}`);
+        }
         setCustomVoiceRules(socket.user.id, database.listUserVoices(socket.user.id));
         if (socket.isVoiceList) addVoiceListPresence(socket.user.id);
     }
@@ -3530,7 +3723,7 @@ io.on("connection", (socket) => {
             const sameKickUser = String(savedBeforeAvatar.username || "").replace(/^@+/, "").toLowerCase() === resolvedUsername.toLowerCase();
             const avatarUrl = String(profile?.avatarUrl || (sameKickUser ? savedBeforeAvatar.avatarUrl || "" : ""));
 
-            saveConnectionProfile(socket.user.id, "kick", { username: resolvedUsername, avatarUrl });
+            saveConnectionProfile(socket.user.id, "kick", { username: resolvedUsername, avatarUrl, channelId: Number(request.channelId || 0) || 0, broadcasterUserId: Number(request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0, chatroomId: Number(request.chatroomId || 0) || 0 });
             if (avatarUrl) await syncConnectedProfilePhoto(socket.user.id, "kick", resolvedUsername, avatarUrl);
 
             emitAccountState("kick", {
@@ -3544,10 +3737,16 @@ io.on("connection", (socket) => {
                 username: String(profile?.username || resolvedUsername),
                 displayName: String(profile?.displayName || resolvedUsername),
                 avatarUrl: String(profile?.avatarUrl || avatarUrl || ""),
+                broadcasterUserId: Number(request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0,
                 isLive: Boolean(profile?.isLive),
             });
             const finalAvatar = String(info?.avatarUrl || avatarUrl || "");
-            saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar });
+            saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar, channelId: Number(info?.channelId || request.channelId || 0) || 0, broadcasterUserId: Number(info?.broadcasterUserId || request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0, chatroomId: Number(info?.chatroomId || request.chatroomId || 0) || 0 });
+            const broadcasterId = Number(info?.broadcasterUserId || request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0;
+            if (broadcasterId > 0) {
+                kickWebhookOwnerByBroadcaster.set(String(broadcasterId), String(socket.user.id));
+                void ensureKickWebhookSubscriptions(broadcasterId);
+            }
             emitAccountState("kick", {
                 username: String(info?.username || resolvedUsername), avatarUrl: finalAvatar,
                 connected: true, live: Boolean(info?.isLive), mode: info?.isLive ? "live" : "waiting",

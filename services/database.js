@@ -351,6 +351,20 @@ export function saveUserSettings(userId, settings) {
 }
 
 
+export function findUserIdByKickBroadcasterUserId(broadcasterUserId) {
+    const target = Number(broadcasterUserId);
+    if (!Number.isFinite(target) || target <= 0) return "";
+    const rows = db.prepare("SELECT user_id, data FROM user_settings WHERE data LIKE '%broadcasterUserId%'").all();
+    for (const row of rows) {
+        try {
+            const data = JSON.parse(row.data || "{}");
+            const candidate = Number(data?.connectionProfiles?.kick?.broadcasterUserId || 0);
+            if (candidate === target) return String(row.user_id || "");
+        } catch {}
+    }
+    return "";
+}
+
 export function getUserById(userId) {
     const row = db.prepare("SELECT id, email, display_name FROM users WHERE id = ?").get(String(userId || ""));
     return row ? { id: row.id, email: row.email, displayName: row.display_name } : null;
