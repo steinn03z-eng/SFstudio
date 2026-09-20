@@ -3563,15 +3563,14 @@ io.on("connection", (socket) => {
     console.log("Cliente conectado");
 
     if (socket.user) {
-        if (socket.isOverlay) {
-            // Generated overlays use a dedicated room. This keeps overlay delivery
-            // independent from the Dashboard connection and prevents duplicate
-            // copies when both are open at the same time.
-            socket.join(`overlay:${socket.user.id}`);
-            socket.overlayRoom = `overlay:${socket.user.id}`;
-        } else {
-            socket.join(`user:${socket.user.id}`);
-        }
+        // IMPORTANT: Dashboard and generated overlays deliberately share the same
+        // canonical user room. This mirrors the existing TikTok/Twitch delivery
+        // model and guarantees that chat/events/gifts reach every generated overlay.
+        // Do NOT join a second overlay room here: scoped emitters already fan out
+        // to both destinations, which would otherwise duplicate every event.
+        socket.join(`user:${socket.user.id}`);
+        if (socket.isOverlay) socket.overlayRoom = `user:${socket.user.id}`;
+
         setCustomVoiceRules(socket.user.id, database.listUserVoices(socket.user.id));
         if (socket.isVoiceList) addVoiceListPresence(socket.user.id);
     }
