@@ -19,6 +19,8 @@ const USER_AGENT =
 
 const KICK_BASE = "https://kick.com";
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
+const KICK_PUSHER_URL =
+  "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
 
 function cleanChannel(value) {
   let channel = String(value || "").trim();
@@ -490,15 +492,25 @@ async function openSocket(client) {
   closeSocket(client);
   stopPing(client);
 
-  const descriptor = await getRealtimeDescriptor(client.channelId);
   const WS = globalThis.WebSocket;
   if (typeof WS !== "function") {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
   }
 
-  const ws = new WS(descriptor.url);
+  let socketUrl = KICK_PUSHER_URL;
+  if (!client.resolvedInBrowser) {
+    const descriptor = await getRealtimeDescriptor(client.channelId);
+    socketUrl = descriptor.url;
+    client.provider = descriptor.provider || "centrifugo";
+  } else {
+    // El navegador ya resolvió el canal y su chatroom. Esto evita que Railway
+    // tenga que consultar kick.com/api/v2/channels/{slug}, endpoint que puede
+    // devolver 403 por la protección de Kick. Pusher usa una clave pública.
+    client.provider = "pusher";
+  }
+
+  const ws = new WS(socketUrl);
   client.ws = ws;
-  client.provider = descriptor.provider || "centrifugo";
 
   await new Promise((resolve, reject) => {
     let settled = false;
@@ -557,7 +569,7 @@ async function openSocket(client) {
   });
 }
 
-export async function connect(channelName, io, ownerId) {
+async function connectWithInfo(channelName, channelInfo, io, ownerId, resolvedInBrowser = false) {
   const id = ownerKey(ownerId);
   if (!id) throw new Error("ownerId es obligatorio para conectar Kick");
 
@@ -566,14 +578,12 @@ export async function connect(channelName, io, ownerId) {
   const slug = cleanChannel(channelName);
   if (!slug) throw new Error("Introduce un canal de Kick, por ejemplo @nombre");
 
-  const channelInfo = await getChannelInfo(slug);
-  const channelId = Number(channelInfo?.id || channelInfo?.user_id || 0);
-  const chatroomId = Number(channelInfo?.chatroom?.id || 0);
+  const channelId = Number(channelInfo?.id || channelInfo?.channel_id || channelInfo?.user_id || 0);
+  const chatroomId = Number(channelInfo?.chatroom?.id || channelInfo?.chatroom_id || 0);
+  if (!channelId) throw new Error(`No se encontró el ID del canal @${slug}`);
+  if (!chatroomId) throw new Error(`No se encontró el chatroom del canal @${slug}`);
 
-  if (!chatroomId) {
-    throw new Error(`No se encontró el chatroom del canal @${slug}`);
-  }
-
+  const user = channelInfo?.user || channelInfo?.channel?.user || channelInfo?.profile || {};
   const client = {
     ownerId: id,
     io,
@@ -586,6 +596,7 @@ export async function connect(channelName, io, ownerId) {
     reconnectTimer: null,
     reconnectDelay: 5_000,
     manualDisconnect: false,
+    resolvedInBrowser: Boolean(resolvedInBrowser),
     seenMessageIds: new Set(),
   };
 
@@ -606,7 +617,6 @@ export async function connect(channelName, io, ownerId) {
   emitStats(client);
   emitSystem(client, `Kick conectado: @${slug}`);
 
-  const user = channelInfo?.user || {};
   return {
     username: String(user.username || user.slug || slug),
     displayName: String(user.name || user.username || slug),
@@ -615,6 +625,7 @@ export async function connect(channelName, io, ownerId) {
         user.profile_picture ||
         user.avatar ||
         channelInfo?.profile_pic ||
+        channelInfo?.avatar_url ||
         "",
     ),
     slug,
@@ -623,6 +634,22 @@ export async function connect(channelName, io, ownerId) {
     isLive: Boolean(channelInfo?.livestream?.is_live || channelInfo?.livestream),
     channelInfo,
   };
+}
+
+export async function connect(channelName, io, ownerId) {
+  const slug = cleanChannel(channelName);
+  if (!slug) throw new Error("Introduce un canal de Kick, por ejemplo @nombre");
+  const channelInfo = await getChannelInfo(slug);
+  return connectWithInfo(slug, channelInfo, io, ownerId, false);
+}
+
+// Conexión sin consulta servidor->Kick. El navegador resuelve el perfil/chattroom
+// y entrega solamente los datos públicos necesarios para abrir el WebSocket.
+export async function connectResolved(channelName, channelInfo, io, ownerId) {
+  if (!channelInfo || typeof channelInfo !== "object") {
+    throw new Error("Kick no entregó información válida del canal.");
+  }
+  return connectWithInfo(channelName, channelInfo, io, ownerId, true);
 }
 
 export function disconnect(ownerId) {

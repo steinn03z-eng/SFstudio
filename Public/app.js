@@ -988,6 +988,50 @@
     });
   }
 
+  async function resolveKickChannelInBrowser(channelValue){
+    const slug=String(channelValue||'').trim().replace(/^@+/, '').split(/[?#/]/)[0].toLowerCase();
+    if(!slug) throw new Error('Escribe un canal de Kick, por ejemplo @nombre.');
+
+    const endpoints=[
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
+      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`
+    ];
+    let lastError=null;
+    for(const url of endpoints){
+      try{
+        const response=await fetch(url,{
+          method:'GET',
+          mode:'cors',
+          credentials:'include',
+          cache:'no-store',
+          headers:{'Accept':'application/json, text/plain, */*'}
+        });
+        const raw=await response.text();
+        let data=null;
+        try{ data=raw?JSON.parse(raw):null; }catch{}
+        if(!response.ok){
+          const detail=typeof data==='string'?data:(data?.error||data?.message||response.statusText||`HTTP ${response.status}`);
+          lastError=new Error(`HTTP ${response.status} en Kick: ${detail}`);
+          continue;
+        }
+        const info=(data?.data && typeof data.data==='object')?data.data:data;
+        const channelId=Number(info?.id||info?.channel_id||info?.user_id||info?.broadcaster_user_id||0);
+        const chatroomId=Number(info?.chatroom?.id||info?.chatroom_id||0);
+        if(!chatroomId){
+          lastError=new Error('Kick no devolvió el chatroom de ese canal.');
+          continue;
+        }
+        return {...info,id:channelId||info?.id,chatroom:{...(info?.chatroom||{}),id:chatroomId},slug:info?.slug||slug};
+      }catch(err){
+        lastError=err instanceof Error?err:new Error(String(err||'Error al consultar Kick.'));
+      }
+    }
+    if(lastError?.message?.includes('403')){
+      throw new Error('Kick está bloqueando esta solicitud (HTTP 403). Abre kick.com en otra pestaña y vuelve a intentar; no hace falta OAuth.');
+    }
+    throw lastError||new Error('No se pudo resolver el canal de Kick.');
+  }
+
   async function connectPlatform(platform, inputId, emitEvent, buttonId){
     const input=$(inputId);
     const button=$(buttonId);
@@ -998,10 +1042,22 @@
     try{
       invalidatePlatformSession(platform);
       const ready=await waitForSocketReady();
-      ready.emit(emitEvent, value, (ack) => {
-        if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
-        else if(ack?.error){ toast('Conexión', ack.error, 'err'); }
-      });
+
+      if(platform==='kick'){
+        // Kick bloquea el request equivalente cuando sale desde un servidor/datatacenter.
+        // El navegador del usuario sí puede resolver el canal; luego el servidor abre
+        // el WebSocket público de Pusher con el chatroom id, sin OAuth.
+        const channelInfo=await resolveKickChannelInBrowser(value);
+        ready.emit('connectKickResolved',{slug:value,channelInfo},(ack)=>{
+          if(ack?.ok) toast('Kick',ack.message||'Conexión iniciada.');
+          else if(ack?.error) toast('Kick',ack.error,'err');
+        });
+      }else{
+        ready.emit(emitEvent, value, (ack) => {
+          if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
+          else if(ack?.error){ toast('Conexión', ack.error, 'err'); }
+        });
+      }
     }catch(err){
       toast('Conexión', err?.message || 'No se pudo iniciar la conexión.', 'err');
       if(button){ button.disabled=false; button.removeAttribute('data-connecting'); button.textContent=original; }
