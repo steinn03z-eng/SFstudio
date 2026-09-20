@@ -6971,6 +6971,26 @@ function currentViewSettingsKey(){
       overlayKickAvatarPending.set(cacheKey,promise);
       return promise;
     }
+    function applyAvatarToOverlayDom(item, avatar){
+      const url = String(avatar || '').trim();
+      if(!url || /default-profile-pictures|default-avatar[-_]/i.test(url)) return false;
+      let changed = false;
+      const chatKey = chatItemKey(item);
+      const feedKind = String(item?.group || item?.activityKind || '').toLowerCase()==='gift' ? 'gift' : 'event';
+      const feedKey = overlayFeedItemKey(item, feedKind);
+      if(view === 'chat' && list){
+        const node = list.querySelector(`.overlayItem[data-chat-key="${CSS.escape(chatKey)}"]`);
+        const img = node?.querySelector('.chat-avatar img');
+        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
+        if(img?.parentElement){ img.parentElement.querySelector('.chat-avatar-empty')?.classList.add('hidden'); }
+      } else if(list){
+        const node = list.querySelector(`.overlayItem[data-feed-key="${CSS.escape(feedKey)}"]`);
+        const img = node?.querySelector('img');
+        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
+      }
+      return changed;
+    }
+
     function enrichOverlayAvatar(item){
       const platform=String(item?.platform||'').toLowerCase();
       if(platform!=='kick') return;
@@ -6983,7 +7003,8 @@ function currentViewSettingsKey(){
       resolveOverlayKickAvatar(username,userId).then((url)=>{
         if(!url) return;
         item.avatar=item.avatarUrl=item.profilePictureUrl=url;
-        render();
+        // Do not call render(): updating one avatar must not rebuild the overlay.
+        applyAvatarToOverlayDom(item, url);
       });
     }
     function kickAvatarProbeUrl(item){
@@ -7451,31 +7472,40 @@ function currentViewSettingsKey(){
       }
       const styleSig = currentChatStyleSignature();
       const styleChanged = chatOverlayStyleSignature !== styleSig;
+
+      // A style/settings change legitimately rebuilds the list. Normal LIVE chat
+      // messages must NEVER rebuild/reinsert all existing nodes: doing that restarts
+      // image loading/animations and makes the whole overlay visibly refresh.
       if (styleChanged) {
         list.innerHTML = items.length ? items.map(item => itemHtml(item,'chat')).join('') : `<div class="overlayEmpty"><strong>Sin contenido</strong><span>Cuando haya actividad, aparecerá aquí.</span></div>`;
         chatOverlayStyleSignature = styleSig;
       } else {
         const existing = new Map(Array.from(list.querySelectorAll('.overlayItem[data-chat-key]')).map(node => [node.dataset.chatKey,node]));
-        const wanted = new Set();
-        const fragment = document.createDocumentFragment();
-        for (const item of items) {
-          const key = chatItemKey(item);
-          wanted.add(key);
-          const oldNode = existing.get(key);
-          if (oldNode) fragment.appendChild(oldNode);
-          else {
-            const holder = document.createElement('div');
-            holder.innerHTML = itemHtml(item,'chat').trim();
-            const node = holder.firstElementChild;
-            if (node) fragment.appendChild(node);
-          }
-        }
+        const wanted = new Set(items.map(chatItemKey));
+        // Remove only cards that are no longer present.
         for (const node of Array.from(list.querySelectorAll('.overlayItem[data-chat-key]'))) {
           if (!wanted.has(node.dataset.chatKey)) node.remove();
         }
         list.querySelector('.overlayEmpty')?.remove();
-        if (items.length) list.appendChild(fragment);
-        else list.innerHTML = `<div class="overlayEmpty"><strong>Sin contenido</strong><span>Cuando haya actividad, aparecerá aquí.</span></div>`;
+
+        // Insert only missing cards. Existing DOM nodes stay in place, preserving
+        // their images, CSS animations, media state and scroll position.
+        const newFragment = document.createDocumentFragment();
+        for (const item of items) {
+          const key = chatItemKey(item);
+          if (existing.has(key)) continue;
+          const holder = document.createElement('div');
+          holder.innerHTML = itemHtml(item,'chat').trim();
+          const node = holder.firstElementChild;
+          if (node) newFragment.appendChild(node);
+        }
+        if (newFragment.childNodes.length) {
+          if (direction === 'up') list.insertBefore(newFragment, list.firstElementChild || null);
+          else list.appendChild(newFragment);
+        }
+        if (!items.length && !list.querySelector('.overlayEmpty')) {
+          list.innerHTML = `<div class="overlayEmpty"><strong>Sin contenido</strong><span>Cuando haya actividad, aparecerá aquí.</span></div>`;
+        }
       }
       ensureOverlayChatResizeObserver();
       const newest = items.length ? (direction === 'up' ? items[0] : items[items.length-1]) : null;
@@ -7487,6 +7517,7 @@ function currentViewSettingsKey(){
         const shouldFollow = forceFollow || !overlayChatScrollState.initialized || overlayChatScrollState.pinned || (newestChanged && overlayShouldFollowNew(overlayChatScrollState));
         if (shouldFollow) queueOverlayChatAutoscroll(direction, forceFollow || !overlayChatScrollState.initialized);
         else applyOverlayChatScroll(direction, false, newestChanged);
+        // Fit only the affected/new cards when possible; the fallback remains cheap.
         requestAnimationFrame(()=>fitOverlayItems());
       });
     }
@@ -7757,7 +7788,17 @@ function currentViewSettingsKey(){
       state.gifts.forEach(item => { if (patch(item)) changed = true; });
       if (changed) {
         try { if (username) overlayKickAvatarCache.set(overlayKickAvatarKey(username,userId), avatar); } catch {}
-        render();
+        // Avatar patches are targeted DOM updates. Re-rendering here used to make
+        // every existing chat/event/gift card refresh whenever a profile resolved.
+        for (const item of [...state.chat,...state.events,...state.gifts]) {
+          const id=String(item?.id||item?.messageId||'').trim();
+          const itemUserId=Number(item?.userId||0);
+          const itemUser=String(item?.username||item?.uniqueId||item?.user||'').trim().replace(/^@+/,'').toLowerCase();
+          if((messageId && id===messageId) || (userId>0 && itemUserId===userId) || (!messageId && userId<=0 && username && itemUser===username)){
+            item.avatar=item.avatarUrl=item.profilePictureUrl=avatar;
+            applyAvatarToOverlayDom(item, avatar);
+          }
+        }
       }
     });
     function normalizeOverlaySocketEvent(data){

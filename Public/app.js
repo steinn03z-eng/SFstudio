@@ -985,9 +985,11 @@
     const text=String(item?.message||item?.action||item?.giftName||item?.gift||'').trim().toLowerCase();
     const gift=String(item?.giftId||item?.gift?.id||item?.stickerId||'').toLowerCase();
     const sourceId=String(item?.messageId||item?.commentId||item?.eventId||item?.msgId||'').trim().toLowerCase();
-    const avatar=String(item?.avatar||item?.avatarUrl||item?.profilePictureUrl||'').trim().toLowerCase();
     const ts=Number(item?.timestamp||0); const bucket=ts?Math.floor(ts/1200):0;
-    return sourceId?`${kind}|${platform}|${sourceId}|${user}`:`${kind}|${platform}|${user}|${type}|${text}|${gift}|${avatar}|${bucket}`;
+    // Avatar enrichment is metadata, not a new chat/activity item. Do not include
+    // it in the fingerprint or resolving a profile would trigger a full dashboard
+    // rebuild on every message.
+    return sourceId?`${kind}|${platform}|${sourceId}|${user}`:`${kind}|${platform}|${user}|${type}|${text}|${gift}|${bucket}`;
   }
   const SMART_SCROLL_IDLE_MS = 5000;
   const dashboardChatScrollState = {pinned:true,top:0,initialized:false,direction:'down',manual:false,manualAt:0,programmatic:false,pendingNewest:false};
@@ -1094,8 +1096,32 @@
     const chatNewestChanged=chatNewestKey!==String(chatBox.dataset.newestKey||'');
     if(chatBox.dataset.signature!==chatSignature){
       bindDashboardChatScroll(chatBox, chatDirection);
-      chatBox.innerHTML=chat.length?chat.map(x=>messageRow(x)).join(''):'<div class="empty">No hay comentarios para este filtro todavía.</div>';
-      chatBox.dataset.signature=chatSignature; chatBox.dataset.newestKey=chatNewestKey; queueAvatarImages(chatBox);
+      const existing=new Map(Array.from(chatBox.querySelectorAll('[data-stream-key]')).map(node=>[node.dataset.streamKey,node]));
+      const wanted=new Set(chat.map(x=>eventFingerprint(x,'chat')));
+      for(const node of Array.from(chatBox.querySelectorAll('[data-stream-key]'))){
+        if(!wanted.has(node.dataset.streamKey)) node.remove();
+      }
+      chatBox.querySelector('.empty')?.remove();
+      const newFragment=document.createDocumentFragment();
+      const newNodes=[];
+      for(const item of chat){
+        const key=eventFingerprint(item,'chat');
+        if(existing.has(key)) continue;
+        const holder=document.createElement('div');
+        holder.innerHTML=messageRow(item).trim();
+        const node=holder.firstElementChild;
+        if(!node) continue;
+        newFragment.appendChild(node);
+        newNodes.push(node);
+      }
+      if(newFragment.childNodes.length){
+        // visibleChatItems is already ordered according to the configured direction.
+        if(chatDirection==='up') chatBox.insertBefore(newFragment,chatBox.firstElementChild||null);
+        else chatBox.appendChild(newFragment);
+      }
+      if(chat.length===0) chatBox.innerHTML='<div class="empty">No hay comentarios para este filtro todavía.</div>';
+      for(const node of newNodes) queueAvatarImages(node);
+      chatBox.dataset.signature=chatSignature; chatBox.dataset.newestKey=chatNewestKey;
       requestAnimationFrame(()=>placeDashboardChat(chatBox,chatDirection,false,chatNewestChanged||!prevChatSig));
     }
     const activityDirection=settings.personalization?.eventsDirection || 'down';
@@ -1111,28 +1137,31 @@
       bindDashboardActivityScroll(activityBox,'activity',activityDirection);
       const ordered=orderedActivity;
       const existing=new Map(Array.from(activityBox.querySelectorAll('[data-activity-key]')).map(node=>[node.dataset.activityKey,node]));
-      const wanted=new Set();
-      const fragment=document.createDocumentFragment();
-      for(const item of ordered){
-        const kind=activityKind(item);
-        const key=activityItemKey(item,kind);
-        wanted.add(key);
-        const oldNode=existing.get(key);
-        if(oldNode) fragment.appendChild(oldNode);
-        else{
-          const holder=document.createElement('div');
-          holder.innerHTML=renderActivityItem(item).trim();
-          const node=holder.firstElementChild;
-          if(node) fragment.appendChild(node);
-        }
-      }
+      const wanted=new Set(ordered.map(item=>activityItemKey(item,activityKind(item))));
       for(const node of Array.from(activityBox.querySelectorAll('[data-activity-key]'))){
         if(!wanted.has(node.dataset.activityKey)) node.remove();
       }
-      const empty=activityBox.querySelector('.empty');
-      if(ordered.length){ if(empty) empty.remove(); activityBox.appendChild(fragment); }
-      else if(!empty) activityBox.innerHTML='<div class="empty">Aún no hay actividad.</div>';
-      activityBox.dataset.signature=activitySignature; activityBox.dataset.newestKey=activityNewestKey; queueAvatarImages(activityBox);
+      activityBox.querySelector('.empty')?.remove();
+      const newFragment=document.createDocumentFragment();
+      const newNodes=[];
+      for(const item of ordered){
+        const kind=activityKind(item);
+        const key=activityItemKey(item,kind);
+        if(existing.has(key)) continue;
+        const holder=document.createElement('div');
+        holder.innerHTML=renderActivityItem(item).trim();
+        const node=holder.firstElementChild;
+        if(!node) continue;
+        newFragment.appendChild(node);
+        newNodes.push(node);
+      }
+      if(newFragment.childNodes.length){
+        if(activityDirection==='up') activityBox.insertBefore(newFragment,activityBox.firstElementChild||null);
+        else activityBox.appendChild(newFragment);
+      }
+      if(!ordered.length) activityBox.innerHTML='<div class="empty">Aún no hay actividad.</div>';
+      for(const node of newNodes) queueAvatarImages(node);
+      activityBox.dataset.signature=activitySignature; activityBox.dataset.newestKey=activityNewestKey;
       requestAnimationFrame(()=>placeDashboardActivity(activityBox,'activity',activityDirection,!prevActivitySig,activityNewestChanged||!prevActivitySig));
     }
   }
@@ -4066,7 +4095,28 @@
         const itemUser=normalizeUsername(item?.username||item?.uniqueId||item?.user||'').toLowerCase();
         if(username && itemUser===username) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; changed=true; }
       }
-      if(changed){ kickAvatarCacheSet(username, avatar, userId); if(page==='dashboard') updateDashboardFeeds(); else render(); }
+      if(changed){
+        kickAvatarCacheSet(username, avatar, userId);
+        const patchDashboardNode=(item,kind)=>{
+          const box=kind==='chat'?document.querySelector('#dashChat'):document.querySelector('#dashActivity');
+          if(!box) return;
+          const key=kind==='chat'?eventFingerprint(item,'chat'):activityItemKey(item,activityKind(item));
+          const selector=kind==='chat'?`[data-stream-key="${CSS.escape(key)}"]`:`[data-activity-key="${CSS.escape(key)}"]`;
+          const node=box.querySelector(selector);
+          if(!node) return;
+          let img=node.querySelector('.chat-avatar img');
+          const avatarHost=node.querySelector('.chat-avatar');
+          if(img){ img.src=avatar; img.style.display=''; img.classList.remove('broken'); }
+          else if(avatarHost){
+            const old=avatarHost.querySelector('.avatar-initial-fallback');
+            if(old) old.remove();
+            img=document.createElement('img'); img.src=avatar; img.alt=String(item.displayName||item.username||''); img.loading='lazy'; avatarHost.insertBefore(img,avatarHost.firstChild);
+          }
+        };
+        for(const item of state.chat) patchDashboardNode(item,'chat');
+        for(const item of state.events) patchDashboardNode(item,'event');
+        for(const item of state.gifts) patchDashboardNode(item,'event');
+      }
     });
     socket.on('event',d=>acceptEvent(d||{}));
     socket.on('roulette:sync',s=>{

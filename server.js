@@ -1251,8 +1251,10 @@ app.post("/api/kick/webhook", async (req, res) => {
 app.get("/api/live-history", (req, res, next) => {
     const ownerId = resolveOverlayHistoryOwner(req);
     if (ownerId) {
-        const active = SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(ownerId, platform));
-        return res.json(active ? liveHistorySnapshot(ownerId) : { chat: [], events: [] });
+        // A valid per-user overlayKey is already the authorization boundary.
+        // Return the in-memory feed as a fallback for packets missed while the
+        // overlay page or its Socket.IO connection is initializing.
+        return res.json(liveHistorySnapshot(ownerId));
     }
     return requireUser(req, res, () => {
         const id = String(req.user.id);
@@ -3528,21 +3530,20 @@ function scopedEventEmitter(userId) {
     const room = `user:${ownerId}`;
     const overlayRoom = `overlay:${ownerId}`;
     const emitToOwner = (event, payload) => {
+        // Dashboard + authenticated overlays share this canonical owner room.
+        // Emit once so a single Kick/Twitch/TikTok event cannot be delivered twice.
         io.to(room).emit(event, payload);
-        io.to(overlayRoom).emit(event, payload);
     };
 
-    // Los servicios TikTok/Twitch usan tanto io.emit(...) como io.to(...).emit(...).
-    // El emisor sigue completamente aislado al propietario. Los overlays reciben
-    // los mismos eventos a través de su room dedicado para no depender de que un
-    // overlay comparta accidentalmente el room del dashboard.
     return {
         emit: (event, payload) => emitToOwner(event, payload),
         to: (targetRoom) => ({
             emit: (event, payload) => {
                 const requested = String(targetRoom || '');
-                if (requested !== room && requested !== overlayRoom) return;
-                emitToOwner(event, payload);
+                if (requested === room) emitToOwner(event, payload);
+                // `overlay:<id>` remains a compatibility alias but has no joined
+                // sockets; overlays now consume the canonical user room.
+                else if (requested === overlayRoom) return;
             }
         })
     };
@@ -3553,13 +3554,12 @@ io.on("connection", (socket) => {
 
     if (socket.user) {
         if (socket.isOverlay) {
-            // Overlay connections are authenticated by their per-user overlayKey.
-            // Join both the dedicated overlay room and the canonical user room so
-            // overlays receive every event emitted by legacy and new platform
-            // adapters. This keeps TikTok/Twitch compatibility while ensuring Kick
-            // chat/events/gifts are visible immediately.
-            socket.join(`overlay:${socket.user.id}`);
+            // One canonical delivery room prevents double delivery. Authenticated
+            // overlays use the same owner room as the Dashboard; the platform
+            // adapters therefore feed chat/events/gifts to the overlay without a
+            // second physical Socket.IO route.
             socket.join(`user:${socket.user.id}`);
+            socket.overlayRoom = `user:${socket.user.id}`;
         } else {
             socket.join(`user:${socket.user.id}`);
         }
