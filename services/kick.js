@@ -11,6 +11,10 @@
  * adapter subscribes to the channel chatroom. No Kick user login is requested.
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 const clients = new Map();
 
 const USER_AGENT =
@@ -18,6 +22,8 @@ const USER_AGENT =
   "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 const KICK_BASE = "https://kick.com";
+const KICK_PUSHER_URL =
+  "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
 
 function cleanChannel(value) {
@@ -333,11 +339,59 @@ async function fetchJson(url, { headers = {} } = {}) {
   return data;
 }
 
+async function curlJson(url, { method = "GET", body = null, timeoutSeconds = 20 } = {}) {
+  const curl = process.platform === "win32" ? "curl.exe" : "curl";
+  const args = [
+    "--silent",
+    "--show-error",
+    "--location",
+    "--compressed",
+    "--http1.1",
+    "--max-time",
+    String(timeoutSeconds),
+    "--user-agent",
+    USER_AGENT,
+    "--header",
+    "accept: application/json, text/plain, */*",
+    "--header",
+    "referer: https://kick.com/",
+    "--header",
+    "origin: https://kick.com",
+  ];
+  if (method !== "GET") args.push("--request", method);
+  if (body !== null && body !== undefined) {
+    args.push("--header", "content-type: application/json", "--data-binary", typeof body === "string" ? body : JSON.stringify(body));
+  }
+  args.push(url);
+
+  let stdout = "";
+  let stderr = "";
+  try {
+    const result = await execFileAsync(curl, args, { maxBuffer: 8 * 1024 * 1024, windowsHide: true });
+    stdout = String(result?.stdout || "");
+    stderr = String(result?.stderr || "");
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || stderr || "curl falló").trim();
+    throw new Error(`No se pudo consultar Kick mediante curl: ${detail.slice(0, 400)}`);
+  }
+
+  const text = stdout.trim();
+  if (!text) throw new Error("Kick no devolvió datos de canal.");
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error(`Kick devolvió una respuesta no JSON: ${text.slice(0, 300)}`);
+  }
+}
+
 async function getChannelInfo(channelName) {
   const slug = cleanChannel(channelName);
   if (!slug) throw new Error("El canal de Kick está vacío");
 
-  const data = await fetchJson(
+  // Kick blocks server-side HTTP clients on this internal endpoint with a 403
+  // when the TLS/client fingerprint does not look like a normal browser. curl uses
+  // a native TLS stack and is also the approach used by current community clients.
+  const data = await curlJson(
     `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}`,
   );
 
@@ -348,25 +402,55 @@ async function getChannelInfo(channelName) {
   return data;
 }
 
+const userAvatarCache = new Map();
+const userAvatarInflight = new Map();
+const USER_AVATAR_TTL = 24 * 60 * 60 * 1000;
+const KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS = 4;
+
+async function lookupKickUserAvatar(channelName, username) {
+  const channel = cleanChannel(channelName);
+  const user = String(username || "").trim().replace(/^@+/, "").toLowerCase();
+  if (!channel || !user) return "";
+  const key = `${channel}:${user}`;
+  const cached = userAvatarCache.get(key);
+  if (cached && Date.now() - Number(cached.updatedAt || 0) < USER_AVATAR_TTL) return cached.avatarUrl || "";
+  if (userAvatarInflight.has(key)) return userAvatarInflight.get(key);
+
+  const promise = (async () => {
+    try {
+      const data = await curlJson(
+        `${KICK_BASE}/api/v2/channels/${encodeURIComponent(channel)}/users/${encodeURIComponent(user)}`,
+        { timeoutSeconds: KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS },
+      );
+      const profile = data?.user || data || {};
+      const avatarUrl = String(
+        profile?.profile_pic || profile?.profile_picture || profile?.profilePicture ||
+        profile?.avatar || profile?.avatar_url || profile?.picture ||
+        data?.profile_pic || data?.profile_picture || data?.avatar || "",
+      ).trim();
+      if (/^https?:\/\//i.test(avatarUrl)) {
+        userAvatarCache.set(key, { avatarUrl, updatedAt: Date.now() });
+        return avatarUrl;
+      }
+    } catch (error) {
+      // Avatar enrichment must never break chat delivery. Cache the miss briefly
+      // so a chatter cannot trigger one HTTP request per message.
+      userAvatarCache.set(key, { avatarUrl: "", updatedAt: Date.now() });
+      console.warn(`[Kick] no se pudo obtener avatar de @${user}:`, error?.message || error);
+    } finally {
+      userAvatarInflight.delete(key);
+    }
+    return "";
+  })();
+  userAvatarInflight.set(key, promise);
+  return promise;
+}
+
 async function getRealtimeDescriptor(channelId) {
-  const response = await fetch(`${KICK_REALTIME_CONNECTION_URL}/${encodeURIComponent(channelId)}/chat/connection`, {
-    method: "POST",
-    headers: {
-      accept: "application/json, text/plain, */*",
-      "content-type": "application/json",
-      "user-agent": USER_AGENT,
-      referer: `https://kick.com/`,
-      origin: "https://kick.com",
-    },
-    body: "{}",
-  });
-  const raw = await response.text();
-  let data = null;
-  try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
-  if (!response.ok) {
-    const detail = data?.message || data?.error || raw?.slice(0, 300) || response.statusText;
-    throw new Error(`HTTP ${response.status} en descriptor realtime de Kick: ${detail}`);
-  }
+  const data = await curlJson(
+    `${KICK_REALTIME_CONNECTION_URL}/${encodeURIComponent(channelId)}/chat/connection`,
+    { method: "POST", body: "{}", timeoutSeconds: 10 },
+  );
 
   const connections = Array.isArray(data?.data?.connections) ? data.data.connections : [];
   const preferred = connections.find((entry) => String(entry?.provider || '').toLowerCase() === 'centrifugo') || connections[0];
@@ -444,7 +528,7 @@ function emitStats(client) {
   });
 }
 
-function emitChat(client, payload) {
+async function emitChat(client, payload) {
   const raw = payload && typeof payload === "object" ? payload : {};
   const nested = raw?.message && typeof raw.message === "object" ? raw.message : {};
   const source = Object.keys(nested).length ? { ...raw, ...nested } : raw;
@@ -473,7 +557,10 @@ function emitChat(client, payload) {
     client.seenMessageFingerprints.set(fp, now);
   }
 
-  globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({ platform: "kick", username: sender.username, uniqueId: sender.uniqueId, avatar: sender.avatar });
+  let avatar = sender.avatar;
+  if (!avatar) avatar = await lookupKickUserAvatar(client.channelName, sender.username);
+
+  globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({ platform: "kick", username: sender.username, uniqueId: sender.uniqueId, avatar });
 
   const chat = {
     id: messageId || undefined,
@@ -483,7 +570,7 @@ function emitChat(client, payload) {
     username: sender.username,
     displayName: sender.displayName,
     uniqueId: sender.uniqueId,
-    avatar: sender.avatar,
+    avatar,
     color: sender.color,
     badges: sender.badges,
     comment: content,
@@ -534,7 +621,7 @@ function emitEvent(client, eventName, payload) {
   rouletteHook(client.ownerId, enrichedPayload);
 }
 
-function handleFrame(client, raw) {
+async function handleFrame(client, raw) {
   const frame = decodeMaybeJson(raw);
   if (!frame || typeof frame !== "object") return;
 
@@ -553,7 +640,7 @@ function handleFrame(client, raw) {
     const data = decodeMaybeJson(payload?.data);
     if (eventName && channel) {
       const lower = eventName.toLowerCase();
-      if (lower.includes("chatmessage")) emitChat(client, data);
+      if (lower.includes("chatmessage")) await emitChat(client, data);
       else if (lower.includes("followersupdated")) {
         if (data?.followed === true || data?.followed === "true") emitEvent(client, eventName, data);
       }
@@ -598,7 +685,7 @@ function handleFrame(client, raw) {
 
   const normalizedEvent = eventName.toLowerCase();
   if (normalizedEvent.includes("chatmessage")) {
-    emitChat(client, data);
+    await emitChat(client, data);
     return;
   }
 
@@ -649,7 +736,17 @@ async function openSocket(client) {
   closeSocket(client);
   stopPing(client);
 
-  const descriptor = await getRealtimeDescriptor(client.channelId);
+  let descriptor;
+  try {
+    descriptor = await getRealtimeDescriptor(client.channelId);
+  } catch (error) {
+    // Preserve the previously working anonymous Pusher transport as a fallback.
+    console.warn("[Kick] descriptor realtime no disponible; usando Pusher fallback:", error?.message || error);
+    descriptor = {
+      provider: "pusher",
+      url: KICK_PUSHER_URL,
+    };
+  }
   const WS = globalThis.WebSocket;
   if (typeof WS !== "function") {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
@@ -670,14 +767,24 @@ async function openSocket(client) {
     ws.onopen = () => {
       client.reconnectDelay = 5_000;
       if (client.provider === "pusher") {
-        send(client, {
-          event: "pusher:subscribe",
-          data: { auth: "", channel: `chatrooms.${client.chatroomId}.v2` },
-        });
-        send(client, {
-          event: "pusher:subscribe",
-          data: { auth: "", channel: `channel.${client.channelId}` },
-        });
+        // Keep the previously working Pusher transport, but subscribe to all
+        // channel/chatroom variants that Kick clients have used. Some event
+        // families are published on `channel.*` while chat is on `chatrooms.*`.
+        // Duplicate deliveries are removed by message/event IDs below.
+        const channels = [
+          `chatroom_${client.chatroomId}`,
+          `chatrooms.${client.chatroomId}.v2`,
+          `channel_${client.channelId}`,
+          `chatrooms.${client.chatroomId}`,
+          `channel.${client.channelId}`,
+          `predictions-channel-${client.channelId}`,
+        ].filter((value, index, all) => value && all.indexOf(value) === index);
+        for (const channel of channels) {
+          send(client, {
+            event: "pusher:subscribe",
+            data: { auth: "", channel },
+          });
+        }
       } else {
         // Kick's current chat transport is Centrifugo JSON protocol v2.
         send(client, { id: 1, connect: {} });
@@ -687,11 +794,9 @@ async function openSocket(client) {
     };
 
     ws.onmessage = (messageEvent) => {
-      try {
-        handleFrame(client, messageEvent.data);
-      } catch (error) {
+      void handleFrame(client, messageEvent.data).catch((error) => {
         console.error("[Kick] frame parse failed:", error);
-      }
+      });
     };
 
     ws.onerror = (event) => {
@@ -821,4 +926,4 @@ export function getState(ownerId) {
   };
 }
 
-export { cleanChannel, getChannelInfo };
+export { cleanChannel, getChannelInfo, lookupKickUserAvatar };

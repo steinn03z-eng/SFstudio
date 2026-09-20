@@ -1,3 +1,6 @@
+[phases.setup]
+aptPkgs = ["curl"]
+
 # StreamFusion runs Node.js and also needs Python for the YouTube Music metadata helper.
 providers = ["node", "python"]
 
