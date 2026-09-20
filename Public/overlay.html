@@ -7821,10 +7821,11 @@ function currentViewSettingsKey(){
       const h = history && typeof history === 'object' ? history : {};
       const chats = Array.isArray(h.chat) ? h.chat : [];
       const events = Array.isArray(h.events) ? h.events : [];
+      let changed = false;
       for (const item of chats) {
         const normalized = { ...item, platform: String(item?.platform || 'tiktok').toLowerCase() };
         const exists = state.chat.some(existing => buildOverlayDedupKey('chat', existing) === buildOverlayDedupKey('chat', normalized));
-        if (!exists) { state.chat.push(normalized); enrichOverlayAvatar(normalized); }
+        if (!exists) { state.chat.push(normalized); enrichOverlayAvatar(normalized); changed = true; }
       }
       for (const item of events) {
         const normalized = normalizeOverlaySocketEvent(item);
@@ -7832,12 +7833,15 @@ function currentViewSettingsKey(){
         const gift = isOverlayGiftType(normalized);
         const target = gift ? state.gifts : state.events;
         const exists = target.some(existing => buildOverlayDedupKey(gift ? 'gift' : 'event', existing) === buildOverlayDedupKey(gift ? 'gift' : 'event', normalized));
-        if (!exists) { target.push(normalized); enrichOverlayAvatar(normalized); }
+        if (!exists) { target.push(normalized); enrichOverlayAvatar(normalized); changed = true; }
       }
+      const beforeChat = state.chat.length, beforeEvents = state.events.length, beforeGifts = state.gifts.length;
       state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds).slice(-240);
       state.events = clearByAge(state.events, settings.personal.eventsAutoClear, settings.personal.eventsClearSeconds).slice(-240);
       state.gifts = clearByAge(state.gifts, settings.personal.giftsAutoClear, settings.personal.giftsClearSeconds).slice(-240);
-      render();
+      changed = changed || beforeChat !== state.chat.length || beforeEvents !== state.events.length || beforeGifts !== state.gifts.length;
+      if (changed) render();
+      return changed;
     }
     async function refreshOverlayHistory(){
       if (!overlayKey || !overlayOwner) return;
@@ -7857,7 +7861,7 @@ function currentViewSettingsKey(){
     });
     socket.on('gift', (data) => { const normalizedGift = normalizeOverlaySocketEvent(data); if (view === 'gifts') pushGift(normalizedGift); updateOverlayStatus(); });
     socket.on('liveHistory', (history) => { mergeOverlayHistory(history); });
-    setInterval(() => { void refreshOverlayHistory(); }, 3000);
+    setInterval(() => { void refreshOverlayHistory(); }, 1250);
     setInterval(() => {
       if (view !== 'chat') return;
       const p = settings.personal || {};

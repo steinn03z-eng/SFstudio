@@ -32,7 +32,7 @@ globalThis.__STREAMFUSION_ROULETTE_HOOK__ = roulette;
 globalThis.__STREAMFUSION_POINTS_HOOK__ = (ownerId, payload) => { globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(payload); return points.processLivePayload(ownerId, payload); };
 globalThis.__STREAMFUSION_MUSIC_HOOK__ = (ownerId, payload) => music.processChat(ownerId, payload, io);
 
-globalThis.__STREAMFUSION_LIVE_END_HOOK__ = (ownerId, platform) => { const id=String(ownerId||"").trim(); const p=normalizePlatform(platform); if(id){ liveSession.end(id,p); clearLiveHistory(id); io.to(`user:${id}`).emit("liveEnded", {platform:p}); } };
+globalThis.__STREAMFUSION_LIVE_END_HOOK__ = (ownerId, platform) => { const id=String(ownerId||"").trim(); const p=normalizePlatform(platform); if(id){ liveSession.end(id,p); clearLiveHistory(id); io.to(`user:${id}`).emit("liveEnded", {platform:p}); io.to(`overlay:${id}`).emit("liveEnded", {platform:p}); } };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,11 +116,20 @@ function emitAccountState(platform, overrides = {}, ownerId = "") {
         const current = accountStateByUser.get(id) || {};
         const next = { ...(accountStateDefaults[key] || {}), ...(current[key] || {}), ...overrides, platform: key };
         accountStateByUser.set(id, { ...current, [key]: next });
-        io.to(`user:${id}`).emit("accountState", { ...next, platform: key });
-        return { ...next, platform: key };
+        const payload = { ...next, platform: key };
+        io.to(`user:${id}`).emit("accountState", payload);
+        io.to(`overlay:${id}`).emit("accountState", payload);
+        return payload;
     }
     const payload = { ...(accountStateDefaults[key] || {}), ...overrides, platform: key };
     return payload;
+}
+
+function emitOwnerRooms(ownerId, event, payload) {
+    const id = String(ownerId || "").trim();
+    if (!id) return;
+    io.to(`user:${id}`).emit(event, payload);
+    io.to(`overlay:${id}`).emit(event, payload);
 }
 
 const app = express();
@@ -1285,7 +1294,7 @@ app.post("/api/profile-photo/select", requireUser, async (req, res) => {
             if (!pending) return res.status(400).json({ ok: false, error: "La vista previa expiró. Búscala de nuevo." });
             const photo = savePermanentProfilePhoto(req.user.id, pending, pending);
             pendingProfilePhotos.delete(pendingId);
-            io.to(`user:${req.user.id}`).emit("settings", database.getUserSettings(req.user.id));
+            emitOwnerRooms(req.user.id, "settings", database.getUserSettings(req.user.id));
             return res.json({ ok: true, photo });
         }
 
@@ -1298,7 +1307,7 @@ app.post("/api/profile-photo/select", requireUser, async (req, res) => {
             if (!fs.existsSync(full)) return res.status(404).json({ ok:false, error:"El archivo de biblioteca no está disponible." });
             const image = { buffer: fs.readFileSync(full), contentType: item.mimeType || "image/jpeg" };
             const photo = savePermanentProfilePhoto(req.user.id, image, { source:"library", reference:item.id, label:item.name });
-            io.to(`user:${req.user.id}`).emit("settings", database.getUserSettings(req.user.id));
+            emitOwnerRooms(req.user.id, "settings", database.getUserSettings(req.user.id));
             return res.json({ ok:true, photo });
         }
 
@@ -1467,7 +1476,7 @@ app.put("/api/announcements", requireUser, (req, res) => {
         database.saveUserSettings(req.user.id, merged);
         cleanupAnnouncementImages(req.user.id, announcements);
         const safe = sanitizeLiveOnlySettings(merged);
-        io.to(`user:${req.user.id}`).emit("settings", safe);
+        emitOwnerRooms(req.user.id, "settings", safe);
         io.to(`user:${req.user.id}`).emit("announcementsSettings", announcements);
         res.json({ ok:true, announcements });
     } catch (error) {
@@ -1725,8 +1734,8 @@ app.put("/api/overlay/voicebot-settings", (req, res) => {
     merged.voiceBot.seenEvents = {};
     merged.voiceBot.pendingByUser = {};
     database.saveUserSettings(owner.id, merged);
-    io.to(`user:${owner.id}`).emit("settings", merged);
-    io.to(`user:${owner.id}`).emit("voiceListSettings", merged.voiceList || DEFAULT_SETTINGS.voiceList);
+    emitOwnerRooms(owner.id, "settings", merged);
+    emitOwnerRooms(owner.id, "voiceListSettings", merged.voiceList || DEFAULT_SETTINGS.voiceList);
     res.json({ ok: true, voiceBot: merged.voiceBot });
 });
 
@@ -2154,8 +2163,8 @@ app.put("/api/voice-list/settings", requireUser, (req, res) => {
     merged.voiceList = normalizeVoiceListSettingsForStorage(merged.voiceList || DEFAULT_SETTINGS.voiceList);
     database.saveUserSettings(userId, merged);
     const safe = sanitizeLiveOnlySettings(merged);
-    io.to(`user:${userId}`).emit("settings", safe);
-    io.to(`user:${userId}`).emit("voiceListSettings", merged.voiceList || DEFAULT_SETTINGS.voiceList);
+    emitOwnerRooms(userId, "settings", safe);
+    emitOwnerRooms(userId, "voiceListSettings", merged.voiceList || DEFAULT_SETTINGS.voiceList);
     res.json({ ok: true, voiceList: merged.voiceList || DEFAULT_SETTINGS.voiceList });
 });
 
@@ -3529,21 +3538,22 @@ function scopedEventEmitter(userId) {
     const ownerId = String(userId || '').trim();
     const room = `user:${ownerId}`;
     const overlayRoom = `overlay:${ownerId}`;
-    const emitToOwner = (event, payload) => {
-        // Dashboard + authenticated overlays share this canonical owner room.
-        // Emit once so a single Kick/Twitch/TikTok event cannot be delivered twice.
+    const emitToBoth = (event, payload) => {
         io.to(room).emit(event, payload);
+        io.to(overlayRoom).emit(event, payload);
     };
 
     return {
-        emit: (event, payload) => emitToOwner(event, payload),
+        // Direct platform emissions are delivered once to Dashboard and once to
+        // the generated overlays.
+        emit: (event, payload) => emitToBoth(event, payload),
+        // Preserve the Socket.IO `.to(room).emit()` contract. A targeted `.to()`
+        // emits only to the requested room; it must not fan out a second time.
         to: (targetRoom) => ({
             emit: (event, payload) => {
                 const requested = String(targetRoom || '');
-                if (requested === room) emitToOwner(event, payload);
-                // `overlay:<id>` remains a compatibility alias but has no joined
-                // sockets; overlays now consume the canonical user room.
-                else if (requested === overlayRoom) return;
+                if (requested === room) io.to(room).emit(event, payload);
+                else if (requested === overlayRoom) io.to(overlayRoom).emit(event, payload);
             }
         })
     };
@@ -3554,12 +3564,11 @@ io.on("connection", (socket) => {
 
     if (socket.user) {
         if (socket.isOverlay) {
-            // One canonical delivery room prevents double delivery. Authenticated
-            // overlays use the same owner room as the Dashboard; the platform
-            // adapters therefore feed chat/events/gifts to the overlay without a
-            // second physical Socket.IO route.
-            socket.join(`user:${socket.user.id}`);
-            socket.overlayRoom = `user:${socket.user.id}`;
+            // Generated overlays use a dedicated room. This keeps overlay delivery
+            // independent from the Dashboard connection and prevents duplicate
+            // copies when both are open at the same time.
+            socket.join(`overlay:${socket.user.id}`);
+            socket.overlayRoom = `overlay:${socket.user.id}`;
         } else {
             socket.join(`user:${socket.user.id}`);
         }
@@ -3580,6 +3589,7 @@ io.on("connection", (socket) => {
     socket.emit("announcementDraftSettings", initialSettings.announcementDraft ? normalizeAnnouncements([initialSettings.announcementDraft])[0] : null);
     socket.emit("musicSettings", music.getMusicConfig(socket.user?.id || ""));
     socket.emit("musicState", music.getPublicSnapshot(socket.user?.id || ""));
+    if (socket.isOverlay && socket.user) socket.emit("liveHistory", liveHistorySnapshot(socket.user.id));
     if (socket.user && !socket.isVoiceList) socket.emit("voiceListPresence", voiceListPresencePayload(socket.user.id));
     socket.emit("roulette:sync", roulette.getPublicSnapshot(socket.user?.id || ""));
     for (const platform of SUPPORTED_PLATFORMS) {
