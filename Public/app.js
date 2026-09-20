@@ -24,11 +24,11 @@
     voiceList:{enabled:true,transparent:true,backgroundOpacity:0,fontFamily:'Inter, Arial, sans-serif',fontSize:28,fontWeight:700,fontStyle:'normal',textColor:'#000000',textShadow:'none',shadowColor:'#000000',outlineWidth:0,outlineColor:'#000000',textTransform:'none',letterSpacing:0,lineHeight:1.2,itemGap:10,align:'left',listPosition:'left',horizontalPosition:'center',axis:'vertical',movementDirection:'forward',autoShowEnabled:false,autoShowEvery:30,autoShowFor:6,hideAfterShow:false,direction:'vertical',motion:'static',motionSpeed:24,showIndex:false,showId:false,selectedVoice:'',overrides:{},roulette:{enabled:false}},
     announcements:[],
     musicWidget:{enabled:true,commandPrefix:'!',requestCommand:'musica',pointCost:100,maxDurationSeconds:300,maxQueue:10,showNext:true,showProgress:true,showRequester:true,allowModeratorCommands:false,adminCommandPrefixes:{pause:'!',stop:'!',skip:'!',repeat:'!',volume:'!'},adminCommands:{pause:'pausa',stop:'detener',skip:'siguiente',repeat:'repetir',volume:'vol'},style:{scale:1,accent:'#8b5cf6',accent2:'#ec4899',progressMode:'gradient2',progressColor:'#8b5cf6',progressColor2:'#ec4899',progressColor3:'#22d3ee',textColor:'#ffffff',secondaryTextColor:'#b9b9c8',titleFont:'Inter',artistFont:'Inter',titleSize:28,artistSize:15,vinylSize:170,design:'vinyl-glow',showVinyl:true}},
-    tiktokModerators:[], twitchModerators:[],
+    tiktokModerators:[], twitchModerators:[], kickModerators:[],
     personalization:{theme:'dark',font:'inter',animation:'slide',chatLayout:'vertical',chatDirection:'down',chatTheme:'cloud',chatAdjustMessages:false,avatarFrame:'platform',bubbleFrame:'platform',avatarSize:'md',nameSize:'md',nameWeight:'800',showPlatformPill:true,showTimestamps:true,showActivity:true,bubbleRadius:12,avatarBorderWidth:2,messagePadding:7,rowGap:5,tiktokNameColor:'white',twitchNameColor:'real',chatOverlayCardSide:'center',badgeStyle:'emoji',tiktokNameColor:'white',twitchNameColor:'real',messageEffect:'shadow',nameEffect:'shadow',textColor:'auto',showBadges:true,showEmotes:true,highlightSupporters:true,supporterHighlightStyle:'gold',eventStyle:'chat',eventSimulationMode:'single',giftStyle:'chat',giftSimulationMode:'single',highlightEventUsername:true,highlightLikes:true,highlightFollows:true,highlightJoins:true,highlightShares:true,highlightSystem:true,highlightFanclub:true,highlightSuperfan:true,highlightGifts:true,highlightSubs:true,highlightBits:true,highlightRaids:true,autoClearChat:false,clearChatSeconds:30,eventsLayout:'vertical',eventsDirection:'down',eventsMode:'slide',eventsPanelSize:'normal',eventsOverlayShape:'normal',eventsOverlayCardSide:'center',eventsCardFrame:true,giftsLayout:'vertical',giftsDirection:'down',giftsMode:'slide',giftsPanelSize:'normal',giftsOverlayShape:'normal',giftsOverlayCardSide:'center',giftsCardFrame:true,giftHighlightStyle:'gold',overlayEventHighlightStyle:'platform',overlayGiftImageSize:'md',overlayGiftComposition:'normal',overlayNameColorMode:'platform',overlayNameColor:'#ffffff',overlayEventFont:'inherit',overlayGiftFont:'inherit',overlayGiftDisplayMode:'full',overlayGiftCompositionMode:'vertical-centered',eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true,superfan:true}},
     appearance:{theme:'dark',panelColor:'#131625',accent:'#7c5cff',sidebarColor:'#101321',pageBackground:'#0b0d18',backgroundImage:'',style:'base'},
     profilePhoto:{source:'none',url:'',reference:'',label:'',updatedAt:0},
-    connectionProfiles:{tiktok:{username:'',avatarUrl:''},twitch:{username:'',avatarUrl:''}},
+    connectionProfiles:{tiktok:{username:'',avatarUrl:''},twitch:{username:'',avatarUrl:''},kick:{username:'',avatarUrl:''}},
     profanityFilter:{enabled:true,customWords:[]}
   };
 
@@ -122,11 +122,11 @@
 
   const state = {
     chat:[], events:[], gifts:[],
-    accounts:{tiktok:{connectionId:'',connected:false}, twitch:{connectionId:'',connected:false}},
+    accounts:{tiktok:{connectionId:'',connected:false}, twitch:{connectionId:'',connected:false}, kick:{connectionId:'',connected:false}},
     voices:[], catalog:[],
-    activity:{tiktok:{},twitch:{}},
-    supporters:{tiktok:{},twitch:{}},
-    permanentProfiles:{tiktok:{},twitch:{}},
+    activity:{tiktok:{},twitch:{},kick:{}},
+    supporters:{tiktok:{},twitch:{},kick:{}},
+    permanentProfiles:{tiktok:{},twitch:{},kick:{}},
     avatarCache:new Map(), avatarPending:new Map(),
     historyLoaded:false,
     connection:'offline',
@@ -143,6 +143,12 @@
     tiktokGiftIndex:new Map(),
     tiktokGiftCatalogLoaded:false
   };
+
+  const PLATFORM_ORDER=['tiktok','twitch','kick'];
+  function normalizePlatform(value){ const p=String(value||'tiktok').trim().toLowerCase(); return PLATFORM_ORDER.includes(p)?p:'tiktok'; }
+  function platformLabel(value){ const p=normalizePlatform(value); return p==='twitch'?'Twitch':p==='kick'?'Kick':'TikTok'; }
+  function platformShort(value){ const p=normalizePlatform(value); return p==='twitch'?'TW':p==='kick'?'K':'TT'; }
+  function platformAccent(value){ const p=normalizePlatform(value); return p==='twitch'?'#9146ff':p==='kick'?'#53fc18':'#fe2c55'; }
 
   const pageMeta = {
     dashboard:['TU ESTUDIO','Dashboard'], connections:['CANALES','Conexiones'], customize:['DISEÑO','Personalización'],
@@ -210,9 +216,9 @@
   }
 
   function isConnected(platform) { return Boolean(state.accounts[platform]?.connected); }
-  function hasConfiguredChannel() { return ['tiktok','twitch'].some(p => Boolean(String(state.accounts[p]?.username || '').trim())); }
+  function hasConfiguredChannel() { return PLATFORM_ORDER.some(p => Boolean(String(state.accounts[p]?.username || '').trim())); }
   function channelConnectionSummary() {
-    const accounts = ['tiktok','twitch'].map(p => state.accounts[p] || {});
+    const accounts = PLATFORM_ORDER.map(p => state.accounts[p] || {});
     if (accounts.some(a => a.live === true)) return { key:'live', label:'En Directo!', dot:'live' };
     if (accounts.some(a => a.connected === true)) return { key:'waiting', label:'Conectado!', dot:'connected' };
     return { key: hasConfiguredChannel() ? 'offline' : 'none', label:'Desconectado, esperando conexión...', dot:'offline' };
@@ -232,15 +238,15 @@
         img.innerHTML = profileAvatar ? `<img src="${esc(profileAvatar)}" alt="">` : esc(fallbackName.charAt(0).toUpperCase());
       }
     }
-    $('topAccounts').innerHTML = ['tiktok','twitch'].map(platform => {
+    $('topAccounts').innerHTML = PLATFORM_ORDER.map(platform => {
       const a = state.accounts[platform] || {};
       const saved = settings.connectionProfiles?.[platform] || {};
       const name = a.username || saved.username || 'Sin conectar';
       const avatar = connectedAccountAvatarUrl(platform, { ...saved, ...a, avatarUrl: a.avatarUrl || saved.avatarUrl });
       const statusClass = a.connected ? 'on' : 'off';
       return `<div class="top-account ${statusClass}">
-        <span class="top-account-avatar">${avatar ? `<img src="${esc(avatar)}" alt="">` : `<span class="account-avatar-initial">${platform==='tiktok'?'TT':'TW'}</span>`}</span>
-        <span class="dot"></span><b>${platform === 'twitch' ? 'Twitch' : 'TikTok'}</b><span>${esc(name)}</span>
+        <span class="top-account-avatar">${avatar ? `<img src="${esc(avatar)}" alt="">` : `<span class="account-avatar-initial">${platformShort(platform)}</span>`}</span>
+        <span class="dot"></span><b>${platformLabel(platform)}</b><span>${esc(name)}</span>
       </div>`;
     }).join('');
   }
@@ -328,7 +334,7 @@
   }
 
   function rememberPermanentProfile(item) {
-    const p = String(item?.platform || 'tiktok').toLowerCase() === 'twitch' ? 'twitch' : 'tiktok';
+    const p = normalizePlatform(item?.platform);
     const key = profileKey(item);
     if (!key || key === 'user') return;
     const existing = state.permanentProfiles[p][key] || { followedBefore:false, everDonated:false, displayName:'', username:key };
@@ -342,11 +348,11 @@
     if (followed || donor || existing.displayName) state.permanentProfiles[p][key] = existing;
   }
   function permanentProfile(item) {
-    const p = String(item?.platform || 'tiktok').toLowerCase() === 'twitch' ? 'twitch' : 'tiktok';
+    const p = normalizePlatform(item?.platform);
     return state.permanentProfiles[p]?.[profileKey(item)] || null;
   }
   function activityStore(platform, key) {
-    const p = String(platform || 'tiktok').toLowerCase() === 'twitch' ? 'twitch' : 'tiktok';
+    const p = normalizePlatform(platform);
     if (!state.activity[p][key]) state.activity[p][key] = { joined:false, like:false, followed:false, shared:false, gift:false, giftImage:'', giftName:'' };
     return state.activity[p][key];
   }
@@ -516,7 +522,7 @@
   function styleVars(item, kind='chat') {
     const p = settings.personalization || {};
     const platform = String(item.platform || 'tiktok').toLowerCase();
-    const accent = platform === 'twitch' ? '#9146ff' : '#fe2c55';
+    const accent = platformAccent(platform);
     const textColor = p.textColor === 'auto' || !p.textColor ? '#e8ecf4' : p.textColor;
     const font = kind === 'event' ? fontFamilyName(p.overlayEventFont || p.font) : kind === 'gift' ? fontFamilyName(p.overlayGiftFont || p.font) : fontFamilyName(p.font);
     return `--row-accent:${accent};--name-color:${nameColor(item)};--message-color:${textColor};--bubble-radius:${Number(p.bubbleRadius ?? 12)}px;--avatar-border-width:${Number(p.avatarBorderWidth ?? 2)}px;--row-gap:${Number(p.rowGap ?? 5)}px;--message-padding:${Number(p.messagePadding ?? 7)}px 9px;--chat-font:${font}`;
@@ -596,7 +602,7 @@
         <div class="row-top">
           <strong class="name-size-${p.nameSize || 'md'} weight-${p.nameWeight || '800'}">${esc(userName)}</strong>
           ${badgeMarkup(item)}${p.showActivity !== false ? activityBadgeMarkup(item) : ''}
-          ${showPlatform ? `<span class="platform-pill ${platform}">${platform === 'twitch' ? 'TW' : 'TT'}</span>` : ''}
+          ${showPlatform ? `<span class="platform-pill ${platform}">${platformShort(platform)}</span>` : ''}
           ${showTime ? `<time>${time}</time>` : ''}
         </div>
         ${messageHtml ? `<div class="row-message ${bubbleClass(item)} ${isGift ? 'gift-message-bubble' : ''}">${messageHtml}</div>` : ''}
@@ -622,7 +628,7 @@
     const rawText=item.message||item.action||'';
     const cleanText=stripEmojis(rawText)||rawText;
     const highlight=isGift?(p.giftHighlightStyle||'gold'):(p.overlayEventHighlightStyle||'platform');
-    const accent=highlight==='gold'?'#f5d063':highlight==='accent'?'#9d7dff':highlight==='platform'?(platform==='twitch'?'#9146ff':'#fe2c55'):'transparent';
+    const accent=highlight==='gold'?'#f5d063':highlight==='accent'?'#9d7dff':highlight==='platform'?platformAccent(platform):'transparent';
     const font=fontFamilyName(isGift ? (p.overlayGiftFont||p.font) : (p.overlayEventFont||p.font));
     const side=isGift?(p.giftsOverlayCardSide||'center'):(p.eventsOverlayCardSide||'center');
     const layout=isGift?(p.giftsLayout||'vertical'):(p.eventsLayout||'vertical');
@@ -641,7 +647,7 @@
       const amount=item.amount==null||item.amount===''?1:item.amount;
       const display=p.overlayGiftDisplayMode||'full';
       const imageSize=p.overlayGiftImageSize||'md';
-      const nameColor=p.overlayNameColorMode==='custom'?(p.overlayNameColor||'#fff'):(platform==='twitch'?'#c7a2ff':'#ff7396');
+      const nameColor=p.overlayNameColorMode==='custom'?(p.overlayNameColor||'#fff'):(platform==='twitch'?'#c7a2ff':platform==='kick'?'#8cff68':'#ff7396');
       const amountStyle=p.giftAmountStyle==='muted'?'muted':p.giftAmountStyle==='bold'?'bold':'accent';
       const imageHtml=giftImage?`<img class="gift-real-image size-${esc(imageSize)}" src="${esc(giftImage)}" alt="${esc(giftName)}" loading="lazy" onerror="this.remove()">`:'<span class="gift-real-fallback">🎁</span>';
       const giftText=`<strong class="gift-real-name" style="color:${esc(nameColor)}">${esc(giftName)}</strong><b class="gift-real-amount ${amountStyle}">×${esc(amount)}</b>`;
@@ -658,7 +664,7 @@
       <div class="activity-user-avatar ${frameClass(item)} size-${p.avatarSize||'md'}">${avatarHtml}</div>
       <div class="activity-icon">${isGift?'<span>🎁</span>':icon}</div>
       <div class="activity-copy"><small>${esc(typeLabel)}</small>${showUser?`<strong>${esc(userName)}</strong>`:''}${body}</div>
-      <span class="activity-platform ${platform}">${platform==='twitch'?'TW':'TT'}</span>
+      <span class="activity-platform ${platform}">${platform==='twitch'?'TW':platform==='kick'?'K':'TT'}</span>
     </article>`;
   }
   function typeEmojiForDashboard(item){
@@ -986,14 +992,14 @@
     const input=$(inputId);
     const button=$(buttonId);
     const value=String(input?.value || '').trim();
-    if(!value){ toast(platform==='tiktok'?'TikTok':'Twitch', `Escribe ${platform==='tiktok'?'@usuario':'el canal'} antes de conectar.`, 'err'); input?.focus(); return; }
+    if(!value){ toast(platformLabel(platform), `Escribe ${platform==='tiktok'?'@usuario':'el canal'} antes de conectar.`, 'err'); input?.focus(); return; }
     const original=button?.textContent || 'Conectar';
     if(button){ button.disabled=true; button.dataset.connecting='true'; button.textContent='Conectando…'; }
     try{
       invalidatePlatformSession(platform);
       const ready=await waitForSocketReady();
       ready.emit(emitEvent, value, (ack) => {
-        if(ack?.ok){ toast(platform==='tiktok'?'TikTok':'Twitch', ack.message || 'Conexión iniciada.'); }
+        if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
         else if(ack?.error){ toast('Conexión', ack.error, 'err'); }
       });
     }catch(err){
@@ -1010,13 +1016,15 @@
       const saved = settings.connectionProfiles?.[platform] || {};
       const profile = { ...saved, ...a, avatarUrl: a.avatarUrl || saved.avatarUrl };
       const accountAvatar = connectedAccountAvatarUrl(platform, profile);
-      return `<article class="card connection-card"><div class="connection-top"><span class="connection-avatar">${accountAvatar ? `<img src="${esc(accountAvatar)}" alt="">` : `<span class="account-avatar-initial large">${platform==='tiktok'?'TT':'TW'}</span>`}</span><div><p class="eyebrow">${label.toUpperCase()}</p><h3>${esc(profile.username || 'Sin conectar')}</h3><span class="status ${a.connected?'on':'off'}"><i></i>${a.connected?(a.live?'En directo':'Conectado'):'Desconectado'}</span></div></div><label>Cuenta<input id="${platform}Input" value="${esc(profile.username||'')}" placeholder="${placeholder}"></label><div class="row"><button class="btn primary" id="${platform}Connect">Conectar</button><button class="btn secondary" id="${platform}Disconnect">Desconectar</button></div><p class="muted">La foto de esta cuenta se conserva aunque desconectes el canal y se actualiza al conectar otro usuario.</p></article>`;
+      return `<article class="card connection-card"><div class="connection-top"><span class="connection-avatar">${accountAvatar ? `<img src="${esc(accountAvatar)}" alt="">` : `<span class="account-avatar-initial large">${platformShort(platform)}</span>`}</span><div><p class="eyebrow">${label.toUpperCase()}</p><h3>${esc(profile.username || 'Sin conectar')}</h3><span class="status ${a.connected?'on':'off'}"><i></i>${a.connected?(a.live?'En directo':'Conectado'):'Desconectado'}</span></div></div><label>Cuenta<input id="${platform}Input" value="${esc(profile.username||'')}" placeholder="${placeholder}"></label><div class="row"><button class="btn primary" id="${platform}Connect">Conectar</button><button class="btn secondary" id="${platform}Disconnect">Desconectar</button></div><p class="muted">La foto de esta cuenta se conserva aunque desconectes el canal y se actualiza al conectar otro usuario.</p></article>`;
     };
-    $('view').innerHTML=`<div class="intro"><h2>Conecta tus canales</h2><p>La conexión es compartida por el sistema; el chat, eventos y overlays utilizan la misma fuente de eventos, pero conservan diseños independientes.</p></div><div class="connection-grid">${card('tiktok','TikTok','@usuario')}${card('twitch','Twitch','canal')}</div><div class="notice">El avatar mostrado aquí se resuelve desde la plataforma cuando está disponible. La foto también se reutiliza en la barra superior y en los mensajes del dashboard.</div>`;
+    $('view').innerHTML=`<div class="intro"><h2>Conecta tus canales</h2><p>La conexión es compartida por el sistema; el chat, eventos y overlays utilizan la misma fuente de eventos, pero conservan diseños independientes.</p></div><div class="connection-grid">${card('tiktok','TikTok','@usuario')}${card('twitch','Twitch','canal')}${card('kick','Kick','@canal')}</div><div class="notice">El avatar mostrado aquí se resuelve desde la plataforma cuando está disponible. La foto también se reutiliza en la barra superior y en los mensajes del dashboard.</div>`;
     $('tiktokConnect').onclick=()=>connectPlatform('tiktok','tiktokInput','connectTikTok','tiktokConnect');
     $('tiktokDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectTikTok');}catch(err){toast('TikTok',err?.message||'No se pudo desconectar.','err');}};
     $('twitchConnect').onclick=()=>connectPlatform('twitch','twitchInput','connectTwitch','twitchConnect');
     $('twitchDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectTwitch');}catch(err){toast('Twitch',err?.message||'No se pudo desconectar.','err');}};
+    $('kickConnect').onclick=()=>connectPlatform('kick','kickInput','connectKick','kickConnect');
+    $('kickDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectKick');}catch(err){toast('Kick',err?.message||'No se pudo desconectar.','err');}};
   }
 
   const markSelectedOption = (opts, value) => {
@@ -1387,7 +1395,7 @@
         const accent=highlight==='gold'?'#f5d063':highlight==='accent'?'#9d7dff':sample.platform==='twitch'?'#9146ff':'#fe2c55';
         const userName=p.highlightEventUsername===false?'Usuario':sample.user;
         const badge = sample.type==='like'?'❤️':sample.type==='follow'?'👤':sample.type==='join'?'👻':sample.type==='share'?'🗣️':sample.type==='raid'?'🚀':sample.type==='host'?'📣':sample.type==='ban'?'⛔':sample.type==='unban'?'✅':'';
-        return `<div class="activity-preview stage-events event-highlight-${esc(highlight)} event-layout-${esc(layout)} event-direction-${esc(direction)} event-mode-${esc(mode)} event-size-${esc(size)} event-shape-${esc(shape)} event-side-${esc(p.eventsOverlayCardSide||'center')} ${p.eventsCardFrame===false?'no-frame':''}" style="--activity-accent:${accent};font-family:${esc(fontFamilyName(p.overlayEventFont||p.font))}"><div class="activity-icon">${sample.icon}</div><div class="activity-copy"><small>${esc(sample.type.toUpperCase())}</small><strong>${esc(userName)}</strong>${badge?`<span class="activity-sim-badge" aria-label="Actividad">${badge}</span>`:''}<span>${esc(sample.text)}</span></div><span class="activity-platform ${sample.platform}">${sample.platform==='twitch'?'TW':'TT'}</span></div>`;
+        return `<div class="activity-preview stage-events event-highlight-${esc(highlight)} event-layout-${esc(layout)} event-direction-${esc(direction)} event-mode-${esc(mode)} event-size-${esc(size)} event-shape-${esc(shape)} event-side-${esc(p.eventsOverlayCardSide||'center')} ${p.eventsCardFrame===false?'no-frame':''}" style="--activity-accent:${accent};font-family:${esc(fontFamilyName(p.overlayEventFont||p.font))}"><div class="activity-icon">${sample.icon}</div><div class="activity-copy"><small>${esc(sample.type.toUpperCase())}</small><strong>${esc(userName)}</strong>${badge?`<span class="activity-sim-badge" aria-label="Actividad">${badge}</span>`:''}<span>${esc(sample.text)}</span></div><span class="activity-platform ${sample.platform}">${sample.platform==='twitch'?'TW':sample.platform==='kick'?'K':'TT'}</span></div>`;
       }).join('');
       return `<div class="${stackClass}">${cards}</div>`;
     }
@@ -1411,9 +1419,9 @@
       const title=display==='image'?displayGift:display==='text'?displayGift:`${displayGift}${p.giftAmountStyle==='muted'?'':` ×${sample.amount}`}`;
       const frame=p.giftsCardFrame===false?'no-frame':'';
       const highlight=p.giftHighlightStyle||'gold';
-      const accent=highlight==='gold'?'#f5d063':highlight==='platform'?(sample.platform==='twitch'?'#9146ff':'#fe2c55'):highlight==='accent'?'#9d7dff':'transparent';
+      const accent=highlight==='gold'?'#f5d063':highlight==='platform'?platformAccent(sample.platform):highlight==='accent'?'#9d7dff':'transparent';
       const showActivity=p.showGifts!==false;
-      return `<div class="activity-preview stage-gifts gift-highlight-${esc(highlight)} gift-layout-${esc(layout)} gift-direction-${esc(direction)} gift-mode-${esc(p.giftsMode||'slide')} gift-size-${esc(p.giftsPanelSize||'normal')} gift-shape-${esc(p.giftsOverlayShape||'normal')} gift-side-${esc(p.giftsOverlayCardSide||'center')} ${frame}" style="--activity-accent:${accent};font-family:${esc(fontFamilyName(p.overlayGiftFont||p.font))};"><div class="gift-preview-media size-${size} ${display==='text'?'hide-image':''} ${display==='image'?'only-image':''}"><span>🎁</span></div><div class="activity-copy"><small>REGALO</small>${showActivity?`<strong style="color:${esc(nameColor)}">${esc(sample.user)}</strong>`:'<strong>Regalo recibido</strong>'}<span class="gift-title">${esc(title)}</span></div><span class="activity-platform ${sample.platform}">${sample.platform==='twitch'?'TW':'TT'}</span></div>`;
+      return `<div class="activity-preview stage-gifts gift-highlight-${esc(highlight)} gift-layout-${esc(layout)} gift-direction-${esc(direction)} gift-mode-${esc(p.giftsMode||'slide')} gift-size-${esc(p.giftsPanelSize||'normal')} gift-shape-${esc(p.giftsOverlayShape||'normal')} gift-side-${esc(p.giftsOverlayCardSide||'center')} ${frame}" style="--activity-accent:${accent};font-family:${esc(fontFamilyName(p.overlayGiftFont||p.font))};"><div class="gift-preview-media size-${size} ${display==='text'?'hide-image':''} ${display==='image'?'only-image':''}"><span>🎁</span></div><div class="activity-copy"><small>REGALO</small>${showActivity?`<strong style="color:${esc(nameColor)}">${esc(sample.user)}</strong>`:'<strong>Regalo recibido</strong>'}<span class="gift-title">${esc(title)}</span></div><span class="activity-platform ${sample.platform}">${sample.platform==='twitch'?'TW':sample.platform==='kick'?'K':'TT'}</span></div>`;
     }).join('');
     return `<div class="${stackClass}">${cards}</div>`;
   }
@@ -1518,7 +1526,7 @@
   }
 
   function renderOverlays() {
-    $('view').innerHTML=`<div class="intro"><h2>Overlays</h2><p>Son salidas independientes para OBS. Solo comparten la conexión del usuario y la fuente de eventos; su diseño no se copia del dashboard.</p></div><div class="overlay-status"><span class="status-pill ${state.connection==='online'?'on':''}"><i></i>${state.connection==='online'?'Conectado al stream':'Sin conexión'}</span>${['tiktok','twitch'].map(p=>`<span class="channel-state ${isConnected(p)?'on':''}">${p==='tiktok'?'TikTok':'Twitch'} · ${isConnected(p)?'ON':'OFF'}</span>`).join('')}</div><div class="overlay-grid">${overlayCard('Chat','overlay.html','Chat overlay independiente; usa la conexión real.')}${overlayCard('Eventos','overlay.html?view=events','Eventos overlay independiente.')}${overlayCard('Regalos','overlay.html?view=gifts','Regalos overlay independiente, con imagen del regalo.')}${overlayCard('Ruleta','roulette-overlay.html','Ruleta overlay original.')}</div>`;
+    $('view').innerHTML=`<div class="intro"><h2>Overlays</h2><p>Son salidas independientes para OBS. Solo comparten la conexión del usuario y la fuente de eventos; su diseño no se copia del dashboard.</p></div><div class="overlay-status"><span class="status-pill ${state.connection==='online'?'on':''}"><i></i>${state.connection==='online'?'Conectado al stream':'Sin conexión'}</span>${PLATFORM_ORDER.map(p=>`<span class="channel-state ${isConnected(p)?'on':''}">${platformLabel(p)} · ${isConnected(p)?'ON':'OFF'}</span>`).join('')}</div><div class="overlay-grid">${overlayCard('Chat','overlay.html','Chat overlay independiente; usa la conexión real.')}${overlayCard('Eventos','overlay.html?view=events','Eventos overlay independiente.')}${overlayCard('Regalos','overlay.html?view=gifts','Regalos overlay independiente, con imagen del regalo.')}${overlayCard('Ruleta','roulette-overlay.html','Ruleta overlay original.')}</div>`;
     document.querySelectorAll('.openPopup').forEach(b=>b.onclick=()=>openOverlay(b.dataset.path,`sf_${b.dataset.path.split('/').pop()}`));
     document.querySelectorAll('.newTab').forEach(b=>b.onclick=async()=>{ let tab=null; try { tab=window.open('about:blank','_blank','noopener'); if(!tab){toast('Overlay','Permite nuevas pestañas/ventanas para abrir el overlay.','err');return;} const url=await buildOverlayUrl(b.dataset.path); if(!tab.closed)tab.location.replace(url); } catch(e){try{if(tab&&!tab.closed)tab.close();}catch{} toast('Overlay',e.message||'No se pudo abrir el overlay.','err');} });
     document.querySelectorAll('.copyLink').forEach(b=>b.onclick=async()=>{ try { const url=await buildOverlayUrl(b.dataset.path); await navigator.clipboard?.writeText(url); toast('Enlace copiado','La URL ya incluye la conexión de tu cuenta.'); } catch(e){ toast('Copiar enlace',e.message,'err'); } });
@@ -1613,7 +1621,7 @@
       ${ctl('Permitir múltiples','rAllowMultiple','check',c.participation?.allowMultiple===true)}
       ${ctl('Máximo por usuario','rMaxEntries','input',Number(c.participation?.maxEntriesPerUser||1))}
       ${ctl('Antispam (ms)','rSpamCooldown','input',Number(c.participation?.spamCooldownMs||2400))}</div>
-      <div class="roulette-platform-pills"><span class="muted">Plataformas</span><button type="button" class="roulette-pill ${c.platforms?.tiktok!==false?'active':''}" data-rpreview-platform="tiktok">TikTok</button><button type="button" class="roulette-pill ${c.platforms?.twitch!==false?'active':''}" data-rpreview-platform="twitch">Twitch</button></div>
+      <div class="roulette-platform-pills"><span class="muted">Plataformas</span><button type="button" class="roulette-pill ${c.platforms?.tiktok!==false?'active':''}" data-rpreview-platform="tiktok">TikTok</button><button type="button" class="roulette-pill ${c.platforms?.twitch!==false?'active':''}" data-rpreview-platform="twitch">Twitch</button><button type="button" class="roulette-pill ${c.platforms?.kick!==false?'active':''}" data-rpreview-platform="kick">Kick</button></div>
       <div class="custom-hint"><strong>Participación simulada</strong><span>“＋ Agregar participante” crea una entrada real dentro de esta preview y además la envía a la preview de Chat.</span></div>`;
     } else if(roulettePreviewTab==='behaviour'){
       h=`<div class="custom-control-grid">${ctl('Vincular bot de voz','rVoiceBotLinked','check',c.winnerComment?.voiceBotLinked===true)}${ctl('Esperar comentario del ganador','rWinnerCommentEnabled','check',c.winnerComment?.enabled!==false)}${ctl('Tiempo de espera (segundos)','rWinnerCommentSeconds','input',Number(c.winnerComment?.waitSeconds||30))}${ctl('Participación automática','rAutoEnabled','check',c.auto?.enabled===true)}${ctl('Iniciar automáticamente tras (s)','rAutoStart','input',Number(c.auto?.startWaitSeconds||60))}${ctl('Reiniciar después de un ganador (s)','rAutoRestart','input',Number(c.auto?.restartWaitSeconds||180))}</div>
@@ -1634,7 +1642,7 @@
     document.querySelectorAll('#roulettePreviewControls select,#roulettePreviewControls input').forEach(el=>{el.addEventListener('change',()=>apply(el.id,{rerender:el.id==='rMode'}));el.addEventListener('input',()=>{if(el.type==='color')apply(el.id);});});
     document.querySelectorAll('[data-rpreview-theme]').forEach(btn=>btn.onclick=()=>{const preset=ROULETTE_THEME_PRESETS.find(x=>x.id===btn.dataset.rpreviewTheme);if(!preset)return;roulettePreviewConfig.theme={...roulettePreviewConfig.theme,preset:preset.id,accent:preset.accent,accent2:preset.accent2,accent3:preset.accent3};roulettePreviewConfig.mode='baraja';saveRoulettePreviewConfig();syncRoulettePreviewConfigToServer();roulettePreviewPost({type:'config',config:roulettePreviewConfig});roulettePreviewConfigControls();});
     document.querySelectorAll('[data-rpreview-deck]').forEach(btn=>btn.onclick=()=>{roulettePreviewConfig.mode='baraja';roulettePreviewConfig.theme={...roulettePreviewConfig.theme,cardTheme:String(btn.dataset.rpreviewDeck||'midnight')};saveRoulettePreviewConfig();syncRoulettePreviewConfigToServer();roulettePreviewPost({type:'config',config:roulettePreviewConfig});roulettePreviewConfigControls();});
-    document.querySelectorAll('[data-rpreview-platform]').forEach(btn=>btn.onclick=()=>{const platform=String(btn.dataset.rpreviewPlatform||'');roulettePreviewConfig.platforms=roulettePreviewConfig.platforms||{tiktok:true,twitch:true};roulettePreviewConfig.platforms[platform]=!roulettePreviewConfig.platforms[platform];saveRoulettePreviewConfig();syncRoulettePreviewConfigToServer();roulettePreviewPost({type:'config',config:roulettePreviewConfig});roulettePreviewConfigControls();});
+    document.querySelectorAll('[data-rpreview-platform]').forEach(btn=>btn.onclick=()=>{const platform=String(btn.dataset.rpreviewPlatform||'');roulettePreviewConfig.platforms=roulettePreviewConfig.platforms||{tiktok:true,twitch:true,kick:true};roulettePreviewConfig.platforms[platform]=!roulettePreviewConfig.platforms[platform];saveRoulettePreviewConfig();syncRoulettePreviewConfigToServer();roulettePreviewPost({type:'config',config:roulettePreviewConfig});roulettePreviewConfigControls();});
     const clearWinnerHistory=$('rouletteClearWinnerHistory'); if(clearWinnerHistory) clearWinnerHistory.onclick=()=>{roulettePreviewState.history=[];roulettePreviewState.activeWinner=null;roulettePreviewConfigControls();roulettePreviewPost({type:'historyChanged',history:[]});if(socket?.connected) socket.emit('roulette:clearWinnerHistory');};
     document.querySelectorAll('[data-delete-preview-winner]').forEach(btn=>btn.onclick=()=>{const key=String(btn.dataset.deletePreviewWinner||'');roulettePreviewState.history=(roulettePreviewState.history||[]).filter(w=>String(w.key||w.createdAt||'')!==key);if(roulettePreviewState.activeWinner && String(roulettePreviewState.activeWinner.key||roulettePreviewState.activeWinner.createdAt||'')===key) roulettePreviewState.activeWinner=null;roulettePreviewConfigControls();roulettePreviewPost({type:'historyChanged',history:roulettePreviewState.history});if(socket?.connected) socket.emit('roulette:deleteWinner',key);});
   }
@@ -1714,7 +1722,7 @@
       const pool=available.length?available:names;
       const name=pool[Math.floor(Math.random()*pool.length)];
       const customText=String(c.participation?.commentMode||'custom')==='any'?'¡Hola!':(String(c.participation?.commentText||'1').trim()||'1');
-      const enabledPlatforms=['twitch','tiktok'].filter(p=>c.platforms?.[p]!==false);
+      const enabledPlatforms=['tiktok','twitch','kick'].filter(p=>c.platforms?.[p]!==false);
       const platform=enabledPlatforms.length?enabledPlatforms[Math.floor(Math.random()*enabledPlatforms.length)]:'twitch';
       const participant={displayName:name,username:name.toLowerCase(),uniqueId:name.toLowerCase(),platform,comment:customText,key:`preview-${Date.now()}-${Math.random()}`};
       roulettePreviewState.participants=[...(roulettePreviewState.participants||[]),participant].slice(-100);
@@ -2110,15 +2118,15 @@
     return words.slice(0,4).map(word=>`${prefix}${word}`).join(' · ');
   }
   function pointsWidgetAvatarDataUrl(initials, platform){
-    const bg=platform==='twitch'?'#9146ff':'#fe2c55';
+    const bg=platformAccent(platform);
     const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><rect width="120" height="120" rx="60" fill="${bg}"/><text x="60" y="67" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="white">${String(initials||'U').slice(0,2).toUpperCase()}</text></svg>`;
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
   }
   function pointsWidgetPreviewCard(s, sim){
     if(!sim) return '';
-    const platform=String(sim.platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok';
-    const accent=platform==='twitch'?'#9146ff':'#fe2c55';
-    const platformLabel=platform==='twitch'?'Twitch':'TikTok';
+    const rawPlatform=String(sim.platform||'tiktok').toLowerCase(); const platform=['tiktok','twitch','kick'].includes(rawPlatform)?rawPlatform:'tiktok';
+    const accent=platformAccent(platform);
+    const platformLabelText=platformLabel(platform);
     const avatarUrl=sim.avatarUrl||pointsWidgetAvatarDataUrl(sim.initials,platform);
     const points=Number(sim.points||0).toLocaleString('es-PE');
     return `<div class="points-widget-live-wrap" style="--points-platform:${accent};--points-platform-soft:${platform==='twitch'?'rgba(145,70,255,.18)':'rgba(254,44,85,.18)'}"><div class="points-widget-card"><div class="points-widget-avatar"><img src="${esc(avatarUrl)}" alt=""></div><div class="points-widget-copy"><strong>${esc(sim.displayName||sim.username)}</strong><small>${esc(platformLabel)} · @${esc(sim.username||'usuario')}</small><div class="points-widget-comment"><span>comentó</span> <b>${esc(sim.command)}</b></div><span>Tienes <b>${points}pts</b></span></div><div class="points-widget-amount"><strong>${points}</strong><small>PTS</small></div></div></div>`;
@@ -2892,7 +2900,7 @@
     musicWidgetDraft=musicMerge(musicDefault(),musicWidgetDraft||settings.musicWidget||{});const s=musicWidgetDraft;
     const pfx=MUSIC_PREFIX_OPTIONS.map(v=>`<option value="${esc(v)}" ${s.commandPrefix===v?'selected':''}>${esc(v)}</option>`).join('');
     const tab=(key,icon,label,desc)=>`<button type="button" class="music-editor-tab ${musicWidgetActiveTab===key?'is-active':''}" data-music-tab="${key}"><span class="music-editor-tab-icon">${icon}</span><span><strong>${label}</strong><small>${desc}</small></span></button>`;
-    const connectedAdmins=['tiktok','twitch'].map(platform=>{const profile=settings.connectionProfiles?.[platform]||{};const account=state.accounts?.[platform]||{};const username=String(account.username||profile.username||'').trim()||'Sin conectar';const avatar=connectedAccountAvatarUrl(platform,{...profile,...account,avatarUrl:account.avatarUrl||profile.avatarUrl});const connected=Boolean(account.connected||profile.connected);const status=connected?'CONECTADO':'DESCONECTADO';return `<div class="music-owner-admin ${connected?'is-connected':'is-disconnected'}"><span class="music-owner-avatar">${avatar?`<img src="${esc(avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.classList.remove('is-hidden')"><span class="music-owner-avatar-fallback is-hidden">${platform==='tiktok'?'TT':'TW'}</span>`:`<span class="music-owner-avatar-fallback">${platform==='tiktok'?'TT':'TW'}</span>`}</span><span class="music-owner-copy"><strong>${platform==='tiktok'?'TikTok':'Twitch'}</strong><small>${esc(username)}</small></span><span class="music-owner-status"><i></i>${status}</span>${connected?'<span class="music-owner-badge">ADMIN</span>':''}</div>`}).join('');
+    const connectedAdmins=PLATFORM_ORDER.map(platform=>{const profile=settings.connectionProfiles?.[platform]||{};const account=state.accounts?.[platform]||{};const username=String(account.username||profile.username||'').trim()||'Sin conectar';const avatar=connectedAccountAvatarUrl(platform,{...profile,...account,avatarUrl:account.avatarUrl||profile.avatarUrl});const connected=Boolean(account.connected||profile.connected);const status=connected?'CONECTADO':'DESCONECTADO';return `<div class="music-owner-admin ${connected?'is-connected':'is-disconnected'}"><span class="music-owner-avatar">${avatar?`<img src="${esc(avatar)}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.classList.remove('is-hidden')"><span class="music-owner-avatar-fallback is-hidden">${platformShort(platform)}</span>`:`<span class="music-owner-avatar-fallback">${platformShort(platform)}</span>`}</span><span class="music-owner-copy"><strong>${platformLabel(platform)}</strong><small>${esc(username)}</small></span><span class="music-owner-status"><i></i>${status}</span>${connected?'<span class="music-owner-badge">ADMIN</span>':''}</div>`}).join('');
     const adminOption=(k)=>MUSIC_ADMIN_COMMANDS[k].map(v=>`<option value="${esc(v)}" ${normMusic(s.adminCommands?.[k])===normMusic(v)?'selected':''}>${esc(v)}</option>`).join('');
     $('view').innerHTML=`
       <div class="intro widget-editor-intro"><div><p class="eyebrow">WIDGET / MÚSICA</p><h2>Música</h2><p>Configura solicitudes, apariencia y controles del reproductor desde un solo editor.</p></div><button class="btn secondary widget-back-btn" id="backToWidgetsFromMusic">← Volver a Widgets</button></div>
@@ -3062,14 +3070,14 @@
         <div class="settings-grid two points-grid">
           <section class="card"><div class="section-head"><div><p class="eyebrow">PUNTOS</p><h3>Configuración por plataforma</h3></div><span class="badge-pill">✦</span></div>
             <label class="toggle"><input id="pointsEnabled" type="checkbox" ${cfg.enabled!==false?'checked':''}><span>Activar sistema de puntos</span></label>
-            <div class="points-platform-tabs"><button class="btn secondary" data-points-platform="tiktok">TikTok</button><button class="btn secondary" data-points-platform="twitch">Twitch</button></div>
+            <div class="points-platform-tabs"><button class="btn secondary" data-points-platform="tiktok">TikTok</button><button class="btn secondary" data-points-platform="twitch">Twitch</button><button class="btn secondary" data-points-platform="kick">Kick</button></div>
             <div id="pointsPlatformForm"></div>
             <div class="row points-actions"><button class="btn primary" id="savePoints">Guardar puntos</button><button class="btn secondary" id="openPointsUsers">Ver usuarios</button></div>
           </section>
           <section class="card points-management-card"><div class="section-head"><div><p class="eyebrow">GESTIÓN DE USUARIOS</p><h3>Dar puntos</h3></div><span class="badge-pill">✦</span></div>
             <p class="muted">Busca un usuario registrado en tus actividades y consulta su saldo actual antes de otorgar puntos.</p>
             <div class="points-manage-toolbar">
-              <label>Plataforma<select id="pointManagePlatform"><option value="tiktok">TikTok</option><option value="twitch">Twitch</option></select></label>
+              <label>Plataforma<select id="pointManagePlatform"><option value="tiktok">TikTok</option><option value="twitch">Twitch</option><option value="kick">Kick</option></select></label>
               <label class="grow" id="pointManageUserLabel">Unique ID TikTok<input id="pointManageUser" placeholder="@unique_id" autocomplete="off"></label>
               <button class="btn secondary" id="findPointUser">Buscar usuario</button>
             </div>
@@ -3086,7 +3094,7 @@
   }
   function pointsField(label,id,value){return `<label>${esc(label)}<input id="${esc(id)}" type="number" min="0" step="1" value="${esc(value??0)}"></label>`;}
   function renderPointsPlatformForm(platform){
-    const cfg=pointsDraft?.[platform]||{}; const twitch=platform==='twitch';
+    const cfg=pointsDraft?.[platform]||{}; const twitch=platform==='twitch'; const kick=platform==='kick';
     $('pointsPlatformForm').innerHTML=`<div class="custom-control-grid points-award-grid">
       ${pointsField('Seguidor · puntos','ptFollow',cfg.follow??100)}
       ${pointsField('Comentario · puntos','ptComment',cfg.comment??2)}
@@ -3095,8 +3103,8 @@
       ${twitch?pointsField('Bits · puntos por cada 10 Bits','ptBitsPer10',cfg.bitsPer10??1):pointsField('Regalo · puntos por cada 10 monedas','ptGiftPer10',cfg.giftPer10Coins??1)}
       ${pointsField('Suscripción · puntos','ptSub',cfg.subscription??250)}
     </div>
-    <p class="muted">${twitch?'En Twitch se utilizan seguidores, comentarios, Bits y suscripciones. Likes y compartidos no existen aquí.':'En TikTok se utilizan seguidores, comentarios, likes, compartidos, regalos y suscripciones.'}</p>`;
-    const ids=twitch?{follow:'ptFollow',comment:'ptComment',bitsPer10:'ptBitsPer10',subscription:'ptSub'}:{follow:'ptFollow',comment:'ptComment',like:'ptLike',share:'ptShare',giftPer10Coins:'ptGiftPer10',subscription:'ptSub'};
+    <p class="muted">${twitch?'En Twitch se utilizan seguidores, comentarios, Bits y suscripciones. Likes y compartidos no existen aquí.':kick?'En Kick se utilizan seguidores, comentarios, regalos y suscripciones. Likes y compartidos no aplican.':'En TikTok se utilizan seguidores, comentarios, likes, compartidos, regalos y suscripciones.'}</p>`;
+    const ids=twitch?{follow:'ptFollow',comment:'ptComment',bitsPer10:'ptBitsPer10',subscription:'ptSub'}:kick?{follow:'ptFollow',comment:'ptComment',giftPer10Coins:'ptGiftPer10',subscription:'ptSub'}:{follow:'ptFollow',comment:'ptComment',like:'ptLike',share:'ptShare',giftPer10Coins:'ptGiftPer10',subscription:'ptSub'};
     Object.entries(ids).forEach(([k,id])=>{const el=$(id);if(el){el.oninput=()=>{pointsDraft[platform][k]=Math.max(0,Number(el.value)||0);};}});
     document.querySelectorAll('[data-points-platform]').forEach(b=>b.classList.toggle('primary',b.dataset.pointsPlatform===platform));
   }
@@ -3108,12 +3116,12 @@
     $('savePoints')?.addEventListener('click',async()=>{try{await api('/api/points/settings',{method:'PUT',body:JSON.stringify({points:pointsDraft})});toast('Sistema de puntos','Configuración guardada.');}catch(e){toast('No se pudo guardar',e.message,'err');}});
     $('openPointsUsers')?.addEventListener('click',()=>window.open('/points-users.html','streamfusionPointsUsers','width=960,height=800,noopener'));
 
-    const updateManageLabels=()=>{const p=$('pointManagePlatform')?.value||'tiktok'; const label=$('pointManageUserLabel'); if(label){label.firstChild.textContent=p==='twitch'?'Nombre de canal':'Unique ID TikTok'; const input=$('pointManageUser'); if(input){input.placeholder=p==='twitch'?'canal_twitch':'@unique_id'; input.value='';}} const status=$('pointManageStatus'); if(status){status.className='status';status.textContent=p==='tiktok'?'Busca cualquier uniqueId de TikTok; la foto y nombre se consultan directamente.':'Twitch permite buscar el canal directamente.';} $('pointManageResult')?.setAttribute('hidden',''); $('pointAwardRow')?.setAttribute('hidden','');};
+    const updateManageLabels=()=>{const p=$('pointManagePlatform')?.value||'tiktok'; const label=$('pointManageUserLabel'); if(label){label.firstChild.textContent=p==='twitch'||p==='kick'?'Nombre de canal':'Unique ID TikTok'; const input=$('pointManageUser'); if(input){input.placeholder=p==='twitch'?'canal_twitch':p==='kick'?'canal_kick':'@unique_id'; input.value='';}} const status=$('pointManageStatus'); if(status){status.className='status';status.textContent=p==='tiktok'?'Busca cualquier uniqueId de TikTok; la foto y nombre se consultan directamente.':p==='kick'?'Busca directamente el canal de Kick.':'Twitch permite buscar el canal directamente.';} $('pointManageResult')?.setAttribute('hidden',''); $('pointAwardRow')?.setAttribute('hidden','');};
     $('pointManagePlatform')?.addEventListener('change',updateManageLabels);
 
     let selectedUser=null, pollTimer=0;
-    const paintUser=(u)=>{selectedUser=u; const result=$('pointManageResult'); const award=$('pointAwardRow'); if(!result||!award)return; result.hidden=false; award.hidden=false; result.innerHTML=`<div class="point-user-avatar ${u.avatarUrl?'has-avatar':'fallback-avatar'}">${u.avatarUrl?`<img src="${esc(u.avatarUrl)}" alt="Foto de perfil de ${esc(u.displayName||u.username)}">`:`<span>${u.platform==='twitch'?'TW':'TT'}</span>`}</div><div class="point-user-meta"><strong>${esc(u.displayName||u.username)}</strong><small>${u.platform==='twitch'?'Twitch':'TikTok'} · @${esc(u.username)}</small></div><div class="point-user-balance"><span>Saldo actual</span><strong>${Number(u.points||0).toLocaleString('es-PE')} pts</strong></div>`;};
-    const lookup=async()=>{const p=$('pointManagePlatform')?.value||'tiktok'; const q=String($('pointManageUser')?.value||'').trim(); const status=$('pointManageStatus'); if(!q){if(status){status.className='status err';status.textContent=p==='twitch'?'Escribe el nombre de canal.':'Escribe el uniqueId de TikTok.';}return;} try{const d=await api('/api/points/user?platform='+encodeURIComponent(p)+'&username='+encodeURIComponent(q)); paintUser(d.user); if(status){status.className='status';status.textContent='Usuario encontrado.';} clearInterval(pollTimer); pollTimer=setInterval(async()=>{try{const cur=await api('/api/points/user?platform='+encodeURIComponent(p)+'&username='+encodeURIComponent(q)); paintUser(cur.user);}catch{}},5000);}catch(e){selectedUser=null; $('pointManageResult')?.setAttribute('hidden',''); $('pointAwardRow')?.setAttribute('hidden',''); if(status){status.className='status err';status.textContent=e.message||'No se encontró el usuario.';}}};
+    const paintUser=(u)=>{selectedUser=u; const result=$('pointManageResult'); const award=$('pointAwardRow'); if(!result||!award)return; result.hidden=false; award.hidden=false; result.innerHTML=`<div class="point-user-avatar ${u.avatarUrl?'has-avatar':'fallback-avatar'}">${u.avatarUrl?`<img src="${esc(u.avatarUrl)}" alt="Foto de perfil de ${esc(u.displayName||u.username)}">`:`<span>${platformShort(u.platform)}</span>`}</div><div class="point-user-meta"><strong>${esc(u.displayName||u.username)}</strong><small>${platformLabel(u.platform)} · @${esc(u.username)}</small></div><div class="point-user-balance"><span>Saldo actual</span><strong>${Number(u.points||0).toLocaleString('es-PE')} pts</strong></div>`;};
+    const lookup=async()=>{const p=$('pointManagePlatform')?.value||'tiktok'; const q=String($('pointManageUser')?.value||'').trim(); const status=$('pointManageStatus'); if(!q){if(status){status.className='status err';status.textContent=p==='twitch'||p==='kick'?'Escribe el nombre de canal.':'Escribe el uniqueId de TikTok.';}return;} try{const d=await api('/api/points/user?platform='+encodeURIComponent(p)+'&username='+encodeURIComponent(q)); paintUser(d.user); if(status){status.className='status';status.textContent='Usuario encontrado.';} clearInterval(pollTimer); pollTimer=setInterval(async()=>{try{const cur=await api('/api/points/user?platform='+encodeURIComponent(p)+'&username='+encodeURIComponent(q)); paintUser(cur.user);}catch{}},5000);}catch(e){selectedUser=null; $('pointManageResult')?.setAttribute('hidden',''); $('pointAwardRow')?.setAttribute('hidden',''); if(status){status.className='status err';status.textContent=e.message||'No se encontró el usuario.';}}};
     $('findPointUser')?.addEventListener('click',lookup); $('pointManageUser')?.addEventListener('keydown',e=>{if(e.key==='Enter')lookup();});
     $('grantPointUser')?.addEventListener('click',async()=>{if(!selectedUser)return; const amount=Math.max(1,Math.floor(Number($('pointAwardAmount')?.value)||0)); const status=$('pointManageStatus'); try{const d=await api('/api/points/user',{method:'POST',body:JSON.stringify({platform:selectedUser.platform,username:selectedUser.username,displayName:selectedUser.displayName,amount})}); const before=Number(selectedUser.points||0), after=Number(d.account?.points ?? before+amount); selectedUser={...selectedUser,points:after}; paintUser(selectedUser); if(status){status.className='status ok';status.innerHTML=`<strong>✓ Puntos añadidos correctamente</strong> · +${amount.toLocaleString('es-PE')} pts · nuevo saldo ${after.toLocaleString('es-PE')} pts`; } const balance=document.querySelector('.point-user-balance strong'); if(balance){balance.animate([{transform:'scale(1)',color:'inherit'},{transform:'scale(1.16)',color:'#56e39f'},{transform:'scale(1)',color:'inherit'}],{duration:550,easing:'ease-out'});} }catch(e){if(status){status.className='status err';status.textContent=e.message||'No se pudieron añadir los puntos.';}}});
     window.addEventListener('beforeunload',()=>clearInterval(pollTimer),{once:true});
@@ -3125,7 +3133,7 @@
     modal.innerHTML=`<div class="points-modal-backdrop"></div><section class="points-modal-dialog points-give-dialog">
       <header><div><p class="eyebrow">GESTIÓN DE USUARIOS</p><h3>Dar puntos</h3><p class="muted">El saldo se guarda para tu cuenta StreamFusion y no depende del directo actual.</p></div><button class="miniBtn" data-close-points>×</button></header>
       <div class="points-give-grid">
-        <label>Plataforma<select id="givePointsPlatform"><option value="tiktok">TikTok</option><option value="twitch">Twitch</option></select></label>
+        <label>Plataforma<select id="givePointsPlatform"><option value="tiktok">TikTok</option><option value="twitch">Twitch</option><option value="kick">Kick</option></select></label>
         <label>Usuario / uniqueId<input id="givePointsUsername" placeholder="@unique_id" autocomplete="off"></label>
         <label>Nombre visible (opcional)<input id="givePointsDisplay" placeholder="Nombre del usuario" autocomplete="off"></label>
         <label>Puntos<input id="givePointsAmount" type="number" min="1" step="1" value="100" inputmode="numeric"></label>
@@ -3164,7 +3172,7 @@
     const modal=document.createElement('div');modal.className='points-modal';
     if(!powerOnly){ window.open('/points-manager.html','streamfusionPointsManager','width=1040,height=760,noopener'); return; }
     const source=(settings.voiceBot?.powerUsers)||[];
-    modal.innerHTML=`<div class="points-modal-backdrop"></div><section class="points-modal-dialog"><header><div><p class="eyebrow">${powerOnly?'ACCESO 🔥':'SISTEMA DE PUNTOS'}</p><h3>${powerOnly?'Usuarios con poder de voz':'Usuarios y puntos'}</h3></div><button class="miniBtn" data-close-points>×</button></header><div class="points-modal-list">${source.length?source.map((u,i)=> powerOnly?`<div class="points-user-row"><span>🔥</span><div class="grow"><strong>${esc(u.displayName||u.username)}</strong><small>${u.platform==='twitch'?'Twitch':'TikTok'} · @${esc(u.username)}</small></div><button class="miniBtn danger" data-remove-power="${esc(u.platform)}:${esc(u.username)}">Eliminar</button></div>`:`<div class="points-user-row"><span>${i+1}</span><div class="grow"><strong>${esc(u.displayName||u.username)}</strong><small>${u.platform==='twitch'?'Twitch':'TikTok'} · @${esc(u.username)}</small></div><b>${Number(u.points||0).toLocaleString('es-PE')} pts</b></div>`).join(''):'<div class="empty">No hay usuarios todavía.</div>'}</div></section>`;
+    modal.innerHTML=`<div class="points-modal-backdrop"></div><section class="points-modal-dialog"><header><div><p class="eyebrow">${powerOnly?'ACCESO 🔥':'SISTEMA DE PUNTOS'}</p><h3>${powerOnly?'Usuarios con poder de voz':'Usuarios y puntos'}</h3></div><button class="miniBtn" data-close-points>×</button></header><div class="points-modal-list">${source.length?source.map((u,i)=> powerOnly?`<div class="points-user-row"><span>🔥</span><div class="grow"><strong>${esc(u.displayName||u.username)}</strong><small>${platformLabel(u.platform)} · @${esc(u.username)}</small></div><button class="miniBtn danger" data-remove-power="${esc(u.platform)}:${esc(u.username)}">Eliminar</button></div>`:`<div class="points-user-row"><span>${i+1}</span><div class="grow"><strong>${esc(u.displayName||u.username)}</strong><small>${platformLabel(u.platform)} · @${esc(u.username)}</small></div><b>${Number(u.points||0).toLocaleString('es-PE')} pts</b></div>`).join(''):'<div class="empty">No hay usuarios todavía.</div>'}</div></section>`;
     document.body.appendChild(modal);const close=()=>modal.remove();modal.querySelector('[data-close-points]').onclick=close;modal.querySelector('.points-modal-backdrop').onclick=close;
     modal.querySelectorAll('[data-remove-power]').forEach(btn=>btn.onclick=async()=>{const [platform,...rest]=btn.dataset.removePower.split(':');const username=rest.join(':');try{settings.voiceBot=settings.voiceBot||{};settings.voiceBot.powerUsers=(settings.voiceBot.powerUsers||[]).filter(v=>!(String(v.platform)===platform && String(v.username).toLowerCase()===username.toLowerCase()));await persistSettingsPatch({voiceBot:{powerUsers:settings.voiceBot.powerUsers}},false);toast('Acceso eliminado','La insignia 🔥 ya no está disponible para esa persona.');close();openPointsUsersModal(true);}catch(e){toast('No se pudo eliminar',e.message,'err')}});
   }
@@ -3207,6 +3215,7 @@
     const a=settings.appearance||{};
     const moderators=Array.isArray(settings.tiktokModerators)?settings.tiktokModerators:[];
     const twitchModerators=Array.isArray(settings.twitchModerators)?settings.twitchModerators:[];
+    const kickModerators=Array.isArray(settings.kickModerators)?settings.kickModerators:[];
     const photo=settings.profilePhoto||defaultSettings.profilePhoto;
     const photoUrl=isUsableViewerAvatar(photo.url)?photo.url:'';
 
@@ -3224,8 +3233,8 @@
     };
     const escAttr=(value)=>esc(value).replace(/`/g,'&#96;');
     const avatarMarkup=(entry, size='md')=>entry.avatarUrl
-      ? `<img class="moderator-avatar moderator-avatar-${size}" src="${escAttr(entry.avatarUrl)}" alt="${escAttr(entry.displayName||entry.username)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add('broken');this.style.display='none';this.nextElementSibling?.classList.remove('hidden')"><span class="moderator-avatar-fallback ${size==='lg'?'lg':''}${entry.platform==='twitch'?' twitch':''}">${esc((entry.displayName||entry.username||'U').slice(0,1).toUpperCase())}</span>`
-      : `<span class="moderator-avatar moderator-avatar-${size} moderator-avatar-generated ${entry.platform==='twitch'?'twitch':''}">${esc((entry.displayName||entry.username||'U').slice(0,1).toUpperCase())}</span>`;
+      ? `<img class="moderator-avatar moderator-avatar-${size}" src="${escAttr(entry.avatarUrl)}" alt="${escAttr(entry.displayName||entry.username)}" loading="lazy" referrerpolicy="no-referrer" onerror="this.classList.add('broken');this.style.display='none';this.nextElementSibling?.classList.remove('hidden')"><span class="moderator-avatar-fallback ${size==='lg'?'lg':''}${entry.platform==='twitch'?' twitch':entry.platform==='kick'?' kick':''}">${esc((entry.displayName||entry.username||'U').slice(0,1).toUpperCase())}</span>`
+      : `<span class="moderator-avatar moderator-avatar-${size} moderator-avatar-generated ${entry.platform==='twitch'?'twitch':entry.platform==='kick'?'kick':''}">${esc((entry.displayName||entry.username||'U').slice(0,1).toUpperCase())}</span>`;
     const profileCard=(entry, action='add', buttonId='')=>`
       <div class="moderator-profile ${action==='add'?'moderator-profile-result':''}">
         <div class="moderator-profile-main">
@@ -3233,21 +3242,21 @@
           <div class="moderator-profile-copy">
             <div class="moderator-profile-name-row"><strong>${esc(entry.displayName||entry.username||'Usuario')}</strong><span class="moderator-badge">🛡️ Moderador</span></div>
             <div class="moderator-profile-username">@${esc(entry.username||'usuario')}</div>
-            <small>${entry.platform==='twitch'?'Perfil público de Twitch':'Perfil público de TikTok'}</small>
+            <small>${entry.platform==='twitch'?'Perfil público de Twitch':entry.platform==='kick'?'Perfil público de Kick':'Perfil público de TikTok'}</small>
           </div>
         </div>
         ${action==='add'?`<button type="button" class="btn primary moderator-result-add" id="${buttonId}">Añadir moderador</button>`:`<button type="button" class="moderator-delete" data-remove-moderator-platform="${entry.platform}" data-remove-moderator-user="${escAttr(entry.username)}" aria-label="Eliminar moderador" title="Eliminar moderador">🗑️</button>`}
       </div>`;
 
     const renderConfigured=(platform)=>{
-      const key=platform==='twitch'?'twitchModerators':'tiktokModerators';
+      const key=platform==='twitch'?'twitchModerators':platform==='kick'?'kickModerators':'tiktokModerators';
       const list=Array.isArray(settings[key])?settings[key]:[];
-      const wrap=$(platform==='twitch'?'twitchModeratorList':'tiktokModeratorList');
+      const wrap=$(platform==='twitch'?'twitchModeratorList':platform==='kick'?'kickModeratorList':'tiktokModeratorList');
       if(!wrap)return;
       wrap.innerHTML=list.length?list.map(v=>profileCard(moderatorEntry(v,platform),'list')).join(''):`<div class="moderator-empty-state"><span>🛡️</span><div><strong>No hay moderadores configurados</strong><small>Busca un usuario arriba para añadirlo a este canal.</small></div></div>`;
       wrap.querySelectorAll('[data-remove-moderator-platform]').forEach(btn=>btn.onclick=async()=>{
         const target=String(btn.dataset.removeModeratorUser||'').toLowerCase();
-        const targetKey=platform==='twitch'?'twitchModerators':'tiktokModerators';
+        const targetKey=platform==='twitch'?'twitchModerators':platform==='kick'?'kickModerators':'tiktokModerators';
         settings[targetKey]=(settings[targetKey]||[]).filter(value=>String(moderatorEntry(value,platform).username||'').toLowerCase()!==target);
         await persistSettingsPatch({[targetKey]:settings[targetKey]},false);
         renderConfigured(platform);
@@ -3255,28 +3264,23 @@
     };
 
     const moderatorPanel=(platform,list)=>{
-      const tiktok=platform==='tiktok';
-      const inputId=tiktok?'tiktokModeratorInput':'twitchModeratorInput';
-      const searchId=tiktok?'searchTiktokModerator':'searchTwitchModerator';
-      const resultId=tiktok?'tiktokModeratorResult':'twitchModeratorResult';
-      const statusId=tiktok?'tiktokModeratorStatus':'twitchModeratorStatus';
-      const listId=tiktok?'tiktokModeratorList':'twitchModeratorList';
-      const title=tiktok?'Añadir moderadores TikTok':'Añadir moderadores Twitch';
-      const description=tiktok?'Busca el @unique id público del usuario. Verás su foto, nombre y usuario antes de añadirlo.':'Busca el usuario público de Twitch. Verás su foto, nombre y usuario antes de añadirlo.';
-      const label=tiktok?'Unique ID de TikTok':'Usuario de Twitch';
-      const placeholder=tiktok?'ejemplo: @tiktok':'ejemplo: @twitch';
+      const meta={
+        tiktok:{input:'tiktokModeratorInput',search:'searchTiktokModerator',result:'tiktokModeratorResult',status:'tiktokModeratorStatus',list:'tiktokModeratorList',eyebrow:'MODERACIÓN TIKTOK',title:'Añadir moderadores TikTok',description:'Busca el @unique id público del usuario. Verás su foto, nombre y usuario antes de añadirlo.',label:'Unique ID de TikTok',placeholder:'ejemplo: @tiktok'},
+        twitch:{input:'twitchModeratorInput',search:'searchTwitchModerator',result:'twitchModeratorResult',status:'twitchModeratorStatus',list:'twitchModeratorList',eyebrow:'MODERACIÓN TWITCH',title:'Añadir moderadores Twitch',description:'Busca el usuario público de Twitch. Verás su foto, nombre y usuario antes de añadirlo.',label:'Usuario de Twitch',placeholder:'ejemplo: @twitch'},
+        kick:{input:'kickModeratorInput',search:'searchKickModerator',result:'kickModeratorResult',status:'kickModeratorStatus',list:'kickModeratorList',eyebrow:'MODERACIÓN KICK',title:'Añadir moderadores Kick',description:'Busca el usuario público de Kick. Verás su foto, nombre y usuario antes de añadirlo.',label:'Usuario de Kick',placeholder:'ejemplo: @kick'}
+      }[platform];
       return `<article class="card moderator-settings moderator-settings-modern" data-moderator-panel="${platform}">
         <div class="moderator-panel-head">
-          <div><p class="eyebrow">${tiktok?'MODERACIÓN TIKTOK':'MODERACIÓN TWITCH'}</p><h3>${title}</h3><p class="muted moderator-panel-description">${description}</p></div>
+          <div><p class="eyebrow">${meta.eyebrow}</p><h3>${meta.title}</h3><p class="muted moderator-panel-description">${meta.description}</p></div>
           <span class="moderator-panel-icon">🛡️</span>
         </div>
         <div class="moderator-search-box">
-          <label class="grow">${label}<input id="${inputId}" placeholder="${placeholder}" autocomplete="off" spellcheck="false"></label>
-          <button type="button" class="btn primary moderator-search-btn" id="${searchId}">Buscar</button>
+          <label class="grow">${meta.label}<input id="${meta.input}" placeholder="${meta.placeholder}" autocomplete="off" spellcheck="false"></label>
+          <button type="button" class="btn primary moderator-search-btn" id="${meta.search}">Buscar</button>
         </div>
-        <div class="moderator-status" id="${statusId}" aria-live="polite"></div>
-        <div class="moderator-result hidden" id="${resultId}"></div>
-        <div class="moderator-list" id="${listId}">${list.length?list.map(v=>profileCard(moderatorEntry(v,platform),'list')).join(''):`<div class="moderator-empty-state"><span>🛡️</span><div><strong>No hay moderadores configurados</strong><small>Busca un usuario arriba para añadirlo a este canal.</small></div></div>`}</div>
+        <div class="moderator-status" id="${meta.status}" aria-live="polite"></div>
+        <div class="moderator-result hidden" id="${meta.result}"></div>
+        <div class="moderator-list" id="${meta.list}">${list.length?list.map(v=>profileCard(moderatorEntry(v,platform),'list')).join(''):`<div class="moderator-empty-state"><span>🛡️</span><div><strong>No hay moderadores configurados</strong><small>Busca un usuario arriba para añadirlo a este canal.</small></div></div>`}</div>
       </article>`;
     };
 
@@ -3301,7 +3305,7 @@
         </article>
         <article class="card account-profile-card"><div class="account-profile-copy"><p class="eyebrow">CUENTA</p><h3>${esc(user?.displayName||'Creador')}</h3><p>${esc(user?.email||'')}</p><p class="muted">ID: ${esc(user?.id||'')}</p><button class="btn secondary" id="logout2">Cerrar sesión</button></div><button type="button" class="profile-photo-box ${photoUrl?'has-photo':''}" id="openProfilePhoto" title="Cambiar foto de perfil">${photoUrl?`<img src="${esc(photoUrl)}" alt="Foto de perfil">`:`<span>+</span><small>Foto</small>`}</button></article>
       </div>
-      <div class="settings-grid two moderator-settings-grid">${moderatorPanel('tiktok',moderators)}${moderatorPanel('twitch',twitchModerators)}</div>
+      <div class="settings-grid two moderator-settings-grid">${moderatorPanel('tiktok',moderators)}${moderatorPanel('twitch',twitchModerators)}${moderatorPanel('kick',kickModerators)}</div>
 
     </div>`;
 
@@ -3372,106 +3376,43 @@
     $('openStylesAppearance').onclick=()=>openAppearancePanel('styles');
 
     const setupModeratorPanel=(platform)=>{
-      const tiktok=platform==='tiktok';
-      const input=$(tiktok?'tiktokModeratorInput':'twitchModeratorInput');
-      const searchBtn=$(tiktok?'searchTiktokModerator':'searchTwitchModerator');
-      const result=$(tiktok?'tiktokModeratorResult':'twitchModeratorResult');
-      const status=$(tiktok?'tiktokModeratorStatus':'twitchModeratorStatus');
-      const key=tiktok?'tiktokModerators':'twitchModerators';
+      const meta={
+        tiktok:{input:'tiktokModeratorInput',search:'searchTiktokModerator',result:'tiktokModeratorResult',status:'tiktokModeratorStatus',key:'tiktokModerators',label:'@unique id de TikTok',channelWord:'usuario de TikTok'},
+        twitch:{input:'twitchModeratorInput',search:'searchTwitchModerator',result:'twitchModeratorResult',status:'twitchModeratorStatus',key:'twitchModerators',label:'usuario de Twitch',channelWord:'usuario de Twitch'},
+        kick:{input:'kickModeratorInput',search:'searchKickModerator',result:'kickModeratorResult',status:'kickModeratorStatus',key:'kickModerators',label:'usuario de Kick',channelWord:'usuario de Kick'}
+      }[platform];
+      const input=$(meta.input),searchBtn=$(meta.search),result=$(meta.result),status=$(meta.status),key=meta.key;
       let pendingProfile=null;
       const setStatus=(message='',type='')=>{status.className=`moderator-status ${type}`;status.textContent=message;};
       const clearResult=()=>{pendingProfile=null;result.classList.add('hidden');result.innerHTML='';};
       const search=async()=>{
-        const username=normalizeUsername(input?.value||'');
-        clearResult();
-        if(!username){setStatus(tiktok?'Escribe un @unique id de TikTok.':'Escribe un usuario de Twitch.','err');return;}
+        const username=normalizeUsername(input?.value||''); clearResult();
+        if(!username){setStatus(`Escribe un ${meta.label}.`,'err');return;}
         const exists=(settings[key]||[]).some(value=>String(moderatorEntry(value,platform).username||'').toLowerCase()===username.toLowerCase());
         if(exists){setStatus('Ese usuario ya está configurado como moderador.','err');renderConfigured(platform);return;}
         setStatus('Buscando perfil público…','loading'); searchBtn.disabled=true; searchBtn.textContent='Buscando…';
         try{
           const data=await api(`/api/moderators/lookup?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(username)}`);
           pendingProfile={...data.profile,platform};
-          result.innerHTML=profileCard(pendingProfile,'add',tiktok?'confirmTiktokModerator':'confirmTwitchModerator');
-          result.classList.remove('hidden');
+          const buttonId=`confirm${platform.charAt(0).toUpperCase()+platform.slice(1)}Moderator`;
+          result.innerHTML=profileCard(pendingProfile,'add',buttonId); result.classList.remove('hidden');
           setStatus('Perfil encontrado. Comprueba que sea la persona correcta antes de añadirla.','ok');
           result.querySelector('.moderator-result-add').onclick=async()=>{
             const normalized=moderatorEntry(pendingProfile,platform);
             const duplicate=(settings[key]||[]).some(value=>String(moderatorEntry(value,platform).username||'').toLowerCase()===normalized.username.toLowerCase());
             if(duplicate){setStatus('Ese usuario ya está configurado como moderador.','err');return;}
-            settings[key]=[...(settings[key]||[]),{username:normalized.username,uniqueId:tiktok?normalized.username:undefined,displayName:normalized.displayName,avatarUrl:normalized.avatarUrl}];
-            await persistSettingsPatch({[key]:settings[key]},false);
-            input.value=''; clearResult(); setStatus('Moderador añadido correctamente. 🛡️ se aplicará en toda la experiencia.','ok'); renderConfigured(platform); toast('Moderador añadido',`${normalized.displayName||normalized.username} ahora tiene la insignia 🛡️.`);
+            settings[key]=[...(settings[key]||[]),{username:normalized.username,uniqueId:normalized.username,displayName:normalized.displayName,avatarUrl:normalized.avatarUrl}];
+            await persistSettingsPatch({[key]:settings[key]},false); input.value=''; clearResult(); setStatus('Moderador añadido correctamente. 🛡️ se aplicará en toda la experiencia.','ok'); renderConfigured(platform); toast('Moderador añadido',`${normalized.displayName||normalized.username} ahora tiene la insignia 🛡️.`);
           };
-        }catch(e){setStatus(e.message||'No se pudo encontrar ese perfil.','err');}
+        }catch(e){setStatus(e.message||`No se pudo encontrar ese ${meta.channelWord}.`,'err');}
         finally{searchBtn.disabled=false;searchBtn.textContent='Buscar';}
       };
-      searchBtn.onclick=search;
-      input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search();}});
-      input.addEventListener('input',()=>{if(result&&!result.classList.contains('hidden'))clearResult();if(status.textContent)setStatus('');});
-      renderConfigured(platform);
+      searchBtn.onclick=search; input.addEventListener('keydown',event=>{if(event.key==='Enter'){event.preventDefault();search();}}); input.addEventListener('input',()=>{if(!result.classList.contains('hidden'))clearResult();if(status.textContent)setStatus('');}); renderConfigured(platform);
     };
 
     setupModeratorPanel('tiktok');
     setupModeratorPanel('twitch');
-  }
-
-  async function openLibraryImagePicker({onSelect, title='Biblioteca de imágenes', description='Selecciona una imagen o GIF de tu biblioteca.'}={}){
-    try{ await loadLibrary(); }catch(e){ toast('Biblioteca',e.message,'err'); return; }
-    const modal=document.createElement('div'); modal.className='sf-library-image-picker-modal';
-    const images=()=>libraryFiles.filter(f=>f.kind==='images');
-    const render=()=>{
-      const items=images();
-      const tiles=items.map(file=>`<button type="button" class="sf-library-image-picker-tile" data-lib-id="${esc(file.id)}" title="${esc(file.name)}"><span class="sf-library-image-picker-thumb"><img src="${esc(file.url)}" alt="${esc(file.name)}" loading="lazy"></span><span>${esc(file.name)}</span></button>`).join('');
-      modal.querySelector('[data-picker-grid]').innerHTML=`<button type="button" class="sf-library-image-picker-upload" data-picker-upload><span>＋</span><strong>Subir</strong><small>PNG · JPG · GIF</small></button>${tiles||''}`;
-      modal.querySelectorAll('[data-lib-id]').forEach(btn=>btn.onclick=()=>{const f=libraryFiles.find(x=>String(x.id)===String(btn.dataset.libId));if(f){onSelect?.(f);closePicker();}});
-      modal.querySelector('[data-picker-upload]').onclick=()=>modal.querySelector('[data-picker-file]').click();
-    };
-    modal.innerHTML=`<div class="sf-library-image-picker-backdrop" data-picker-close></div><section class="sf-library-image-picker-dialog" role="dialog" aria-modal="true"><header><div><p class="eyebrow">BIBLIOTECA</p><h3>${esc(title)}</h3><p>${esc(description)}</p></div><button type="button" class="sf-library-image-picker-close" data-picker-close>×</button></header><div class="sf-library-image-picker-grid" data-picker-grid></div><input type="file" hidden data-picker-file accept="image/png,image/jpeg,image/webp,image/gif,image/avif,image/bmp,.png,.jpg,.jpeg,.webp,.gif,.avif,.bmp"><footer><span>Las imágenes y GIFs que subas quedan guardados en tu Biblioteca.</span><span>${formatBytes(libraryUsage.freeBytes)} libres</span></footer></section>`;
-    document.body.appendChild(modal);
-    const closePicker=()=>{modal.remove();document.removeEventListener('keydown',onPickerKey);};
-    const onPickerKey=ev=>{if(ev.key==='Escape')closePicker();};
-    document.addEventListener('keydown',onPickerKey);
-    modal.querySelectorAll('[data-picker-close]').forEach(x=>x.onclick=closePicker);
-    modal.querySelector('[data-picker-file]').onchange=async e=>{ const file=e.target.files?.[0]; if(!file)return; const before=new Set(images().map(x=>String(x.id))); await uploadLibraryFiles('images',[file]); await loadLibrary(); render(); const newest=images().find(x=>!before.has(String(x.id))) || images()[0]; if(newest) { onSelect?.(newest); closePicker(); } e.target.value=''; };
-    render();
-  }
-
-  async function openProfilePhotoModal(){
-    const modal=document.createElement('div'); modal.className='profile-photo-modal';
-    modal.innerHTML=`<div class="profile-photo-backdrop"></div><section class="profile-photo-dialog"><header><div><p class="eyebrow">CUENTA</p><h3>Foto de perfil</h3><p class="muted">Selecciona una imagen o GIF y confirma antes de aplicarlo.</p></div><button type="button" class="mini-close" data-close>×</button></header><div class="profile-photo-tabs"><button type="button" class="profile-photo-tab active" data-source="local">Biblioteca</button><button type="button" class="profile-photo-tab" data-source="url">URL</button><button type="button" class="profile-photo-tab" data-source="twitch">Twitch</button><button type="button" class="profile-photo-tab" data-source="tiktok">TikTok</button></div><div id="profilePhotoBody"></div><div class="profile-photo-status" id="profilePhotoStatus"></div></section>`;
-    document.body.appendChild(modal);
-    const body=modal.querySelector('#profilePhotoBody'); const status=modal.querySelector('#profilePhotoStatus'); let source='local'; let pending=null;
-    const close=()=>modal.remove(); modal.querySelector('[data-close]').onclick=close; modal.querySelector('.profile-photo-backdrop').onclick=close;
-    const setStatus=(text='',type='')=>{status.className=`profile-photo-status ${type}`;status.textContent=text;};
-    const renderPendingPreview=(item)=>{
-      pending=item||null;
-      const preview=body.querySelector('#profilePhotoPreview'); if(!preview)return;
-      if(!item){ preview.innerHTML='<span>Selecciona una imagen para verla aquí</span>'; return; }
-      preview.innerHTML=`<div class="profile-photo-selected-preview"><img src="${esc(item.previewUrl||item.url||'')}" alt="${esc(item.name||'Foto de perfil')}"><div class="profile-photo-confirm"><span>¿Usar esta imagen?</span><button type="button" class="yes" data-profile-confirm aria-label="Confirmar">✓</button><button type="button" class="no" data-profile-cancel aria-label="Cancelar">✕</button></div></div>`;
-      preview.querySelector('[data-profile-confirm]')?.addEventListener('click',async()=>{
-        if(!pending)return;
-        try{
-          const payload=pending.libraryId?{libraryId:pending.libraryId}:{pendingId:pending.pendingId};
-          const saved=await api('/api/profile-photo/select',{method:'POST',body:JSON.stringify(payload)});
-          settings.profilePhoto=saved.photo; renderTop(); renderSettings(); toast('Foto de perfil','Imagen seleccionada correctamente.'); modal.remove();
-        }catch(e){setStatus(e.message||'No se pudo guardar la foto.','err');}
-      });
-      preview.querySelector('[data-profile-cancel]')?.addEventListener('click',()=>{pending=null;renderPendingPreview(null);setStatus('Selección cancelada.');});
-    };
-    const renderBody=async()=>{
-      const labels={url:'Pega una URL directa de imagen.',twitch:'Escribe el usuario o canal de Twitch.',tiktok:'Escribe el @unique id de TikTok.'};
-      const inputLabel=source==='url'?'URL de imagen':source==='twitch'?'Canal Twitch':'Unique ID TikTok';
-      if(source==='local'){
-        body.innerHTML=`<div class="profile-photo-library-intro"><div><p class="eyebrow">BIBLIOTECA</p><strong>Seleccionar imagen</strong><small>Elige una imagen o GIF guardado en tu Biblioteca.</small></div><button type="button" class="btn primary profile-open-library" id="openProfileLibrary">Abrir biblioteca</button></div><div class="profile-photo-preview profile-photo-library-preview" id="profilePhotoPreview"><span>Selecciona una imagen para verla aquí</span></div>`;
-        body.querySelector('#openProfileLibrary').onclick=()=>openLibraryImagePicker({title:'Seleccionar foto de perfil',description:'Elige una imagen o GIF de tu Biblioteca. También puedes subir uno nuevo.',onSelect:file=>{renderPendingPreview({libraryId:file.id,previewUrl:file.url,name:file.name});setStatus('Imagen preparada. Confirma con ✓ para aplicarla.');}});
-        renderPendingPreview(pending);
-      }else{
-        body.innerHTML=`<div class="profile-photo-lookup-row"><label class="grow">${inputLabel}<input id="profilePhotoInput" placeholder="${source==='url'?'https://...':source==='twitch'?'canal_twitch':'@unique_id'}" autocomplete="off"></label><button class="btn primary" id="profilePhotoSearch">Buscar</button></div><p class="muted profile-photo-hint">${labels[source]}</p><div class="profile-photo-preview" id="profilePhotoPreview"><span>Aquí aparecerá la foto</span></div>`;
-        body.querySelector('#profilePhotoSearch').onclick=async()=>{const value=String(body.querySelector('#profilePhotoInput')?.value||'').trim(); if(!value){setStatus('Escribe un valor primero.','err');return;} setStatus('Buscando foto...'); try{const d=await api('/api/profile-photo/lookup',{method:'POST',body:JSON.stringify({source,value})}); renderPendingPreview({pendingId:d.pendingId,previewUrl:d.previewUrl,name:d.nickname||d.label||'Foto'}); setStatus('Imagen preparada. Confirma con ✓ para aplicarla.');}catch(e){setStatus(e.message||'No se pudo obtener la foto.','err');}};
-      }
-    };
-    modal.querySelectorAll('[data-source]').forEach(btn=>btn.onclick=()=>{source=btn.dataset.source;pending=null;modal.querySelectorAll('.profile-photo-tab').forEach(b=>b.classList.toggle('active',b.dataset.source===source));setStatus('');renderBody();});
-    await renderBody();
+    setupModeratorPanel('kick');
   }
 
   function applyVoiceLibrarySync(payload={}){
@@ -3603,7 +3544,7 @@
   function classifyEvent(item){ return activityKind(item); }
   function isCurrentConnectionEvent(item){
     const platform=String(item?.platform||'').toLowerCase();
-    if(platform!=='tiktok' && platform!=='twitch') return true;
+    if(!PLATFORM_ORDER.includes(platform)) return true;
     const eventConnectionId=String(item?.connectionId||'').trim();
     if(!eventConnectionId) return true; // history/legacy entries without a session id
     const account=state.accounts[platform]||{};
@@ -3755,7 +3696,7 @@
     });
     socket.on('voiceListPresence', d=>{state.voiceListPresence={online:Boolean(d?.online),connections:Number(d?.connections||0)};if(page==='widgets'&&window.__sfVoiceWidgetEditorOpen){const frag=document.createRange();$('voiceWidgetStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));$('voicePreviewStatus')?.replaceChildren(frag.createContextualFragment(voiceStatusMarkup()));}});
     socket.on('liveEnded', info=>{
-      const p=String(info?.platform||'tiktok').toLowerCase();
+      const p=normalizePlatform(info?.platform);
       // Las insignias de actividad (like, unido y compartir) son exclusivas
       // de la sesión actual del LIVE. Al terminar, no deben pasar al siguiente.
       if(state.activity?.[p]) state.activity[p]={};

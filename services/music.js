@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { normalizePlatform } from "./platform.js";
 import { spawn, execFile } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -16,7 +17,7 @@ const DEFAULT_MUSIC = {
   showProgress: true,
   showRequester: true,
   allowModeratorCommands: false,
-  admins: { tiktok: [], twitch: [] },
+  admins: { tiktok: [], twitch: [], kick: [] },
   adminCommandPrefixes: { pause: '!', stop: '!', skip: '!', repeat: '!', volume: '!' },
   adminCommands: {
     pause: 'pausa', stop: 'detener', skip: 'siguiente', repeat: 'repetir', volume: 'vol'
@@ -42,7 +43,7 @@ const previewSettings = new Map();
 function clone(v) { return structuredClone(v); }
 function norm(v) { return String(v ?? '').trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^\p{L}\p{N}]+/gu,''); }
 function clean(v,max=500) { return String(v ?? '').trim().slice(0,max); }
-function platformOf(v) { return String(v||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok'; }
+function platformOf(v) { return normalizePlatform(v); }
 function clamp(n,min,max,fallback){ const x=Number(n); return Number.isFinite(x)?Math.min(max,Math.max(min,x)):fallback; }
 
 export function normalizeMusicConfig(input={}) {
@@ -61,7 +62,7 @@ export function normalizeMusicConfig(input={}) {
   c.maxQueue=clamp(c.maxQueue,1,10,10);
   c.showNext=c.showNext!==false; c.showProgress=c.showProgress!==false; c.showRequester=c.showRequester!==false; c.allowModeratorCommands=c.allowModeratorCommands===true;
   c.volume=clamp(c.volume,0,100,100);
-  c.admins={tiktok:Array.isArray(c.admins?.tiktok)?c.admins.tiktok.map(v=>cleanUser(v)).filter(Boolean).slice(0,10):[],twitch:Array.isArray(c.admins?.twitch)?c.admins.twitch.map(v=>cleanUser(v)).filter(Boolean).slice(0,10):[]};
+  c.admins={tiktok:Array.isArray(c.admins?.tiktok)?c.admins.tiktok.map(v=>cleanUser(v)).filter(Boolean).slice(0,10):[],twitch:Array.isArray(c.admins?.twitch)?c.admins.twitch.map(v=>cleanUser(v)).filter(Boolean).slice(0,10):[],kick:Array.isArray(c.admins?.kick)?c.admins.kick.map(v=>cleanUser(v)).filter(Boolean).slice(0,10):[]};
   for(const k of Object.keys(ADMIN_COMMANDS)) {
     c.adminCommandPrefixes[k]=PREFIXES.includes(String(c.adminCommandPrefixes[k]))?String(c.adminCommandPrefixes[k]):c.commandPrefix;
     const custom=clean(c.adminCommands[k]||ADMIN_COMMANDS[k][0],32).toLowerCase();
@@ -71,7 +72,7 @@ export function normalizeMusicConfig(input={}) {
   c.style.scale=clamp(c.style.scale,.45,2,1); c.style.accent=/^#[0-9a-f]{6}$/i.test(c.style.accent)?c.style.accent:'#8b5cf6'; c.style.accent2=/^#[0-9a-f]{6}$/i.test(c.style.accent2)?c.style.accent2:'#ec4899'; c.style.progressMode=['single','gradient2','gradient3'].includes(String(c.style.progressMode))?String(c.style.progressMode):'gradient2'; c.style.progressColor=/^#[0-9a-f]{6}$/i.test(c.style.progressColor)?c.style.progressColor:c.style.accent; c.style.progressColor2=/^#[0-9a-f]{6}$/i.test(c.style.progressColor2)?c.style.progressColor2:c.style.accent2; c.style.progressColor3=/^#[0-9a-f]{6}$/i.test(c.style.progressColor3)?c.style.progressColor3:'#22d3ee'; c.style.textColor=/^#[0-9a-f]{6}$/i.test(c.style.textColor)?c.style.textColor:'#ffffff'; c.style.secondaryTextColor=/^#[0-9a-f]{6}$/i.test(c.style.secondaryTextColor)?c.style.secondaryTextColor:'#b9b9c8'; c.style.titleFont=clean(c.style.titleFont||'Inter',60); c.style.artistFont=clean(c.style.artistFont||'Inter',60); c.style.titleSize=clamp(c.style.titleSize,16,72,28); c.style.artistSize=clamp(c.style.artistSize,10,36,15); c.style.vinylSize=clamp(c.style.vinylSize,90,280,170); c.style.design=['vinyl-glow','minimal','neon-ring','retro','mono','glass','cyber','sunset','arcade','arcade-glass','aurora','synthwave','hologram','matrix','oceanic','fire','candy','monochrome-glow','blueprint','terminal','crystal-glass','rose-aurora','midnight-luxe','plasma-core','mint-mist','ice-chrome','golden-hour','ruby-noir','vapor-dream','cosmic-bloom','glow-wave','rgb-pulse','chrome-neon','rose-glass','electric-lime','violet-wave','pixel-glass','infrared','spectrum','liquid-glass'].includes(c.style.design)?c.style.design:'vinyl-glow'; c.style.showVinyl=c.style.showVinyl!==false;
   return c;
 }
-function cleanUser(v){return String(v??'').trim().replace(/^[@#]+/,'').replace(/^https?:\/\/(www\.)?(tiktok\.com\/@|twitch\.tv\/)/i,'').split(/[/?#]/)[0].trim().toLowerCase();}
+function cleanUser(v){return String(v??'').trim().replace(/^[@#]+/,'').replace(/^https?:\/\/(www\.)?(tiktok\.com\/@|twitch\.tv\/|kick\.com\/)/i,'').split(/[/?#]/)[0].trim().toLowerCase();}
 function getSettings(ownerId){ return database.getUserSettings(ownerId)||{}; }
 export function getMusicConfig(ownerId){ return normalizeMusicConfig(getSettings(ownerId).musicWidget||{}); }
 export function setMusicConfig(ownerId,cfg){ const current=getSettings(ownerId); const merged={...current,musicWidget:normalizeMusicConfig(cfg)}; database.saveUserSettings(ownerId,merged); return merged.musicWidget; }

@@ -12,7 +12,7 @@ const DEFAULTS = {
   config: {
     enabled: true,
     mode: "baraja",
-    platforms: { tiktok: true, twitch: true },
+    platforms: { tiktok: true, twitch: true, kick: true },
     audience: "all",
     participation: {
       triggerMode: "text",
@@ -129,7 +129,7 @@ const els = {
 };
 
 let snapshot = safeClone(DEFAULTS);
-let accountState = { tiktok: { connected: false, live: false }, twitch: { connected: false, live: false } };
+let accountState = { tiktok: { connected: false, live: false }, twitch: { connected: false, live: false }, kick: { connected: false, live: false } };
 let sharedVoiceUsers = [];
 let activeVoicePanel = "winners";
 let ui = loadLocalState();
@@ -220,8 +220,8 @@ function applyThemeVars() {
   }
 }
 function setConnectionDot() {
-  const connected = Boolean(accountState.tiktok?.connected || accountState.twitch?.connected);
-  const live = Boolean((accountState.tiktok?.connected && accountState.tiktok?.live) || (accountState.twitch?.connected && accountState.twitch?.live));
+  const connected = Boolean(accountState.tiktok?.connected || accountState.twitch?.connected || accountState.kick?.connected);
+  const live = Boolean((accountState.tiktok?.connected && accountState.tiktok?.live) || (accountState.twitch?.connected && accountState.twitch?.live) || (accountState.kick?.connected && accountState.kick?.live));
   els.statusDot.className = `rf-dot ${live ? "live" : connected ? "connected" : ""}`.trim();
   els.statusText.textContent = live ? "Conectado" : connected ? "Conectado" : "Desconectado";
 }
@@ -377,7 +377,7 @@ function renderParticipantsList() {
     return `
       <div class="rf-mini">
         <div class="rf-miniAvatar">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:1000;background:rgba(255,255,255,.05)">${esc((name[0] || "U").toUpperCase())}</div>`}</div>
-        <div><strong>${esc(name)}</strong><span>${esc(handle || (p.platform === "twitch" ? "Twitch" : "TikTok"))}</span></div>
+        <div><strong>${esc(name)}</strong><span>${esc(handle || (platformLabel(p.platform)))}</span></div>
         <div class="count">×${esc(p.count || p.entries || 1)}</div>
       </div>
     `;
@@ -424,7 +424,7 @@ function renderWinnersHistoryList() {
         <div class="rf-miniAvatar">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}">` : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-weight:1000;background:rgba(255,255,255,.05)">${esc((name[0] || "U").toUpperCase())}</div>`}</div>
         <div>
           <strong>${esc(name)}</strong>
-          <span>${esc(handle || (winner.platform === "twitch" ? "Twitch" : "TikTok"))}</span>
+          <span>${esc(handle || (platformLabel(winner.platform)))}</span>
           ${voice ? `<span>🤖 ${esc(voice)}</span>` : ""}
           ${comment ? `<span>💬 ${esc(comment)}</span>` : ""}
         </div>
@@ -442,7 +442,7 @@ function renderVoiceRulesList() {
   }
   els.rulesList.innerHTML = list.map((entry) => {
     const name = String(entry.displayName || entry.username || "Usuario").trim();
-    const handle = `${entry.platform === "twitch" ? "Twitch" : "TikTok"} · @${String(entry.username || "").trim()}`;
+    const handle = `${platformLabel(entry.platform)} · @${String(entry.username || "").trim()}`;
     const voice = String(entry.voiceLabel || entry.voiceKey || "Voz").trim();
     const comment = String(entry.comment || "").trim();
     return `
@@ -485,7 +485,7 @@ function renderWinnerCard(extraClass = '') {
         <div class="rf-winningLabel">${isResult() ? "👑 Ganador" : "👾 Participante"}</div>
         <div class="rf-winningAvatar">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}">` : `<div class="rf-avatarFallback" style="font-size:42px">${esc((name[0] || "U").toUpperCase())}</div>`}</div>
         <div class="rf-winningTitle">${esc(name)}</div>
-        <div class="rf-winningHandle">${esc(handle || (winner.platform === "twitch" ? "Twitch" : "TikTok"))}</div>
+        <div class="rf-winningHandle">${esc(handle || (platformLabel(winner.platform)))}</div>
         ${voiceBadge ? `<div class="rf-cardRole">${voiceBadge}</div>` : ""}
       </div>
     </div>
@@ -511,7 +511,7 @@ function renderCommentPrompt() {
         <div style="min-width:0;flex:1">
           <div class="bubbleTitle">Comentario del ganador</div>
           <div class="bubbleMain">${esc(winner.comment || "")}</div>
-          <div class="bubbleMeta">${esc(name)} · ${esc(handle || (winner.platform === "twitch" ? "Twitch" : "TikTok"))}${winner.voiceLabel ? ` · 🤖 ${esc(winner.voiceLabel)}` : ""}</div>
+          <div class="bubbleMeta">${esc(name)} · ${esc(handle || (platformLabel(winner.platform)))}${winner.voiceLabel ? ` · 🤖 ${esc(winner.voiceLabel)}` : ""}</div>
         </div>
       </div>
     `;
@@ -525,7 +525,7 @@ function renderCommentPrompt() {
       <div style="min-width:0;flex:1">
         <div class="bubbleTitle">${lastComment ? "Comentario recibido · falta la voz" : "Por favor comenta una voz"}</div>
         <div class="bubbleMain">${lastComment ? esc(lastComment) : esc(participantLabel(winner))}</div>
-        <div class="bubbleMeta">${esc(participantHandle(winner) || (winner.platform === "twitch" ? "Twitch" : "TikTok"))}${lastComment ? " · Di el nombre de la voz que quieres" : ""}</div>
+        <div class="bubbleMeta">${esc(participantHandle(winner) || (platformLabel(winner.platform)))}${lastComment ? " · Di el nombre de la voz que quieres" : ""}</div>
         <div class="rf-countdown"><span data-countdown-label>${lastComment ? "Esperando una voz" : "Tiempo restante"}</span><strong data-countdown-value>${secondsLeft}</strong></div>
       </div>
     </div>
@@ -672,14 +672,14 @@ function renderBaraja() {
             return `
               <div class="rf-card ${isWinnerCard ? 'is-winner' : ''} ${isNew ? 'rf-card-enter' : ''}" style="--rf-delay:${Math.min(index, 7) * 45}ms" data-key="${esc(p.key || `${index}`)}">
                 <div class="rf-cardTopLine">
-                  <span class="rf-platformBadge ${platform}">${platform === 'twitch' ? 'Twitch' : platform === 'tiktok' ? 'TikTok' : 'Live'}</span>
+                  <span class="rf-platformBadge ${platform}">${platformLabel(platform)}</span>
                   <span class="rf-cardIndex">${String(index + 1).padStart(2, '0')}</span>
                 </div>
                 <div class="rf-cardBody">
                   <div class="rf-avatar">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}">` : `<div class="rf-avatarFallback">${esc((name[0] || 'U').toUpperCase())}</div>`}</div>
                   <div class="rf-cardIdentity">
                     <div class="rf-cardName">${esc(name)}</div>
-                    <div class="rf-cardHandle">${esc(handle || (platform === 'twitch' ? 'Twitch' : platform === 'tiktok' ? 'TikTok' : 'Participante'))}</div>
+                    <div class="rf-cardHandle">${esc(handle || (platformLabel(platform)))}</div>
                   </div>
                   <div class="rf-cardRole"><span class="badge">👾 Participante</span>${p.count > 1 ? `<span class="badge">x${esc(p.count)}</span>` : ''}</div>
                   ${p.comment ? `<div class="rf-cardComment">“${esc(p.comment)}”</div>` : `<div class="rf-cardComment rf-cardCommentEmpty">Listo para participar</div>`}
@@ -707,14 +707,14 @@ function renderBaraja() {
             return `
               <div class="rf-card" style="--rf-delay:${Math.min(index, 7) * 45}ms" data-key="${esc(p.key || `${index}`)}">
                 <div class="rf-cardTopLine">
-                  <span class="rf-platformBadge ${platform}">${platform === 'twitch' ? 'Twitch' : platform === 'tiktok' ? 'TikTok' : 'Live'}</span>
+                  <span class="rf-platformBadge ${platform}">${platformLabel(platform)}</span>
                   <span class="rf-cardIndex">${String((index % participants.length) + 1).padStart(2, '0')}</span>
                 </div>
                 <div class="rf-cardBody">
                   <div class="rf-avatar">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}">` : `<div class="rf-avatarFallback">${esc((name[0] || 'U').toUpperCase())}</div>`}</div>
                   <div class="rf-cardIdentity">
                     <div class="rf-cardName">${esc(name)}</div>
-                    <div class="rf-cardHandle">${esc(handle || (platform === 'twitch' ? 'Twitch' : platform === 'tiktok' ? 'TikTok' : 'Participante'))}</div>
+                    <div class="rf-cardHandle">${esc(handle || (platformLabel(platform)))}</div>
                   </div>
                   <div class="rf-cardRole"><span class="badge">👾 Participante</span></div>
                   ${p.comment ? `<div class="rf-cardComment">“${esc(p.comment)}”</div>` : `<div class="rf-cardComment rf-cardCommentEmpty">Listo para participar</div>`}
@@ -746,7 +746,7 @@ function renderWheel(participants, dimmed, hasPrompt=false) {
         <div class="rf-cleanWinnerOnly" aria-live="polite">
           <div class="rf-coreWinnerAvatar">${winnerAvatar ? `<img src="${esc(winnerAvatar)}" alt="${esc(winnerName)}">` : `<div class="rf-coreWinnerFallback">${esc((winnerName[0] || 'U').toUpperCase())}</div>`}</div>
           <strong>${esc(winnerName)}</strong>
-          <span>${esc(winnerHandle || (winner.platform === 'twitch' ? 'Twitch' : 'TikTok'))}</span>
+          <span>${esc(winnerHandle || (platformLabel(winner.platform)))}</span>
         </div>
       </div>`;
   }

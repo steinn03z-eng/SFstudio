@@ -1,11 +1,13 @@
 import * as database from './database.js';
 import * as liveSession from './live-session.js';
 import { findVoicePowerRuleFromComment } from './voice-rules.js';
+import { normalizePlatform } from './platform.js';
 
 const DEFAULT_POINTS = {
   enabled: true,
   tiktok: { follow:100, comment:2, like:1, share:1, giftPer10Coins:1, subscription:250 },
   twitch: { follow:100, comment:2, like:0, share:0, bitsPer10:1, subscription:250, giftSubscription:250 },
+  kick: { follow:100, comment:2, like:0, share:0, giftPer10Coins:1, subscription:250 },
   limits: { maxAwardPerEvent:1000 },
   widget: {
     enabled: true,
@@ -41,7 +43,7 @@ function badgeKey(value){ return norm(value); }
 function filterTemporaryBadges(badges){
   return (Array.isArray(badges) ? badges : []).filter((badge) => !TEMPORARY_LIVE_BADGES.has(badgeKey(badge)));
 }
-const platformOf = (p) => { const value=String(p||'tiktok').toLowerCase(); return value==='twitch'?'twitch':value==='both'?'both':'tiktok'; };
+const platformOf = (p) => { const value=String(p||'tiktok').toLowerCase(); return value==='both'?'both':normalizePlatform(value); };
 const platformMatches = (configured, actual) => configured==='both' || configured===actual;
 function isHeartMeGift(payload){
   const values = [payload?.giftKey, payload?.giftId, payload?.giftName, payload?.giftAlt, typeof payload?.gift==='string' ? payload.gift : payload?.gift?.name, payload?.gift?.key, payload?.gift?.id];
@@ -68,6 +70,7 @@ export function normalizePointsConfig(input){
     ...input,
     tiktok:{...base.tiktok,...(input.tiktok||{})},
     twitch:{...base.twitch,...(input.twitch||{})},
+    kick:{...base.kick,...(input.kick||{})},
     limits:{...base.limits,...(input.limits||{})},
     widget:{...base.widget,...(input.widget||{})},
     voicePower:{...base.voicePower,...(input.voicePower||{})},
@@ -119,7 +122,8 @@ function moderatorIdentity(value){
 function isConfiguredModerator(ownerId, platform, identity, settings){
   const key = norm(identity);
   if (!key) return false;
-  const configured = Array.isArray(settings?.[platform==='twitch'?'twitchModerators':'tiktokModerators']) ? settings[platform==='twitch'?'twitchModerators':'tiktokModerators'] : [];
+  const moderatorKey = platform === 'twitch' ? 'twitchModerators' : platform === 'kick' ? 'kickModerators' : 'tiktokModerators';
+  const configured = Array.isArray(settings?.[moderatorKey]) ? settings[moderatorKey] : [];
   return configured.some(v => norm(moderatorIdentity(v)) === key);
 }
 

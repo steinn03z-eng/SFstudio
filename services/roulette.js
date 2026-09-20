@@ -1,4 +1,5 @@
 import * as database from "./database.js";
+import { normalizePlatform as normalizeSupportedPlatform } from "./platform.js";
 import { findVoiceRuleFromComment } from "./voice-rules.js";
 
 const OVERLAY_ID = "roulette";
@@ -16,6 +17,7 @@ const DEFAULT_CONFIG = {
   platforms: {
     tiktok: true,
     twitch: true,
+    kick: true,
   },
   audience: "all", // all | followers | donors | likers
   participation: {
@@ -133,7 +135,7 @@ function safeClone(value) {
 }
 
 function normalizePlatform(value) {
-  return String(value || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+  return normalizeSupportedPlatform(value);
 }
 
 function normalizeText(value) {

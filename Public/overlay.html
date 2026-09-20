@@ -221,6 +221,7 @@
     .overlayItem .actionTag { color:var(--item-accent); }
     .overlayItem .platformTag.tiktok { color:#fe2c55; }
     .overlayItem .platformTag.twitch { color:#9146ff; }
+    .overlayItem .platformTag.kick { color:#53fc18; }
     .overlayItem .platformTag { color:var(--overlay-muted, var(--muted, #aab5d0)); }
     .overlayItem .timeTag { margin-left:auto; }
     .overlayItem .giftMedia { margin-top:calc(10px * var(--overlay-zoom, 1)); display:flex; flex-direction:column; gap:calc(8px * var(--overlay-zoom, 1)); }
@@ -1122,7 +1123,7 @@
     /* Main-style chat parity */
     .overlayStatus{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
     .overlayPlatformState{display:inline-flex;align-items:center;gap:4px;padding:4px 8px;border-radius:999px;background:rgba(255,255,255,.055);font-size:11px}
-    .overlayPlatformState.tiktok strong{color:#fe2c55}.overlayPlatformState.twitch strong{color:#9146ff}
+    .overlayPlatformState.tiktok strong{color:#fe2c55}.overlayPlatformState.twitch strong{color:#9146ff}.overlayPlatformState.kick strong{color:#53fc18}
     .overlayPlatformName{color:var(--muted,#aab5d0)}
     .overlayStatus[data-state="live"] .overlayStatusDot{background:#22c55e;box-shadow:0 0 0 4px rgba(34,197,94,.12)}
     .overlayStatus[data-state="waiting"] .overlayStatusDot,.overlayStatus[data-state="unstable"] .overlayStatusDot{background:#f59e0b;box-shadow:0 0 0 4px rgba(245,158,11,.12)}
@@ -1147,6 +1148,7 @@
     body.overlay-mode .overlayItem .platformTag{font-size:10px;padding:3px 6px}
     body.overlay-mode .overlayItem .platformTag.tiktok{color:#fe2c55}
     body.overlay-mode .overlayItem .platformTag.twitch{color:#9146ff}
+    body.overlay-mode .overlayItem .platformTag.kick{color:#53fc18}
     body.overlay-mode .overlayItem .entryText{color:var(--entry-text-color,#eef2ff);font-size:calc(15px * var(--entry-text-scale,1));line-height:1.55}
     body.overlay-mode .overlayItem .entryActivityBadges{margin-left:0}
     body.overlay-mode .overlayItem .badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.07);font-size:12px;line-height:1}
@@ -1172,6 +1174,7 @@
     body.overlay-mode .overlayItem .platformTag{display:inline-flex;align-items:center;justify-content:center;padding:3px 7px;border:0;border-radius:999px;font-weight:900;font-size:10px;line-height:1;}
     body.overlay-mode .overlayItem .platformTag.tiktok{background:#ff4f97;color:#fff!important;}
     body.overlay-mode .overlayItem .platformTag.twitch{background:#9146ff;color:#fff!important;}
+    body.overlay-mode .overlayItem .platformTag.kick{background:#53fc18;color:#081008!important;}
     body.overlay-mode.overlay-card-mode .overlayItem .entryBubble{min-height:clamp(230px,38vw,420px);display:flex;flex-direction:column;justify-content:flex-start;align-items:stretch;padding:24px;border-radius:24px;box-shadow:0 18px 48px rgba(0,0,0,.24);}
     body.overlay-mode.overlay-card-mode .overlayItem .entryText{font-size:calc(18px * var(--entry-text-scale,1) * var(--overlay-zoom,1));line-height:1.5;}
     body.overlay-mode.overlay-card-mode .overlayItem .entryUserLine{margin-bottom:9px;}
@@ -1439,7 +1442,8 @@ body.overlay-mode.overlay-view-chat .overlayItem:hover .entryAvatarWrap{
   filter:grayscale(1) saturate(.15);
 }
 body.overlay-mode.overlay-view-chat .overlayItem:hover .platformTag.tiktok,
-body.overlay-mode.overlay-view-chat .overlayItem:hover .platformTag.twitch{
+body.overlay-mode.overlay-view-chat .overlayItem:hover .platformTag.twitch,
+body.overlay-mode.overlay-view-chat .overlayItem:hover .platformTag.kick{
   background:rgba(255,255,255,.13) !important;
   color:rgba(255,255,255,.78) !important;
 }
@@ -1474,6 +1478,7 @@ body.overlay-mode.overlay-view-chat .overlayItem .platformTag{
   background:#fe2c55!important;
 }
 body.overlay-mode.overlay-view-chat .overlayItem .platformTag.twitch{background:#9146ff!important}
+body.overlay-mode.overlay-view-chat .overlayItem .platformTag.kick{background:#53fc18!important;color:#081008!important}
 body.overlay-mode.overlay-view-chat .overlayItem .timeTag{
   margin-left:auto!important;color:#778196!important;font-size:11px!important;opacity:1!important;
   padding:0!important;background:none!important;border:0!important;
@@ -1659,6 +1664,7 @@ body.overlay-mode.overlay-view-chat .overlayItem.stream-row .platform-pill {
 }
 body.overlay-mode.overlay-view-chat .overlayItem.stream-row .platform-pill.tiktok { color:#fff !important; background:#fe2c55 !important; }
 body.overlay-mode.overlay-view-chat .overlayItem.stream-row .platform-pill.twitch { color:#fff !important; background:#9146ff !important; }
+body.overlay-mode.overlay-view-chat .overlayItem.stream-row .platform-pill.kick { color:#081008 !important; background:#53fc18 !important; }
 
 /* Dashboard message box. It is inside the card and never inherits the page background. */
 body.overlay-mode.overlay-view-chat .overlayItem.stream-row .row-message {
@@ -2472,7 +2478,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
 </head>
 <body class="overlay-mode overlay-theme-neon">
   <div class="overlayShell">
-    <div class="overlayStatus" id="overlayStatus" data-state="offline" aria-live="polite"><span class="overlayStatusDot" aria-hidden="true"></span><span class="overlayStatusText" id="overlayStatusText">Desconectado</span><span class="overlayPlatformState tiktok"><span class="overlayPlatformName">TikTok:</span><strong id="overlayTikTokState">OFF</strong></span><span class="overlayPlatformState twitch"><span class="overlayPlatformName">Twitch:</span><strong id="overlayTwitchState">OFF</strong></span></div>
+    <div class="overlayStatus" id="overlayStatus" data-state="offline" aria-live="polite"><span class="overlayStatusDot" aria-hidden="true"></span><span class="overlayStatusText" id="overlayStatusText">Desconectado</span><span class="overlayPlatformState tiktok"><span class="overlayPlatformName">TikTok:</span><strong id="overlayTikTokState">OFF</strong></span><span class="overlayPlatformState twitch"><span class="overlayPlatformName">Twitch:</span><strong id="overlayTwitchState">OFF</strong></span><span class="overlayPlatformState kick"><span class="overlayPlatformName">Kick:</span><strong id="overlayKickState">OFF</strong></span></div>
     <div class="overlayRoot"><div class="overlayViewport"><div class="overlayList" id="list"></div></div></div>
     <div class="overlayBottomBar" aria-label="Control del overlay">
       <div class="overlayVoiceDock" id="overlayVoiceDock" aria-label="Bot de voz">
@@ -2545,7 +2551,8 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
                   <div class="overlayVoiceField"><span>Plataforma</span><div class="overlayVoiceSegmented" id="overlayVoicePowerPlatformGroup">
                     <button type="button" data-power-platform="tiktok">TikTok</button>
                     <button type="button" data-power-platform="twitch">Twitch</button>
-                    <button type="button" data-power-platform="both">Ambos</button>
+                    <button type="button" data-power-platform="kick">Kick</button>
+                    <button type="button" data-power-platform="both">Todas</button>
                   </div></div>
                   <div class="overlayVoiceField"><span>Fuente de activación</span><select id="overlayVoicePowerSource">
                     <option value="gift">🎁 Regalos</option><option value="activity">⚡ Actividad</option><option value="points">✦ Sistema de puntos</option><option value="any">✨ Cualquiera</option>
@@ -2554,13 +2561,18 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
 
                 <div class="overlayVoiceField" id="overlayVoicePowerGiftSection">
                   <span>Regalo / Bits</span>
-                  <div class="overlayVoiceHelp" id="overlayVoicePowerGiftHelp">Elige una sola acción de activación. TikTok usa un regalo; Twitch usa Bits.</div>
+                  <div class="overlayVoiceHelp" id="overlayVoicePowerGiftHelp">Elige una sola acción de activación. TikTok y Kick usan regalos; Twitch usa Bits.</div>
                   <div class="overlayVoicePowerGiftColumns">
                     <div class="overlayVoicePowerGiftColumn" id="overlayVoicePowerTikTokGiftColumn">
-                      <strong>TikTok · 1 regalo</strong>
+                      <strong>TikTok · regalo</strong>
                       <input type="search" id="overlayVoicePowerGiftSearch" placeholder="Buscar regalo…" autocomplete="off">
                       <div class="overlayVoiceCounter" id="overlayVoicePowerGiftCounter"></div>
                       <div class="overlayVoiceTargetGrid overlayVoiceTargetGrid--power" id="overlayVoicePowerGiftGrid"></div>
+                    </div>
+                    <div class="overlayVoicePowerGiftColumn" id="overlayVoicePowerKickGiftColumn">
+                      <strong>Kick · regalo</strong>
+                      <input type="search" id="overlayVoicePowerKickGiftKey" placeholder="Nombre/id del regalo…" autocomplete="off">
+                      <small class="overlayVoiceHelp">Kick no comparte el catálogo de regalos de TikTok; escribe el nombre o identificador que entregue el evento.</small>
                     </div>
                     <div class="overlayVoicePowerGiftColumn" id="overlayVoicePowerTwitchBitsColumn">
                       <strong>Twitch · Bits</strong>
@@ -2574,11 +2586,11 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
                   <span>Actividad</span>
                   <div class="overlayVoiceHelp">La insignia correspondiente ya debe existir en la cuenta. Moderador usa la lista de moderadores configurada por plataforma.</div>
                   <div class="overlayVoiceTargetGrid overlayVoiceTargetGrid--activity" id="overlayVoicePowerActivityGrid">
-                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="follow" data-power-platforms="tiktok,twitch">👤 Seguidor</button>
-                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="moderator" data-power-platforms="tiktok,twitch">🛡️ Moderador</button>
+                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="follow" data-power-platforms="tiktok,twitch,kick">👤 Seguidor</button>
+                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="moderator" data-power-platforms="tiktok,twitch,kick">🛡️ Moderador</button>
                     <button type="button" class="overlayVoiceTargetCard" data-power-activity="like" data-power-platforms="tiktok">❤️ Likes</button>
                     <button type="button" class="overlayVoiceTargetCard" data-power-activity="share" data-power-platforms="tiktok">🗣️ Compartir</button>
-                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="subscription" data-power-platforms="twitch">⭐ Suscripción</button>
+                    <button type="button" class="overlayVoiceTargetCard" data-power-activity="subscription" data-power-platforms="twitch,kick">⭐ Suscripción</button>
                   </div>
                   <label class="overlayVoiceField" id="overlayVoicePowerActivityAmountWrap"><span id="overlayVoicePowerActivityAmountLabel">Cantidad requerida</span><input type="number" id="overlayVoicePowerActivityAmount" min="1" step="1" value="1" inputmode="numeric"></label>
                 </div>
@@ -2622,6 +2634,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
                   <select id="overlayVoiceRulePlatform">
                     <option value="tiktok">TikTok</option>
                     <option value="twitch">Twitch</option>
+                    <option value="kick">Kick</option>
                   </select>
                 </label>
                 <label class="overlayVoiceField"><span>Tipo</span>
@@ -2736,13 +2749,14 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
           <section class="overlayVoiceSection" data-voice-section="users">
             <div class="overlayVoiceField">
               <span>Reglas por usuario</span>
-              <p class="overlayVoiceHelp">Asigna una voz a un usuario por plataforma usando su uniqueId de TikTok o username de Twitch. Esta regla manda sobre la voz global y sobre cualquier otra personalización mientras exista.</p>
+              <p class="overlayVoiceHelp">Asigna una voz a un usuario por plataforma usando el identificador de TikTok o el username del canal en Twitch/Kick. Esta regla manda sobre la voz global y sobre cualquier otra personalización mientras exista.</p>
               <div class="overlayVoiceRow overlayVoiceRow--three">
                 <label class="overlayVoiceField">
                   <span>Plataforma</span>
                   <select id="overlayVoicePinnedPlatformSelect" aria-label="Plataforma de la regla">
                     <option value="tiktok">TikTok</option>
                     <option value="twitch">Twitch</option>
+                    <option value="kick">Kick</option>
                   </select>
                 </label>
                 <label class="overlayVoiceField">
@@ -2853,6 +2867,11 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
       ],
       twitch: [
         { value: "bits", label: "Bits" },
+        { value: "event", label: "Evento" },
+        { value: "role", label: "Rol" },
+      ],
+      kick: [
+        { value: "gift", label: "Regalo" },
         { value: "event", label: "Evento" },
         { value: "role", label: "Rol" },
       ],
@@ -3100,9 +3119,9 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     }
     const overlayUiDefaults = { zoom: 1, backgroundMode: "transparent", backgroundColor: "#111827" };
 
-    const defaults = { tiktokModerators: [], personal: { theme:"dark", overlayTheme:"neon", font:"inter", animation:"slide", chatLayout:"vertical", chatDirection:"down", chatTheme:"cloud", avatarFrame:"platform", bubbleFrame:"platform", avatarSize:"md", nameSize:"md", nameWeight:"800", chatHorizontalMode:"normal", chatOverlayShape:"normal", chatOverlayCardSide:"center", chatAdjustMessages:false, badgeStyle:"emoji", twitchNameColor:"real", tiktokNameColor:"white", messageEffect:"shadow", nameEffect:"shadow", textColor:"auto", showBadges:true, showEmotes:true, highlightSupporters:true, highlightSupportersTikTok:true, highlightSupportersTwitch:true, supporterHighlightStyle:"gold", eventsLayout:"vertical", eventsDirection:"down", eventsMode:"slide", eventsPanelSize:"normal", eventsOverlayShape:"normal", eventsOverlayCardSide:"center", eventsCardFrame:true, eventsAutoClear:false, eventsClearSeconds:30, giftsLayout:"vertical", giftsDirection:"down", giftsMode:"slide", giftsPanelSize:"normal", giftsOverlayShape:"normal", giftsOverlayCardSide:"center", giftsCardFrame:true, giftsAutoClear:false, giftsClearSeconds:30, highlightStyle:"platform", giftHighlightStyle:"gold", overlayEventHighlightStyle:"platform", overlayGiftImageSize:"md", overlayGiftComposition:"normal", overlayGiftDisplayMode:"full", overlayGiftCompositionMode:"vertical-centered", overlayNameColorMode:"platform", overlayNameColor:"#ffffff", overlayEventFont:"inherit", overlayGiftFont:"inherit", eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true}, highlightEventUsername:true, highlightLikes:true, highlightFollows:true, highlightJoins:true, highlightShares:true, highlightSystem:true, highlightFanclub:true, highlightSuperfan:true, highlightGifts:true, highlightSubs:true, highlightBits:true, highlightRaids:true, autoClearChat:false, clearChatSeconds:30, tiktokAvatarUrl:"" } };
+    const defaults = { tiktokModerators: [], twitchModerators: [], kickModerators: [], personal: { theme:"dark", overlayTheme:"neon", font:"inter", animation:"slide", chatLayout:"vertical", chatDirection:"down", chatTheme:"cloud", avatarFrame:"platform", bubbleFrame:"platform", avatarSize:"md", nameSize:"md", nameWeight:"800", chatHorizontalMode:"normal", chatOverlayShape:"normal", chatOverlayCardSide:"center", chatAdjustMessages:false, badgeStyle:"emoji", twitchNameColor:"real", kickNameColor:"real", tiktokNameColor:"white", messageEffect:"shadow", nameEffect:"shadow", textColor:"auto", showBadges:true, showEmotes:true, highlightSupporters:true, highlightSupportersTikTok:true, highlightSupportersTwitch:true, highlightSupportersKick:true, supporterHighlightStyle:"gold", eventsLayout:"vertical", eventsDirection:"down", eventsMode:"slide", eventsPanelSize:"normal", eventsOverlayShape:"normal", eventsOverlayCardSide:"center", eventsCardFrame:true, eventsAutoClear:false, eventsClearSeconds:30, giftsLayout:"vertical", giftsDirection:"down", giftsMode:"slide", giftsPanelSize:"normal", giftsOverlayShape:"normal", giftsOverlayCardSide:"center", giftsCardFrame:true, giftsAutoClear:false, giftsClearSeconds:30, highlightStyle:"platform", giftHighlightStyle:"gold", overlayEventHighlightStyle:"platform", overlayGiftImageSize:"md", overlayGiftComposition:"normal", overlayGiftDisplayMode:"full", overlayGiftCompositionMode:"vertical-centered", overlayNameColorMode:"platform", overlayNameColor:"#ffffff", overlayEventFont:"inherit", overlayGiftFont:"inherit", eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true}, highlightEventUsername:true, highlightLikes:true, highlightFollows:true, highlightJoins:true, highlightShares:true, highlightSystem:true, highlightFanclub:true, highlightSuperfan:true, highlightGifts:true, highlightSubs:true, highlightBits:true, highlightRaids:true, autoClearChat:false, clearChatSeconds:30, tiktokAvatarUrl:"" } };
     let settings = loadSettings();
-    let state = { chat:[], events:[], gifts:[], supporters: {}, activityBadges: {}, persistentFrameProfiles: { tiktok:{}, twitch:{} }, accountState: { tiktok:{ connected:false, live:false, mode:"saved" }, twitch:{ connected:false, live:false, mode:"saved" } } };
+    let state = { chat:[], events:[], gifts:[], supporters: {}, activityBadges: {}, persistentFrameProfiles: { tiktok:{}, twitch:{}, kick:{} }, accountState: { tiktok:{ connected:false, live:false, mode:"saved" }, twitch:{ connected:false, live:false, mode:"saved" }, kick:{ connected:false, live:false, mode:"saved" } } };
     let followState = { chat:true, events:true, gifts:true };
     let voiceBotClientRevision = Number(localStorage.getItem(`${VOICEBOT_KEY}.revision`) || 0) || 0;
     let voiceBot = (settings?.voiceBot && typeof settings.voiceBot === "object") ? normalizeVoiceBotState(settings.voiceBot) : loadStoredJSON(VOICEBOT_KEY, voiceBotDefaults);
@@ -3223,7 +3242,9 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     let voiceBotAudio = null;
     let voiceRuleDraft = structuredClone(voiceRuleDraftDefaults);
     const view = new URLSearchParams(location.search).get("view") || "chat";
-    const platformColors = { tiktok: "#fe2c55", twitch: "#9146ff" };
+    const platformColors = { tiktok: "#fe2c55", twitch: "#9146ff", kick: "#53fc18" };
+    function platformLabel(platform){ const p=normalizeVoicePlatform(platform); return p==="twitch"?"Twitch":p==="kick"?"Kick":"TikTok"; }
+    function platformShort(platform){ const p=normalizeVoicePlatform(platform); return p==="twitch"?"TW":p==="kick"?"K":"TT"; }
     const roleBadges = {
       broadcaster: { emoji: "👑", color: "#f5d063" },
       moderator: { emoji: "🛡️", color: "#60a5fa" },
@@ -3235,6 +3256,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
       premium: { emoji: "✨", color: "#fb7185" },
       tiktok: { emoji: "🎵", color: "#fe2c55" },
       twitch: { emoji: "🟣", color: "#9146ff" },
+      kick: { emoji: "🟢", color: "#53fc18" },
     };
     const ACTIVITY_BADGE_RULES = [
       { emoji:'🎁',label:'Donador', match:['gift','regalo'] },
@@ -3252,10 +3274,10 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     const SESSION_KEY = "streamfusion.ui.session.v2";
 
     function loadStoredJSON(key, fallback){ try { const raw = localStorage.getItem(key); if(!raw) return structuredClone(fallback); return mergeDeep(structuredClone(fallback), JSON.parse(raw)); } catch { return structuredClone(fallback); } }
-    function loadOverlayPresence(){ return loadStoredJSON(PRESENCE_KEY, { tiktok:{ connected:false, live:false, lastSignal:0, mode:"saved" }, twitch:{ connected:false, live:false, lastSignal:0, mode:"saved" } }); }
-    function loadOverlaySession(){ return loadStoredJSON(SESSION_KEY, { tiktok:{ username:"", connected:false, avatarUrl:"" }, twitch:{ username:"", connected:false, avatarUrl:"" } }); }
+    function loadOverlayPresence(){ return loadStoredJSON(PRESENCE_KEY, { tiktok:{ connected:false, live:false, lastSignal:0, mode:"saved" }, twitch:{ connected:false, live:false, lastSignal:0, mode:"saved" }, kick:{ connected:false, live:false, lastSignal:0, mode:"saved" } }); }
+    function loadOverlaySession(){ return loadStoredJSON(SESSION_KEY, { tiktok:{ username:"", connected:false, avatarUrl:"" }, twitch:{ username:"", connected:false, avatarUrl:"" }, kick:{ username:"", connected:false, avatarUrl:"" } }); }
     function overlayConnectionState(){
-      const platforms = ["tiktok", "twitch"];
+      const platforms = ["tiktok", "twitch", "kick"];
       const live = platforms.find((platform) => Boolean(state.accountState?.[platform]?.connected && state.accountState?.[platform]?.live));
       const connected = platforms.filter((platform) => Boolean(state.accountState?.[platform]?.connected));
       if (live) {
@@ -3263,7 +3285,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
         return { state:"live", label:`Conectado en directo${who}` };
       }
       if (connected.length) {
-        const names = connected.map((platform) => state.accountState?.[platform]?.username ? `@${state.accountState[platform].username}` : (platform === "tiktok" ? "TikTok" : "Twitch"));
+        const names = connected.map((platform) => state.accountState?.[platform]?.username ? `@${state.accountState[platform].username}` : platformLabel(platform));
         return { state:"waiting", label:`Conectado · ${names.join(" / ")}` };
       }
       return { state:"offline", label:"Desconectado" };
@@ -3271,24 +3293,25 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     function updateOverlayStatus(){
       const el=document.getElementById("overlayStatus"), text=document.getElementById("overlayStatusText");
       if(!el||!text) return;
-      const t=state.accountState?.tiktok||{}, tw=state.accountState?.twitch||{};
-      const states=[t,tw];
+      const t=state.accountState?.tiktok||{}, tw=state.accountState?.twitch||{}, ki=state.accountState?.kick||{};
+      const states=[t,tw,ki];
       const unstable=states.some(x=>String(x?.mode||"").toLowerCase().includes("error")||String(x?.mode||"").toLowerCase().includes("unstable"));
       const live=states.some(x=>Boolean(x?.connected&&x?.live));
       const waiting=states.some(x=>Boolean(x?.connected&&!x?.live));
       const overall=live?"live":unstable?"unstable":waiting?"waiting":"offline";
       el.dataset.state=overall;
       text.textContent=live?"En directo":unstable?"Conexión inestable":waiting?"Conectando…":"Desconectado";
-      const tEl=document.getElementById("overlayTikTokState"), twEl=document.getElementById("overlayTwitchState");
+      const tEl=document.getElementById("overlayTikTokState"), twEl=document.getElementById("overlayTwitchState"), kiEl=document.getElementById("overlayKickState");
       if(tEl){tEl.textContent=t.connected?'ON':'OFF'; tEl.closest('.overlayPlatformState')?.classList.toggle('is-live',!!t.connected);}
       if(twEl){twEl.textContent=tw.connected?'ON':'OFF'; twEl.closest('.overlayPlatformState')?.classList.toggle('is-live',!!tw.connected);}
+      if(kiEl){kiEl.textContent=ki.connected?'ON':'OFF'; kiEl.closest('.overlayPlatformState')?.classList.toggle('is-live',!!ki.connected);}
     }
     function esc(v){return String(v ?? "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");}
     function mergeDeep(base, incoming){ if(Array.isArray(base)||Array.isArray(incoming)) return incoming ?? base; if(typeof base !== 'object' || base===null) return incoming ?? base; if(typeof incoming !== 'object' || incoming===null) return base; const out={...base}; for(const k of Object.keys(incoming)) out[k] = k in base ? mergeDeep(base[k], incoming[k]) : incoming[k]; return out; }
     function loadJSON(key,fallback){ try{ const raw=localStorage.getItem(key); if(!raw) return structuredClone(fallback); return mergeDeep(structuredClone(fallback), JSON.parse(raw)); } catch { return structuredClone(fallback); } }
     function normalizeImageSource(value){ const src = String(value ?? "").trim(); if(!src) return ""; if(/^https?:\/\//i.test(src)) return src; if(/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);/i.test(src)) return src; return ""; }
-    function normalizeUsername(value){ return String(value||'').trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/^https?:\/\/(www\.)?twitch\.tv\//i,'').replace(/^@+/, '').replace(/^#+/, '').split(/[/?#]/)[0].trim(); }
-    function normalizeVoicePlatform(value){ return String(value || "tiktok").trim().toLowerCase() === "twitch" ? "twitch" : "tiktok"; }
+    function normalizeUsername(value){ return String(value||'').trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/^https?:\/\/(www\.)?twitch\.tv\//i,'').replace(/^https?:\/\/(www\.)?kick\.com\//i,'').replace(/^@+/, '').replace(/^#+/, '').split(/[/?#]/)[0].trim(); }
+    function normalizeVoicePlatform(value){ const p=String(value||"tiktok").trim().toLowerCase(); return ["tiktok","twitch","kick"].includes(p)?p:"tiktok"; }
     function normalizeTypeName(value){ return String(value || '').trim().toLowerCase(); }
     function isVoiceKeyReference(value){
       const key = String(value || '').trim();
@@ -3299,7 +3322,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
       const item = rule || {};
       return {
         id: String(item.id || `rule_${Date.now()}_${Math.random().toString(36).slice(2,8)}`),
-        platform: item.platform === "twitch" ? "twitch" : "tiktok",
+        platform: normalizeVoicePlatform(item.platform),
         kind: ["gift", "event", "role", "bits"].includes(String(item.kind || "").toLowerCase()) ? String(item.kind).toLowerCase() : "gift",
         targetKey: String(item.targetKey || "").trim(),
         targetLabel: String(item.targetLabel || item.label || item.targetKey || "").trim(),
@@ -3363,13 +3386,13 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
         power: {
           enabled: source.power?.enabled === true,
           source: ["gift","points","activity","any"].includes(String(source.power?.source||"")) ? String(source.power.source) : "gift",
-          platform: ["tiktok","twitch","both"].includes(String(source.power?.platform||"")) ? String(source.power.platform) : "tiktok",
+          platform: ["tiktok","twitch","kick","both"].includes(String(source.power?.platform||"")) ? String(source.power.platform) : "tiktok",
           targetKey:String(source.power?.targetKey||""), targetLabel:String(source.power?.targetLabel||""), targetImage:String(source.power?.targetImage||""),
           giftKey:String(source.power?.giftKey||""), giftLabel:String(source.power?.giftLabel||""), bitsAmount:Math.max(1, Number(source.power?.bitsAmount||source.power?.amount||1)||1),
           amount: Math.max(1, Number(source.power?.amount||1)||1), pointCost: Math.max(1, Number(source.power?.pointCost||1000)||1000), activity:["like","share","follow","moderator","subscription"].includes(String(source.power?.activity||""))?String(source.power.activity):"follow",
           commandPrefix:["@",".","/","-"].includes(String(source.power?.commandPrefix||"")) ? String(source.power.commandPrefix) : ".",
           powerRules: (Array.isArray(source.power?.powerRules) ? source.power.powerRules : []).map((r)=>({
-            id:String(r?.id||""), active:r?.active!==false, platform:["tiktok","twitch","both"].includes(String(r?.platform||""))?String(r.platform):"tiktok", source:["gift","points","activity","any"].includes(String(r?.source||""))?String(r.source):"points",
+            id:String(r?.id||""), active:r?.active!==false, platform:["tiktok","twitch","kick","both"].includes(String(r?.platform||""))?String(r.platform):"tiktok", source:["gift","points","activity","any"].includes(String(r?.source||""))?String(r.source):"points",
             voiceKey:isVoiceKeyReference(r?.voiceKey)?String(r.voiceKey):"", voiceLabel:String(r?.voiceLabel||"").trim(), commandPrefix:["@",".","/","-"].includes(String(r?.commandPrefix||""))?String(r.commandPrefix):".",
             pointCost:Math.max(1,Number(r?.pointCost||1)||1), amount:Math.max(1,Number(r?.amount||1)||1), activity:["like","share","follow","moderator","subscription"].includes(String(r?.activity||""))?String(r.activity):"follow", giftKey:String(r?.giftKey||r?.targetKey||"").trim(), giftLabel:String(r?.giftLabel||r?.targetLabel||"").trim(), targetImage:normalizeImageSource(r?.targetImage||""),
             createdAt:Number(r?.createdAt||Date.now()), updatedAt:Number(r?.updatedAt||Date.now())
@@ -3925,10 +3948,10 @@ function voiceBotSummaryHtml(){
       if (!list) return;
       const platform = normalizeVoicePlatform(platformSelect?.value || "tiktok");
       const candidates = voiceKnownUserCandidates(input?.value || "", platform);
-      list.innerHTML = candidates.map((item) => `<option value="${esc(item.username)}">${esc(item.label)} · ${esc(item.platform === "twitch" ? "Twitch" : "TikTok")}</option>`).join("");
+      list.innerHTML = candidates.map((item) => `<option value="${esc(item.username)}">${esc(item.label)} · ${esc(item.platform === "twitch" ? "Twitch" : item.platform === "kick" ? "Kick" : "TikTok")}</option>`).join("");
       if (helper) {
         helper.innerHTML = candidates.length
-          ? candidates.slice(0, 8).map((item) => `<button type="button" class="overlayVoicePinnedSuggestion ${voiceBot.fixedByUser?.[`${item.platform}:${item.username}`] ? 'is-muted' : ''}" data-voice-user-fill="${esc(item.username)}" data-voice-user-platform="${esc(item.platform)}"><span>${esc(item.label)}</span><small>${esc(item.platform === "twitch" ? "Twitch" : "TikTok")} · @${esc(item.username)}</small></button>`).join("")
+          ? candidates.slice(0, 8).map((item) => `<button type="button" class="overlayVoicePinnedSuggestion ${voiceBot.fixedByUser?.[`${item.platform}:${item.username}`] ? 'is-muted' : ''}" data-voice-user-fill="${esc(item.username)}" data-voice-user-platform="${esc(item.platform)}"><span>${esc(item.label)}</span><small>${esc(item.platform === "twitch" ? "Twitch" : item.platform === "kick" ? "Kick" : "TikTok")} · @${esc(item.username)}</small></button>`).join("")
           : `<div class="overlayVoiceHelp">Empieza a escribir y aparecerán usuarios conocidos para autocompletar.</div>`;
       }
     }
@@ -3942,7 +3965,7 @@ function voiceBotSummaryHtml(){
       }
       rail.innerHTML = entries.map((entry) => {
         const voice = voiceCatalog[entry.voiceKey] || voiceCatalog.verity;
-        const platformLabel = entry.platform === "twitch" ? "Twitch" : "TikTok";
+        const platformLabel = entry.platform === "twitch" ? "Twitch" : entry.platform === "kick" ? "Kick" : "TikTok";
         return `<article class="overlayVoicePinnedCard"><div class="overlayVoicePinnedCardMain"><strong>${esc(entry.displayName || entry.username)}</strong><span>${esc(platformLabel)} · @${esc(entry.username)}</span><span class="overlayVoicePinnedCardMeta">🤖 ${esc(voice.label)} · Activo</span><span class="overlayVoicePinnedCardMeta">La voz global no afecta a este usuario.</span></div><div class="overlayVoicePinnedCardActions"><button type="button" class="overlayVoicePinnedIconBtn" data-voice-fixed-delete="${esc(entry.platform)}" data-voice-fixed-user="${esc(entry.username)}" aria-label="Eliminar voz fija">🗑️</button></div></article>`;
       }).join("");
     }
@@ -3972,7 +3995,7 @@ function voiceBotSummaryHtml(){
     }
 
     function normalizeVoiceRuleDraft(){
-      voiceRuleDraft.platform = voiceRuleDraft.platform === "twitch" ? "twitch" : "tiktok";
+      voiceRuleDraft.platform = ["tiktok","twitch","kick"].includes(String(voiceRuleDraft.platform||"")) ? String(voiceRuleDraft.platform) : "tiktok";
       voiceRuleDraft.kind = ["gift", "event", "role", "bits"].includes(voiceRuleDraft.kind) ? voiceRuleDraft.kind : (voiceRuleDraft.platform === "twitch" ? "bits" : "gift");
       voiceRuleDraft.mode = voiceRuleDraft.mode === "unlock" ? "unlock" : "once";
       voiceRuleDraft.voiceKey = voiceRuleDraft.voiceKey in voiceCatalog ? voiceRuleDraft.voiceKey : "verity";
@@ -5815,18 +5838,22 @@ function findMatchingVoiceRule(item){
       if(activitySection) activitySection.style.display=p.source==="activity"?"block":"none";
       if(pointsSection) pointsSection.style.display=p.source==="points"?"block":"none";
       if(anySection) anySection.style.display=p.source==="any"?"block":"none";
+      const tkGift=document.getElementById("overlayVoicePowerTikTokGiftColumn"); const kickGift=document.getElementById("overlayVoicePowerKickGiftColumn"); const bitsGift=document.getElementById("overlayVoicePowerTwitchBitsColumn");
+      if(tkGift) tkGift.style.display=(p.platform==="tiktok"||p.platform==="both")?"block":"none";
+      if(kickGift) kickGift.style.display=(p.platform==="kick"||p.platform==="both")?"block":"none";
+      if(bitsGift) bitsGift.style.display=(p.platform==="twitch"||p.platform==="both")?"block":"none";
       if(p.source==="gift"){ensureGiftCatalog().then(()=>{renderVoicePowerTargets();renderVoicePowerBits();});}
       const summary=document.getElementById("overlayVoicePowerSummary");
       if(summary){
         let trigger="";
-        if(p.source==="gift") trigger=p.platform==="tiktok"?`🎁 ${p.giftLabel||p.targetLabel||"Regalo"}`:p.platform==="twitch"?`💎 ${Number(p.bitsAmount||100).toLocaleString('es-PE')} Bits`: `TikTok · 🎁 ${p.giftLabel||p.targetLabel||"Regalo"} · Twitch · 💎 ${Number(p.bitsAmount||100).toLocaleString('es-PE')} Bits`;
+        if(p.source==="gift") trigger=p.platform==="tiktok"?`TikTok · 🎁 ${p.giftLabel||p.targetLabel||"Regalo"}`:p.platform==="kick"?`Kick · 🎁 ${p.giftLabel||p.targetLabel||"Regalo"}`:p.platform==="twitch"?`Twitch · 💎 ${Number(p.bitsAmount||100).toLocaleString('es-PE')} Bits`:`TikTok / Kick · 🎁 Regalo · Twitch · 💎 ${Number(p.bitsAmount||100).toLocaleString('es-PE')} Bits`;
         else if(p.source==="activity") trigger=`${p.activity==='follow'?'👤 Seguidor':p.activity==='moderator'?'🛡️ Moderador':p.activity==='subscription'?'⭐ Suscripción':p.activity==='like'?`❤️ ${Number(p.amount||1).toLocaleString('es-PE')} Likes`:`🗣️ ${Number(p.amount||1).toLocaleString('es-PE')} Compartidos`}`;
         else if(p.source==="points") trigger=`✦ ${Number(p.pointCost||1000).toLocaleString('es-PE')} puntos`;
         else trigger="✨ Cualquiera";
-        summary.innerHTML=`<strong>${trigger}</strong><div class="overlayVoiceHelp">Plataforma: ${p.platform==='both'?'TikTok + Twitch':p.platform==='twitch'?'Twitch':'TikTok'} · Prefijo: <code>${esc(p.commandPrefix||'.')}</code></div>`;
+        summary.innerHTML=`<strong>${trigger}</strong><div class="overlayVoiceHelp">Plataforma: ${p.platform==='both'?'TikTok + Twitch + Kick':platformLabel(p.platform)} · Prefijo: <code>${esc(p.commandPrefix||'.')}</code></div>`;
       }
       renderVoicePowerRulesList();
-      const list=document.getElementById("overlayVoicePowerUsersList"); if(list){const users=(voiceBot.powerUsers||[]).filter(u=>u.active!==false);list.innerHTML=users.length?users.slice(0,20).map(u=>`<span>🔥 ${esc(u.displayName||u.username)} <small>· ${u.platform==='twitch'?'Twitch':'TikTok'}</small></span>`).join(""):'<span class="overlayVoiceHelp">Todavía no hay usuarios con 🔥 en este LIVE.</span>';}
+      const list=document.getElementById("overlayVoicePowerUsersList"); if(list){const users=(voiceBot.powerUsers||[]).filter(u=>u.active!==false);list.innerHTML=users.length?users.slice(0,20).map(u=>`<span>🔥 ${esc(u.displayName||u.username)} <small>· ${platformLabel(u.platform)}</small></span>`).join(""):'<span class="overlayVoiceHelp">Todavía no hay usuarios con 🔥 en este LIVE.</span>';}
     }
     function renderVoicePowerRuleVoiceSelect(){
       // Intentionally no voice selector: viewers choose the voice themselves by commenting prefix + voice name/tag.
@@ -5839,7 +5866,7 @@ function findMatchingVoiceRule(item){
       el.innerHTML=rules.map(r=>{
         const ruleState=r.active!==false && voiceBot.power?.enabled!==false;
         const stateLabel=ruleState?'ACTIVA':'INACTIVA';
-        return `<div class="overlayVoicePowerRuleRow" data-power-rule-row="${esc(r.id)}"><span class="overlayVoicePowerRuleInfo">🔥 <strong>${esc(r.commandPrefix||'.')}Voz</strong> · ${sourceLabel(r)} · ${esc(r.platform==='both'?'TikTok + Twitch':r.platform==='twitch'?'Twitch':'TikTok')} · <em>${stateLabel}</em></span><button type="button" class="overlayVoiceActionButton" data-power-rule-delete="${esc(r.id)}">Eliminar</button></div>`;
+        return `<div class="overlayVoicePowerRuleRow" data-power-rule-row="${esc(r.id)}"><span class="overlayVoicePowerRuleInfo">🔥 <strong>${esc(r.commandPrefix||'.')}Voz</strong> · ${sourceLabel(r)} · ${esc(r.platform==='both'?'TikTok + Twitch + Kick':platformLabel(r.platform))} · <em>${stateLabel}</em></span><button type="button" class="overlayVoiceActionButton" data-power-rule-delete="${esc(r.id)}">Eliminar</button></div>`;
       }).join("");
       el.querySelectorAll('[data-power-rule-delete]').forEach(btn=>btn.addEventListener('click',async()=>{const id=String(btn.dataset.powerRuleDelete||'');voiceBot.power.powerRules=rules.filter(r=>String(r.id)!==id);if(!voiceBot.power.powerRules.length)voiceBot.power.enabled=false;saveVoiceBot();syncVoicePowerUI();}));
     }
@@ -5866,6 +5893,7 @@ function findMatchingVoiceRule(item){
       document.getElementById("overlayVoicePowerActivityAmount")?.addEventListener("input",e=>{const v=Math.max(1,Number(e.target.value)||1);schedulePowerSave("amount",v);});
       document.getElementById("overlayVoicePowerPointCost")?.addEventListener("input",e=>{const v=Math.max(1,Number(e.target.value)||1);schedulePowerSave("pointCost",v);});
       document.getElementById("overlayVoicePowerGiftSearch")?.addEventListener("input",()=>{clearTimeout(window.__powerGiftSearchTimer);window.__powerGiftSearchTimer=setTimeout(renderVoicePowerTargets,70);});
+      document.getElementById("overlayVoicePowerKickGiftKey")?.addEventListener("input",e=>{voiceBot.power.giftKey=String(e.target.value||"").trim();voiceBot.power.targetKey=voiceBot.power.giftKey;voiceBot.power.giftLabel=voiceBot.power.giftKey;voiceBot.power.targetLabel=voiceBot.power.giftKey;clearTimeout(window.__kickGiftSaveTimer);window.__kickGiftSaveTimer=setTimeout(()=>saveVoiceBot(),250);});
       document.getElementById("overlayVoicePowerGiftGrid")?.addEventListener("click",ev=>{const btn=ev.target.closest("[data-power-gift]");if(!btn)return;try{const d=JSON.parse(btn.dataset.powerGift||"{}");update("giftKey",String(d.key||""));voiceBot.power.targetKey=String(d.key||"");voiceBot.power.targetLabel=String(d.label||"");voiceBot.power.giftLabel=String(d.label||"");voiceBot.power.targetImage=String(d.image||"");saveVoiceBot();syncVoicePowerUI();}catch{}});
       document.getElementById("overlayVoicePowerBitsGrid")?.addEventListener("click",ev=>{const btn=ev.target.closest("[data-power-bits]");if(!btn)return;update("bitsAmount",Math.max(1,Number(btn.dataset.powerBits)||1));});
       document.getElementById("overlayVoicePowerBitsCustom")?.addEventListener("input",e=>{const v=Math.max(1,Number(e.target.value)||1);schedulePowerSave("bitsAmount",v);});
@@ -5943,7 +5971,7 @@ function findMatchingVoiceRule(item){
         const modeLabel = rule.mode === "once" ? "Usa una vez" : "Desbloquea usuario";
         const status = rule.active ? "Activa" : "Pausada";
         const badge = rule.kind === "gift" ? "🎁" : rule.kind === "event" ? "💬" : rule.kind === "role" ? "🧩" : "💎";
-        const detail = [rule.platform === "twitch" ? "Twitch" : "TikTok", modeLabel, voice.label].join(" · ");
+        const detail = [platformLabel(rule.platform), modeLabel, voice.label].join(" · ");
         return `<article class="overlayVoiceRuleCard" data-rule-id="${esc(rule.id)}"><div class="overlayVoiceRuleCardHeader"><div class="overlayVoiceRuleCardTitle"><strong>${badge} ${esc(rule.targetLabel || rule.targetKey || 'Regla')}</strong><span>${esc(detail)}</span></div><span class="overlayVoiceRuleBadge">${esc(status)}</span></div><div class="overlayVoiceRuleCardActions"><button type="button" data-rule-toggle="${esc(rule.id)}">${rule.active ? 'Pausar' : 'Activar'}</button><button type="button" data-rule-delete="${esc(rule.id)}">Eliminar</button></div></article>`;
       }).join("");
     }
@@ -5958,7 +5986,7 @@ function findMatchingVoiceRule(item){
     }
     function syncVoiceRuleDraftFromUI(){
       const snap = voiceRuleFormSnapshot();
-      voiceRuleDraft.platform = snap.platform === "twitch" ? "twitch" : "tiktok";
+      voiceRuleDraft.platform = ["tiktok","twitch","kick"].includes(String(snap.platform||"")) ? String(snap.platform) : "tiktok";
       voiceRuleDraft.kind = ["gift","event","role","bits"].includes(snap.kind) ? snap.kind : (voiceRuleDraft.platform === "twitch" ? "bits" : "gift");
       voiceRuleDraft.mode = snap.mode === "unlock" ? "unlock" : "once";
       voiceRuleDraft.voiceKey = snap.voiceKey in voiceCatalog ? snap.voiceKey : "verity";
@@ -6702,8 +6730,8 @@ function currentViewSettingsKey(){
     }
     function getRenderedMessage(item){ return renderMessageText(item); }
     function normalizeBadgeKeys(raw){ if(!raw) return []; const items=[]; const push=(k)=>{ const c=String(k||'').trim(); if(c) items.push(c); }; if(Array.isArray(raw)) raw.forEach((item)=>{ if(typeof item==='string') push(item); else if(item && typeof item==='object') push(item.name || item.type || item.label || item.id); }); else if(typeof raw==='object') Object.entries(raw).forEach(([k,v])=>{ if(v===false || v==null) return; push(k); }); else if(typeof raw==='string') raw.split(/[\,\s|]+/).forEach(push); return items; }
-    function badgeEmoji(key, platform){ const lower=String(key||'').toLowerCase(); if(lower==='follow'||lower==='follower'||String(key||'')==='👤') return '👤'; if(lower==='like'||lower==='liked'||String(key||'')==='❤️') return '❤️'; if(lower==='join'||lower==='joined'||lower==='member-join'||String(key||'')==='👻') return '👻'; if(lower==='share'||lower==='shared'||String(key||'')==='🗣'||String(key||'')==='🗣️') return '🗣️'; if(lower==='voice-power'||lower==='voicepower'||String(key||'')==='🔥') return '🔥'; if(lower==='donor'||lower==='supporter'||String(key||'')==='🎁') return '🎁'; if(roleBadges[lower]) return roleBadges[lower].emoji; if(lower === 'mod') return roleBadges.moderator.emoji; if(lower === 'broadcaster') return roleBadges.broadcaster.emoji; if(lower === 'sub' || lower === 'subscriber') return roleBadges.subscriber.emoji; if(lower === 'vip') return roleBadges.vip.emoji; if(lower === 'verified') return roleBadges.verified.emoji; if(lower === 'staff') return roleBadges.staff.emoji; if(lower === 'founder') return roleBadges.founder.emoji; if(lower === 'premium') return roleBadges.premium.emoji; if(lower === 'member' || lower.includes('fanclub') || lower.includes('superfan')) return '👤'; if(lower === 'tiktok') return roleBadges.tiktok.emoji; if(lower === 'twitch') return roleBadges.twitch.emoji; if(lower.includes('mod')) return roleBadges.moderator.emoji; if(lower.includes('vip')) return roleBadges.vip.emoji; if(lower.includes('sub')) return roleBadges.subscriber.emoji; if(lower.includes('member') || lower.includes('fanclub') || lower.includes('superfan')) return '👤'; return platform === 'tiktok' ? '🎵' : '🟣'; }
-    function badgeText(key){ const lower=String(key||'').toLowerCase(); if(lower.includes('broadcaster')) return 'Broadcaster'; if(lower.includes('mod')) return 'Mod'; if(lower.includes('vip')) return 'VIP'; if(lower.includes('sub')) return 'Sub'; if(lower.includes('staff')) return 'Staff'; if(lower.includes('verified')) return 'Verified'; if(lower.includes('founder')) return 'Founder'; if(lower.includes('premium')) return 'Premium'; if(lower.includes('tiktok')) return 'TikTok'; if(lower.includes('twitch')) return 'Twitch'; return lower.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()); }
+    function badgeEmoji(key, platform){ const lower=String(key||'').toLowerCase(); if(lower==='follow'||lower==='follower'||String(key||'')==='👤') return '👤'; if(lower==='like'||lower==='liked'||String(key||'')==='❤️') return '❤️'; if(lower==='join'||lower==='joined'||lower==='member-join'||String(key||'')==='👻') return '👻'; if(lower==='share'||lower==='shared'||String(key||'')==='🗣'||String(key||'')==='🗣️') return '🗣️'; if(lower==='voice-power'||lower==='voicepower'||String(key||'')==='🔥') return '🔥'; if(lower==='donor'||lower==='supporter'||String(key||'')==='🎁') return '🎁'; if(roleBadges[lower]) return roleBadges[lower].emoji; if(lower === 'mod') return roleBadges.moderator.emoji; if(lower === 'broadcaster') return roleBadges.broadcaster.emoji; if(lower === 'sub' || lower === 'subscriber') return roleBadges.subscriber.emoji; if(lower === 'vip') return roleBadges.vip.emoji; if(lower === 'verified') return roleBadges.verified.emoji; if(lower === 'staff') return roleBadges.staff.emoji; if(lower === 'founder') return roleBadges.founder.emoji; if(lower === 'premium') return roleBadges.premium.emoji; if(lower === 'member' || lower.includes('fanclub') || lower.includes('superfan')) return '👤'; if(lower === 'tiktok') return roleBadges.tiktok.emoji; if(lower === 'twitch') return roleBadges.twitch.emoji; if(lower === 'kick') return roleBadges.kick.emoji; if(lower.includes('mod')) return roleBadges.moderator.emoji; if(lower.includes('vip')) return roleBadges.vip.emoji; if(lower.includes('sub')) return roleBadges.subscriber.emoji; if(lower.includes('member') || lower.includes('fanclub') || lower.includes('superfan')) return '👤'; return platform === 'twitch' ? '🟣' : platform === 'kick' ? '🟢' : '🎵'; }
+    function badgeText(key){ const lower=String(key||'').toLowerCase(); if(lower.includes('broadcaster')) return 'Broadcaster'; if(lower.includes('mod')) return 'Mod'; if(lower.includes('vip')) return 'VIP'; if(lower.includes('sub')) return 'Sub'; if(lower.includes('staff')) return 'Staff'; if(lower.includes('verified')) return 'Verified'; if(lower.includes('founder')) return 'Founder'; if(lower.includes('premium')) return 'Premium'; if(lower.includes('tiktok')) return 'TikTok'; if(lower.includes('twitch')) return 'Twitch'; if(lower.includes('kick')) return 'Kick'; return lower.replace(/[_-]+/g, ' ').replace(/\b\w/g, (m) => m.toUpperCase()); }
     function badgeChips(raw, platform){
       const keys = normalizeBadgeKeys(raw);
       if(!settings.personal.showBadges) return '';
@@ -6750,8 +6778,8 @@ function currentViewSettingsKey(){
     }
     function saveActivityBadges(){ /* Intentionally memory-only: server payloads are authoritative per owner/live/user. */ }
     function updateActivityBadgesFromStorage(){
-      state.activityBadges = { tiktok:{}, twitch:{} };
-      state.supporters = { tiktok:{}, twitch:{} };
+      state.activityBadges = { tiktok:{}, twitch:{}, kick:{} };
+      state.supporters = { tiktok:{}, twitch:{}, kick:{} };
     }
 
     function registerActivityBadges(item){
@@ -6819,11 +6847,11 @@ function currentViewSettingsKey(){
       return badges.join('');
     }
     function supporterKey(item){ return normalizeUsername(item?.identityKey || item?.uniqueId || item?.username || item?.user || item?.displayName || ''); }
-    function supporterHighlightEnabled(platform){ const key = String(platform || 'tiktok').toLowerCase(); if (key === 'twitch') return settings.personal.highlightSupportersTwitch !== false; return settings.personal.highlightSupportersTikTok !== false; }
+    function supporterHighlightEnabled(platform){ const key=normalizeVoicePlatform(platform); if(key==='twitch') return settings.personal.highlightSupportersTwitch !== false; if(key==='kick') return settings.personal.highlightSupportersKick !== false; return settings.personal.highlightSupportersTikTok !== false; }
     function rememberPersistentFrameProfile(item){
       if (!item) return;
       const platform = String(item?.platform || 'tiktok').toLowerCase();
-      if (!['tiktok','twitch'].includes(platform)) return;
+      if (!['tiktok','twitch','kick'].includes(platform)) return;
       const keys = activityBadgeKeys(item);
       if (!keys.length) return;
       const donor = Boolean(item?.persistentDonor || item?.everDonated || item?.viewer?.persistentDonor || item?.viewer?.everDonated);
@@ -6891,7 +6919,7 @@ function currentViewSettingsKey(){
       return normalizeImageSource(nested?.profilePictureUrl || nested?.profilePictureUrls?.[0] || nested?.avatarUrl || nested?.avatar || '');
     }
     function timeLabel(ts){ return new Date(ts || Date.now()).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }); }
-    function platformTag(platform){ return `<span class="platformTag ${platform}">${platform === 'twitch' ? 'Twitch' : 'TT'}</span>`; }
+    function platformTag(platform){ return `<span class="platformTag ${platform}">${platformShort(platform)}</span>`; }
     function getRoleAccent(item){ const badges = normalizeBadgeKeys(item.badges); const rawKeys = Array.isArray(item.badges) ? item.badges.map((b) => String(b || "").toLowerCase()) : item.badges && typeof item.badges === "object" ? Object.keys(item.badges).map((k) => String(k || "").toLowerCase()) : []; if (rawKeys.some((k) => k.includes("broadcaster"))) return roleBadges.broadcaster.color; if (rawKeys.some((k) => k.includes("mod"))) return roleBadges.moderator.color; if (rawKeys.some((k) => k.includes("vip"))) return roleBadges.vip.color; if (rawKeys.some((k) => k.includes("staff"))) return roleBadges.staff.color; if (rawKeys.some((k) => k.includes("sub"))) return roleBadges.subscriber.color; if (rawKeys.some((k) => k.includes("verified"))) return roleBadges.verified.color; return badges.length ? platformColors[item.platform] : platformColors[item.platform]; }
     function itemAccent(item){ const frameMode = settings.personal.avatarFrame || "platform"; if (frameMode === "none") return "transparent"; if (frameMode === "role") return getRoleAccent(item); return platformColors[item.platform] || "var(--accent)"; }
     function giftAccent(item){ const mode = String(settings.personal.giftHighlightStyle || "gold"); if (mode === "platform") return platformColors[item.platform] || platformColors.tiktok || "#f5d063"; return "#f5d063"; }
@@ -6991,7 +7019,7 @@ function currentViewSettingsKey(){
     }
     function chatArticleStyle(item){
       const platform = String(item?.platform || 'tiktok').toLowerCase();
-      const accent = platform === 'twitch' ? '#9146ff' : '#fe2c55';
+      const accent = platformColors[platform] || platformColors.tiktok;
       const textColor = resolveChatTextColor(settings.personal?.textColor || 'auto') || '#e4e8f0';
       const nameColor = platform === 'twitch'
         ? (settings.personal?.twitchNameColor === 'white' ? '#ffffff' : '#c7a2ff')
@@ -7038,7 +7066,7 @@ function currentViewSettingsKey(){
       } else if (pp.tiktokNameColor === 'real') nameColor = '#fe6f92';
       else if (pp.tiktokNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
       const textColor = pp.textColor === 'auto' || !pp.textColor ? '#e8ecf4' : pp.textColor;
-      const accent = platform === 'twitch' ? '#9146ff' : '#fe2c55';
+      const accent = platformColors[platform] || platformColors.tiktok;
       const bubbleClass = pp.bubbleFrame === 'none' ? 'bubble-frame-none' : pp.bubbleFrame === 'role' ? 'bubble-frame-role' : 'bubble-frame-platform';
       const animation = kind === 'event' ? (pp.eventsMode || 'slide') : (pp.giftsMode || 'slide');
       const font = kind === 'event' ? (pp.overlayEventFont || pp.font) : (pp.overlayGiftFont || pp.font);
@@ -7049,7 +7077,7 @@ function currentViewSettingsKey(){
       const nameShadow = effectShadow(pp.nameEffect, nameContrast);
       const nameStroke = effectStroke(pp.nameEffect, nameContrast);
       const messageShadow = effectShadow(pp.messageEffect, nameContrast);
-      const platformPill = pp.showPlatformPill !== false ? `<span class="platform-pill ${platform}">${platform === 'twitch' ? 'TW' : 'TT'}</span>` : '';
+      const platformPill = pp.showPlatformPill !== false ? `<span class="platform-pill ${platform}">${platformShort(platform)}</span>` : '';
       const time = pp.showTimestamps !== false ? `<time>${timeLabel(item.timestamp)}</time>` : '';
       const avatarClass = avatarFrameClass(item);
       const size = kind === 'event' ? (pp.eventsPanelSize || 'normal') : (pp.giftsPanelSize || 'normal');
@@ -7080,7 +7108,7 @@ function currentViewSettingsKey(){
       const rawText = item?.message || item?.action || '';
       const cleanText = String(rawText || '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu,'').replace(/\s{2,}/g,' ').trim() || String(rawText || '');
       const highlight = kind === 'gift' ? (pp.giftHighlightStyle || 'gold') : (pp.overlayEventHighlightStyle || 'platform');
-      const accent = highlight === 'gold' ? '#f5d063' : highlight === 'accent' ? '#9d7dff' : highlight === 'platform' ? (platform === 'twitch' ? '#9146ff' : '#fe2c55') : 'transparent';
+      const accent = highlight === 'gold' ? '#f5d063' : highlight === 'accent' ? '#9d7dff' : highlight === 'platform' ? (platformColors[platform] || platformColors.tiktok) : 'transparent';
       const font = fontFamily(kind === 'gift' ? (pp.overlayGiftFont || pp.font) : (pp.overlayEventFont || pp.font));
       const layout = kind === 'gift' ? (pp.giftsLayout || 'vertical') : (pp.eventsLayout || 'vertical');
       const direction = kind === 'gift' ? (pp.giftsDirection || 'down') : (pp.eventsDirection || 'down');
@@ -7124,7 +7152,7 @@ function currentViewSettingsKey(){
         <div class="activity-user-avatar ${avatarFrameClass(item)} size-${pp.avatarSize || 'md'}">${avatarHtml}</div>
         <div class="activity-icon">${icon}</div>
         <div class="activity-copy"><small>${esc(typeLabel)}</small>${showUser ? `<strong>${esc(userName)}</strong>` : ''}${roleBadges ? `<span class="activity-sim-badge" aria-label="Insignias">${roleBadges}</span>` : ''}${activityBadges ? `<span class="activity-sim-badge" aria-label="Actividad">${activityBadges}</span>` : ''}${body}</div>
-        <span class="activity-platform ${platform}">${platform === 'twitch' ? 'TW' : 'TT'}</span>
+        <span class="activity-platform ${platform}">${platformShort(platform)}</span>
       </article>`;
     }
 
@@ -7145,17 +7173,21 @@ function currentViewSettingsKey(){
           if (pp.twitchNameColor === 'white') nameColor = '#ffffff';
           else if (pp.twitchNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
           else nameColor = '#c7a2ff';
+        } else if (platform === 'kick') {
+          if (pp.kickNameColor === 'white') nameColor = '#ffffff';
+          else if (pp.kickNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
+          else nameColor = '#8cff68';
         } else if (pp.tiktokNameColor === 'real') nameColor = '#fe6f92';
         else if (pp.tiktokNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
         const textColor = pp.textColor === 'auto' || !pp.textColor ? '#e8ecf4' : pp.textColor;
-        const accent = platform === 'twitch' ? '#9146ff' : '#fe2c55';
+        const accent = platformColors[platform] || platformColors.tiktok;
         const bubbleClass = pp.bubbleFrame === 'none' ? 'bubble-frame-none' : pp.bubbleFrame === 'role' ? 'bubble-frame-role' : 'bubble-frame-platform';
         const adjustClass = pp.chatAdjustMessages !== false ? 'chat-adjust' : 'chat-no-adjust';
         const avatarClass = avatarFrameClass(item);
         const animationClass = `chat-anim-${pp.animation || 'slide'}`;
         const styleVars = `--row-accent:${accent};--name-color:${nameColor};--message-color:${textColor};--bubble-radius:${Number(pp.bubbleRadius ?? 12)}px;--avatar-border-width:${Number(pp.avatarBorderWidth ?? 2)}px;--row-gap:${Number(pp.rowGap ?? 5)}px;--message-padding:${Number(pp.messagePadding ?? 7)}px 9px;--chat-font:${fontFamily(pp.font || 'inter')}`;
         const renderedText = getRenderedMessage(item);
-        const platformPill = pp.showPlatformPill !== false ? `<span class="platform-pill ${platform}">${platform === 'twitch' ? 'TW' : 'TT'}</span>` : '';
+        const platformPill = pp.showPlatformPill !== false ? `<span class="platform-pill ${platform}">${platformShort(platform)}</span>` : '';
         const time = pp.showTimestamps !== false ? `<time>${timeLabel(item.timestamp)}</time>` : '';
         const rowClasses = `stream-row overlayItem ${platform} chat-theme-${pp.chatTheme || 'cloud'} ${animationClass} ${adjustClass}${isSupporterProfile(item) || isVipRgbProfile(item) ? ' supporter-gold' : ''}`;
         const messageClass = `row-message ${bubbleClass}`;
@@ -7538,7 +7570,7 @@ function currentViewSettingsKey(){
     }
 
     socket.on('liveEnded', (info) => {
-      const p=String(info?.platform||'tiktok').toLowerCase();
+      const p=normalizeVoicePlatform(info?.platform);
       for (const key of [...voiceSeenCommentsByUser.keys()]) if (key.startsWith(`${p}:`)) voiceSeenCommentsByUser.delete(key);
       for (const key of [...voiceRecentDistinctCommentsByUser.keys()]) if (key.startsWith(`${p}:`)) voiceRecentDistinctCommentsByUser.delete(key);
       for (const key of [...voiceRecentReadCache.keys()]) if (key.startsWith(`msg|${p}|`) || key.startsWith(`id|${p}|`)) voiceRecentReadCache.delete(key);
@@ -7559,7 +7591,7 @@ function currentViewSettingsKey(){
     });
     socket.on('accountState', (account) => {
       const platform = String(account?.platform || '').toLowerCase();
-      if (!['tiktok','twitch'].includes(platform)) return;
+      if (!['tiktok','twitch','kick'].includes(platform)) return;
       const previous = state.accountState[platform] || {};
       const nextLive = Boolean(account?.live);
       if (previous.live === true && !nextLive) {
@@ -7767,9 +7799,9 @@ function currentViewSettingsKey(){
       }
     }, true);
     document.getElementById("overlayVoiceRulePlatform")?.addEventListener("change", (ev) => {
-      voiceRuleDraft.platform = String(ev.target?.value || "tiktok") === "twitch" ? "twitch" : "tiktok";
+      voiceRuleDraft.platform = normalizeVoicePlatform(ev.target?.value || "tiktok");
       if (voiceRuleDraft.platform === "twitch" && voiceRuleDraft.kind === "gift") voiceRuleDraft.kind = "bits";
-      if (voiceRuleDraft.platform === "tiktok" && voiceRuleDraft.kind === "bits") voiceRuleDraft.kind = "gift";
+      if (voiceRuleDraft.platform !== "twitch" && voiceRuleDraft.kind === "bits") voiceRuleDraft.kind = "gift";
       saveVoiceBot();
       syncVoiceBotUI();
     });

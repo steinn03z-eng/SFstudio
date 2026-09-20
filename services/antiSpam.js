@@ -1,4 +1,5 @@
 import { sanitizeSpeechText } from "./textFilter.js";
+import { normalizePlatform } from "./platform.js";
 
 // Conversational antispam is scoped by account + platform + user.
 // Each user remembers only the two most recent distinct comments that were
@@ -28,7 +29,7 @@ function normalizeMessage(value) {
 
 function scopeKey(ownerId = "", platform = "tiktok") {
   const owner = normalizeKey(ownerId) || "anonymous";
-  const p = String(platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+  const p = normalizePlatform(platform);
   return `${owner}:${p}`;
 }
 
@@ -59,7 +60,7 @@ export function resetRepeatCache(ownerId = "", platform = "") {
   for (const key of recentCommentsByScope.keys()) {
     const [storedOwner, storedPlatform] = String(key).split(":");
     if (owner && storedOwner !== normalizeKey(owner)) continue;
-    if (p && storedPlatform !== (String(p).toLowerCase() === "twitch" ? "twitch" : "tiktok")) continue;
+    if (p && storedPlatform !== (normalizePlatform(p))) continue;
     recentCommentsByScope.delete(key);
   }
 }

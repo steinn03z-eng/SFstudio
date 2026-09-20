@@ -3,6 +3,7 @@ import path from "path";
 import fs from "fs";
 import { fileURLToPath } from "url";
 import crypto from "node:crypto";
+import { normalizePlatform } from "./platform.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -457,7 +458,7 @@ export function deleteUserVoice(userId, fishId) {
 
 
 export function addPoints(userId, platform, username, displayName, amount, kind = "") {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u||!amount) return getPoints(uid,p,u);
     db.prepare(`INSERT INTO point_balances(user_id,platform,username,display_name,points,total_earned,last_kind,updated_at) VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
       ON CONFLICT(user_id,platform,username) DO UPDATE SET display_name=excluded.display_name, points=point_balances.points+excluded.points, total_earned=point_balances.total_earned+excluded.total_earned,last_kind=excluded.last_kind,updated_at=CURRENT_TIMESTAMP`)
@@ -466,14 +467,14 @@ export function addPoints(userId, platform, username, displayName, amount, kind 
 }
 
 export function getPoints(userId, platform, username) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return {userId:uid,platform:p,username:u,displayName:String(username||''),points:0,totalEarned:0,lastKind:''};
     const row=db.prepare(`SELECT user_id as userId,platform,username,display_name as displayName,points,total_earned as totalEarned,last_kind as lastKind,updated_at as updatedAt FROM point_balances WHERE user_id=? AND platform=? AND username=?`).get(uid,p,u);
     return row || {userId:uid,platform:p,username:u,displayName:String(username||''),points:0,totalEarned:0,lastKind:''};
 }
 
 export function spendPoints(userId, platform, username, amount) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     const cost=Math.max(0,Math.floor(amount||0));
     if(!uid||!u||!cost) return getPoints(uid,p,u);
     db.prepare(`UPDATE point_balances SET points=MAX(0,points-?),updated_at=CURRENT_TIMESTAMP WHERE user_id=? AND platform=? AND username=?`).run(cost,uid,p,u);
@@ -494,7 +495,7 @@ export function addManualPoints(userId, platform, username, displayName, amount)
 }
 
 export function deletePointBalance(userId, platform, username) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return false; const info=db.prepare(`DELETE FROM point_balances WHERE user_id=? AND platform=? AND username=?`).run(uid,p,u); return info.changes>0;
 }
 
@@ -513,7 +514,7 @@ function withVoiceState(row, fallback={}) {
 }
 
 export function findViewerProfile(userId, platform, username) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return null;
     const row=db.prepare(`SELECT user_id as userId,platform,username,display_name as displayName,avatar_url as avatarUrl,followed_before as followedBefore,follow_rewarded as followRewarded,ever_donated as everDonated,total_donations as totalDonations,vip_rgb as vipRgb,vip_rgb_reason as vipRgbReason,gift_voice_json as giftVoiceJson,follow_voice_json as followVoiceJson,gift_badge_json as giftBadgeJson,updated_at as updatedAt FROM viewer_profiles WHERE user_id=? AND platform=? AND username=?`).get(uid,p,u);
     if(!row) return null;
@@ -521,14 +522,14 @@ export function findViewerProfile(userId, platform, username) {
 }
 
 export function getViewerProfile(userId, platform, username, displayName='', avatarUrl='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return {userId:uid,platform:p,username:u,displayName:String(displayName||''),avatarUrl:String(avatarUrl||''),followedBefore:false,followRewarded:false,everDonated:false,totalDonations:0,vipRgb:false,vipRgbReason:'',giftVoice:null,followVoice:null,giftBadge:null};
     const row=db.prepare(`SELECT user_id as userId,platform,username,display_name as displayName,avatar_url as avatarUrl,followed_before as followedBefore,follow_rewarded as followRewarded,ever_donated as everDonated,total_donations as totalDonations,vip_rgb as vipRgb,vip_rgb_reason as vipRgbReason,gift_voice_json as giftVoiceJson,follow_voice_json as followVoiceJson,gift_badge_json as giftBadgeJson,updated_at as updatedAt FROM viewer_profiles WHERE user_id=? AND platform=? AND username=?`).get(uid,p,u);
     return row ? withVoiceState(row) : {userId:uid,platform:p,username:u,displayName:String(displayName||u),avatarUrl:String(avatarUrl||''),followedBefore:false,followRewarded:false,everDonated:false,totalDonations:0,vipRgb:false,vipRgbReason:'',giftVoice:null,followVoice:null,giftBadge:null};
 }
 
 export function setViewerLastGift(userId, platform, username, badge=null, displayName='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return null;
     touchViewerProfile(uid,p,u,displayName,'');
     const normalizedBadge = badge ? normalizeStoredGiftBadge(badge) : null;
@@ -537,7 +538,7 @@ export function setViewerLastGift(userId, platform, username, badge=null, displa
 }
 
 export function setViewerPersistentVoice(userId, platform, username, source, assignment=null, displayName='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return null;
     touchViewerProfile(uid,p,u,displayName,'');
     const column = String(source||'').toLowerCase()==='follow' ? 'follow_voice_json' : 'gift_voice_json';
@@ -547,7 +548,7 @@ export function setViewerPersistentVoice(userId, platform, username, source, ass
 }
 
 export function touchViewerProfile(userId, platform, username, displayName='', avatarUrl='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return getViewerProfile(uid,p,u,displayName,avatarUrl);
     const name=String(displayName||u), avatar=String(avatarUrl||'').trim();
     db.prepare(`INSERT INTO viewer_profiles(user_id,platform,username,display_name,avatar_url,followed_before,follow_rewarded,ever_donated,total_donations,updated_at) VALUES(?,?,?,?,?,0,0,0,0,CURRENT_TIMESTAMP) ON CONFLICT(user_id,platform,username) DO UPDATE SET display_name=excluded.display_name, avatar_url=CASE WHEN excluded.avatar_url<>'' THEN excluded.avatar_url ELSE viewer_profiles.avatar_url END, updated_at=CURRENT_TIMESTAMP`).run(uid,p,u,name,avatar);
@@ -555,14 +556,14 @@ export function touchViewerProfile(userId, platform, username, displayName='', a
 }
 
 export function markViewerFollow(userId, platform, username, displayName='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return getViewerProfile(uid,p,u,displayName);
     db.prepare(`INSERT INTO viewer_profiles(user_id,platform,username,display_name,avatar_url,followed_before,follow_rewarded,ever_donated,total_donations,updated_at) VALUES(?,?,?,?,?,1,1,0,0,CURRENT_TIMESTAMP) ON CONFLICT(user_id,platform,username) DO UPDATE SET display_name=excluded.display_name,followed_before=1,follow_rewarded=1,updated_at=CURRENT_TIMESTAMP`).run(uid,p,u,String(displayName||u),'');
     return getViewerProfile(uid,p,u,displayName);
 }
 
 export function markViewerDonated(userId, platform, username, displayName='', increment=1) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return getViewerProfile(uid,p,u,displayName);
     const inc=Math.max(1,Math.floor(Number(increment)||1));
     db.prepare(`INSERT INTO viewer_profiles(user_id,platform,username,display_name,avatar_url,followed_before,follow_rewarded,ever_donated,total_donations,updated_at) VALUES(?,?,?,?,?,0,0,1,?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,platform,username) DO UPDATE SET display_name=excluded.display_name,ever_donated=1,total_donations=viewer_profiles.total_donations+excluded.total_donations,updated_at=CURRENT_TIMESTAMP`).run(uid,p,u,String(displayName||u),'',inc);
@@ -571,7 +572,7 @@ export function markViewerDonated(userId, platform, username, displayName='', in
 
 
 export function markViewerVipRgb(userId, platform, username, displayName='', reason='') {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     if(!uid||!u) return getViewerProfile(uid,p,u,displayName);
     const why=String(reason||'').trim().slice(0,80);
     db.prepare(`INSERT INTO viewer_profiles(user_id,platform,username,display_name,avatar_url,followed_before,follow_rewarded,ever_donated,total_donations,vip_rgb,vip_rgb_reason,updated_at) VALUES(?,?,?,?,?,0,0,0,0,1,?,CURRENT_TIMESTAMP) ON CONFLICT(user_id,platform,username) DO UPDATE SET display_name=excluded.display_name,vip_rgb=1,vip_rgb_reason=CASE WHEN excluded.vip_rgb_reason<>'' THEN excluded.vip_rgb_reason ELSE viewer_profiles.vip_rgb_reason END,updated_at=CURRENT_TIMESTAMP`).run(uid,p,u,String(displayName||u),'',why);
@@ -579,7 +580,7 @@ export function markViewerVipRgb(userId, platform, username, displayName='', rea
 }
 
 export function spendPointsIfEnough(userId, platform, username, amount) {
-    const uid=String(userId||'').trim(), p=String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', u=String(username||'').trim().toLowerCase();
+    const uid=String(userId||'').trim(), p=normalizePlatform(platform), u=String(username||'').trim().toLowerCase();
     const cost=Math.max(0,Math.floor(amount||0));
     if(!uid||!u) return {ok:false, account:getPoints(uid,p,u)};
     if(!cost) return {ok:true, account:getPoints(uid,p,u)};

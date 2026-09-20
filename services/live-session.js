@@ -1,9 +1,11 @@
+import { normalizePlatform } from './platform.js';
+
 import crypto from 'node:crypto';
 
 const sessions = new Map();
 
 function key(ownerId, platform){
-  return `${String(ownerId||'').trim()}:${String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok'}`;
+  return `${String(ownerId||'').trim()}:${normalizePlatform(platform)}`;
 }
 
 export function begin(ownerId, platform){
@@ -137,7 +139,7 @@ export function grantPower(ownerId, platform, identity, entry){
   if(!session?.active){ begin(ownerId,platform); session=sessions.get(k); }
   const id=String(identity||'').trim().toLowerCase();
   if(!id) return null;
-  const next={...entry,platform:String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok',liveId:session.liveId,active:true,updatedAt:Date.now()};
+  const next={...entry,platform:normalizePlatform(platform),liveId:session.liveId,active:true,updatedAt:Date.now()};
   session.powerUsers.set(id,next);
   return next;
 }
@@ -179,7 +181,7 @@ export function setVoiceAssignment(ownerId, platform, identity, assignment=null)
   const id=String(identity||'').trim().toLowerCase();
   if(!session?.active || !id) return null;
   if(!assignment){ session.voiceAssignments.delete(id); return null; }
-  const next={...assignment, platform:String(platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok', liveId:session.liveId, updatedAt:Date.now()};
+  const next={...assignment, platform:normalizePlatform(platform), liveId:session.liveId, updatedAt:Date.now()};
   session.voiceAssignments.set(id,next);
   return structuredClone(next);
 }
@@ -211,6 +213,10 @@ export function end(ownerId, platform){
 export function endAllForOwner(ownerId){
   const prefix=`${String(ownerId||'').trim()}:`;
   const closed=[];
-  for(const [k,v] of sessions){ if(k.startsWith(prefix)){ closed.push({platform:k.endsWith(':twitch')?'twitch':'tiktok', ...end(ownerId,k.endsWith(':twitch')?'twitch':'tiktok')}); } }
+  for(const [k] of sessions){
+    if(!k.startsWith(prefix)) continue;
+    const platform = k.slice(prefix.length) || "tiktok";
+    closed.push({platform, ...end(ownerId,platform)});
+  }
   return closed;
 }

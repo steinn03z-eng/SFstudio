@@ -24,8 +24,8 @@
     const displayName=String(item?.displayName||username||'Usuario').trim();
     const avatar=String(item?.avatarUrl||'').trim();
     const initials=(displayName||username||'U').slice(0,2).toUpperCase();
-    const platformKey=String(item?.platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok';
-    const platform=platformKey==='twitch'?'Twitch':'TikTok';
+    const rawPlatform=String(item?.platform||'tiktok').toLowerCase(); const platformKey=['tiktok','twitch','kick'].includes(rawPlatform)?rawPlatform:'tiktok';
+    const platform=platformKey==='twitch'?'Twitch':platformKey==='kick'?'Kick':'TikTok';
     const accent=platformKey==='twitch'?'#9146ff':'#fe2c55';
     const accentSoft=platformKey==='twitch'?'rgba(145,70,255,.18)':'rgba(254,44,85,.18)';
     const command=String(item?.command||`${config.commandPrefix||'!'}${config.commandWords?.[0]||'point'}`);

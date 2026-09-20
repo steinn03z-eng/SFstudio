@@ -18,6 +18,8 @@ import * as liveSession from "./services/live-session.js";
 import * as points from "./services/points.js";
 import * as tiktok from "./services/tiktok.js";
 import * as twitch from "./services/twitch.js";
+import * as kick from "./services/kick.js";
+import { normalizePlatform, SUPPORTED_PLATFORMS, platformLabel } from "./services/platform.js";
 import * as roulette from "./services/roulette.js";
 import { snapshot as liveHistorySnapshot, clear as clearLiveHistory } from "./services/live-history.js";
 import { setCustomVoiceRules, VOICE_RULE_MATCHERS } from "./services/voice-rules.js";
@@ -30,7 +32,7 @@ globalThis.__STREAMFUSION_ROULETTE_HOOK__ = roulette;
 globalThis.__STREAMFUSION_POINTS_HOOK__ = (ownerId, payload) => points.processLivePayload(ownerId, payload);
 globalThis.__STREAMFUSION_MUSIC_HOOK__ = (ownerId, payload) => music.processChat(ownerId, payload, io);
 
-globalThis.__STREAMFUSION_LIVE_END_HOOK__ = (ownerId, platform) => { const id=String(ownerId||"").trim(); const p=String(platform||"tiktok").toLowerCase()==="twitch"?"twitch":"tiktok"; if(id){ liveSession.end(id,p); clearLiveHistory(id); io.to(`user:${id}`).emit("liveEnded", {platform:p}); } };
+globalThis.__STREAMFUSION_LIVE_END_HOOK__ = (ownerId, platform) => { const id=String(ownerId||"").trim(); const p=normalizePlatform(platform); if(id){ liveSession.end(id,p); clearLiveHistory(id); io.to(`user:${id}`).emit("liveEnded", {platform:p}); } };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -42,11 +44,12 @@ const FISH_AUDIO_VOICE_CHANGER_WS = process.env.FISH_AUDIO_VOICE_CHANGER_WS || "
 const accountStateDefaults = {
     tiktok: { username: "", connected: false, live: false, mode: "saved", clearFeeds: false, stateReason: "initial" },
     twitch: { username: "", connected: false, live: false, mode: "saved", clearFeeds: false, stateReason: "initial" },
+    kick: { username: "", connected: false, live: false, mode: "saved", clearFeeds: false, stateReason: "initial" },
 };
 const accountStateByUser = new Map();
 function getUserAccountState(userId, platform) {
     const id = String(userId || "").trim();
-    const key = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const key = normalizePlatform(platform);
     const current = accountStateByUser.get(id) || {};
     return { ...(accountStateDefaults[key] || {}), ...(current[key] || {}) };
 }
@@ -58,7 +61,7 @@ function addVoiceListPresence(userId) { const key=String(userId||""); if(!key)re
 function removeVoiceListPresence(userId) { const key=String(userId||""); if(!key)return; const next=Math.max(0,Number(voiceListPresence.get(key)||0)-1); if(next)voiceListPresence.set(key,next); else voiceListPresence.delete(key); emitVoiceListPresence(key); }
 
 function emitAccountState(platform, overrides = {}, ownerId = "") {
-    const key = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const key = normalizePlatform(platform);
     const id = String(ownerId || "").trim();
     if (id) {
         const current = accountStateByUser.get(id) || {};
@@ -120,6 +123,14 @@ const DEFAULT_SETTINGS = {
         showJoin: true,
         showSystem: true,
     },
+    kick: {
+        showChat: true,
+        showSubs: true,
+        showGifts: true,
+        showFollowers: true,
+        showRaids: true,
+        showSystem: true,
+    },
     overlay: {
         chat: true,
         events: true,
@@ -128,6 +139,8 @@ const DEFAULT_SETTINGS = {
     },
     voiceFixedUsers: [],
     tiktokModerators: [],
+    twitchModerators: [],
+    kickModerators: [],
     announcements: [],
     announcementDraft: null,
     musicWidget: null,
@@ -197,6 +210,7 @@ const DEFAULT_SETTINGS = {
     connectionProfiles: {
         tiktok: { username: "", avatarUrl: "" },
         twitch: { username: "", avatarUrl: "" },
+        kick: { username: "", avatarUrl: "" },
     },
     personalization: {
         theme: "dark",
@@ -218,6 +232,7 @@ const DEFAULT_SETTINGS = {
         rowGap: 5,
         tiktokNameColor: "white",
         twitchNameColor: "real",
+        kickNameColor: "real",
         nameSize: "md",
         nameWeight: "800",
         chatHorizontalMode: "normal",
@@ -461,7 +476,7 @@ function getMergedSettings() {
 }
 
 function normalizeVoiceFixedUserEntry(entry = {}) {
-    const platform = String(entry?.platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const platform = normalizePlatform(entry?.platform);
     const username = cleanUser(String(entry?.username || entry?.uniqueId || entry?.displayName || entry?.label || "").trim());
     if (!username) return null;
     const voiceKey = String(entry?.voiceKey || "verity").trim();
@@ -485,7 +500,7 @@ function normalizeVoiceFixedUserEntry(entry = {}) {
 }
 
 function voiceFixedUserKey(entry = {}) {
-    const platform = String(entry?.platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const platform = normalizePlatform(entry?.platform);
     const username = cleanUser(String(entry?.username || entry?.uniqueId || "").trim());
     return platform && username ? `${platform}:${username}` : "";
 }
@@ -544,8 +559,8 @@ const AVATAR_FALLBACK = (seed, platform = "user") => {
         return `https://api.dicebear.com/10.x/notionists/svg?seed=${encodeURIComponent(label || "tiktok")}`;
     }
     const initial = (label.match(/[A-Za-z0-9]/)?.[0] || String(platform || "U")[0] || "U").toUpperCase();
-    const accent = platform === "twitch" ? "#9146ff" : "#64748b";
-    const bg = platform === "twitch" ? "#0f172a" : "#1f2937";
+    const accent = platform === "twitch" ? "#9146ff" : platform === "kick" ? "#53fc18" : "#64748b";
+    const bg = platform === "twitch" ? "#0f172a" : platform === "kick" ? "#12300f" : "#1f2937";
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="${accent}"/><stop offset="100%" stop-color="${bg}"/></linearGradient></defs><rect width="128" height="128" rx="64" fill="url(#g)"/><text x="50%" y="57%" text-anchor="middle" dominant-baseline="middle" font-family="Segoe UI, Arial, sans-serif" font-size="58" font-weight="700" fill="#fff">${initial}</text></svg>`;
     return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 };
@@ -557,6 +572,7 @@ function cleanUser(value) {
         .replace(/^#+/, "")
         .replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i, "")
         .replace(/^https?:\/\/(www\.)?twitch\.tv\//i, "")
+        .replace(/^https?:\/\/(www\.)?kick\.com\//i, "")
         .split(/[/?#]/)[0]
         .trim();
 }
@@ -635,7 +651,7 @@ function decodeEscapedJsonString(value) {
 }
 
 async function lookupPublicProfile(platform, username) {
-    const p = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const p = normalizePlatform(platform);
     const login = cleanUser(username);
     if (!login) throw new Error("Escribe un usuario válido.");
 
@@ -667,6 +683,21 @@ async function lookupPublicProfile(platform, username) {
             avatarUrl: avatarUrl || "",
             photoData
         };
+    }
+
+    if (p === "kick") {
+        try {
+            const data = await kick.getChannelInfo(login);
+            const user = data?.user || {};
+            const resolvedUsername = cleanUser(user.username || user.slug || data?.slug || login) || login;
+            const displayName = String(user.name || user.username || resolvedUsername).trim() || resolvedUsername;
+            const avatarUrl = String(
+                user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || ""
+            ).trim();
+            return { platform: p, username: resolvedUsername, displayName, avatarUrl };
+        } catch (error) {
+            throw new Error(error?.message || "No se pudo consultar ese canal de Kick.");
+        }
     }
 
     // Twitch: obtener avatar y página de perfil en paralelo; el avatar sigue estando
@@ -758,14 +789,14 @@ async function fetchImage(url, timeoutMs = 10000) {
 
 async function syncConnectedProfilePhotoData(ownerId, platform, username, image) {
     const owner = String(ownerId || "").trim();
-    const type = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const type = normalizePlatform(platform);
     const clean = type === "twitch" ? String(username || "").replace(/^#+/, "").trim() : cleanUser(username);
     if (!owner || !clean || !image?.buffer) return null;
     try {
         const photo = savePermanentProfilePhoto(owner, image, {
             source: type,
             reference: clean,
-            label: type === "twitch" ? `Twitch · @${clean}` : `TikTok · @${clean}`
+            label: `${platformLabel(type)} · @${clean}`
         });
         const savedSettings = database.getUserSettings(owner);
         io.to(`user:${owner}`).emit("settings", savedSettings);
@@ -778,7 +809,7 @@ async function syncConnectedProfilePhotoData(ownerId, platform, username, image)
 
 async function syncConnectedProfilePhoto(ownerId, platform, username, avatarUrl) {
     const owner = String(ownerId || "").trim();
-    const type = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const type = normalizePlatform(platform);
     const clean = type === "twitch" ? String(username || "").replace(/^#+/, "").trim() : cleanUser(username);
     const sourceUrl = String(avatarUrl || "").trim();
     if (!owner || !clean || !/^https?:\/\//i.test(sourceUrl)) return null;
@@ -790,7 +821,7 @@ async function syncConnectedProfilePhoto(ownerId, platform, username, avatarUrl)
         const photo = savePermanentProfilePhoto(owner, image, {
             source: type,
             reference: clean,
-            label: type === "twitch" ? `Twitch · @${clean}` : `TikTok · @${clean}`
+            label: `${platformLabel(type)} · @${clean}`
         });
 
         const savedSettings = database.getUserSettings(owner);
@@ -1101,7 +1132,11 @@ app.post("/api/auth/logout", requireUser, (req, res) => { database.deleteSession
 
 app.get("/api/me", requireUser, (req, res) => res.json({ user: req.user }));
 
-app.get("/api/live-history", requireUser, (req, res) => res.json(liveSession.isActive(req.user.id, "tiktok") || liveSession.isActive(req.user.id, "twitch") ? liveHistorySnapshot(req.user.id) : { chat: [], events: [] }));
+app.get("/api/live-history", requireUser, (req, res) => res.json(
+    SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(req.user.id, platform))
+        ? liveHistorySnapshot(req.user.id)
+        : { chat: [], events: [] }
+));
 
 
 app.get("/api/profile-photo", requireUser, (req, res) => {
@@ -1457,7 +1492,7 @@ app.get("/api/points/leaderboard", requireUser, (req, res) => {
 });
 
 app.get("/api/points/user", requireUser, async (req, res) => {
-    const platform=String(req.query?.platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok';
+    const platform=normalizePlatform(req.query?.platform || 'tiktok');
     const username=String(req.query?.username||req.query?.uniqueId||'').trim().replace(/^@+/, '');
     if(!username) return res.status(400).json({error:'Escribe el usuario/uniqueId.'});
 
@@ -1493,6 +1528,27 @@ app.get("/api/points/user", requireUser, async (req, res) => {
         return res.json({ ok:true, user:{ platform:'tiktok', username:fresh.username||resolvedUsername, displayName:fresh.displayName||displayName||resolvedUsername, avatarUrl:avatarUrl||fresh.avatarUrl||'', points:Number(resolvedAccount.points||0), totalEarned:Number(resolvedAccount.totalEarned||0), everDonated:Boolean(fresh.everDonated), followedBefore:Boolean(fresh.followedBefore), updatedAt:resolvedAccount.updatedAt||fresh.updatedAt||'' } });
     }
 
+    // Kick: se consulta directamente el canal público, igual que la búsqueda de perfiles/moderadores.
+    if(platform==='kick'){
+        const account=database.getPoints(req.user.id, 'kick', username);
+        const viewer=database.findViewerProfile(req.user.id, 'kick', username);
+        let resolvedUsername=username;
+        let displayName=viewer?.displayName || account.displayName || username;
+        let avatarUrl=viewer?.avatarUrl || '';
+        try {
+            const profile=await lookupPublicProfile('kick', username);
+            resolvedUsername=String(profile.username||username).trim().replace(/^@+/,'') || username;
+            displayName=String(profile.displayName||displayName||resolvedUsername).trim() || resolvedUsername;
+            avatarUrl=String(profile.avatarUrl||avatarUrl).trim();
+        } catch(error){
+            if(!viewer && !account.username) return res.status(404).json({error:error?.message||'No se encontró ese canal de Kick.'});
+        }
+        database.touchViewerProfile(req.user.id,'kick',resolvedUsername,displayName,avatarUrl);
+        const fresh=database.findViewerProfile(req.user.id,'kick',resolvedUsername) || viewer || {};
+        const resolvedAccount=database.getPoints(req.user.id,'kick',resolvedUsername);
+        return res.json({ ok:true, user:{ platform:'kick', username:fresh.username||resolvedUsername, displayName:fresh.displayName||displayName||resolvedUsername, avatarUrl:avatarUrl||fresh.avatarUrl||'', points:Number(resolvedAccount.points||0), totalEarned:Number(resolvedAccount.totalEarned||0), everDonated:Boolean(fresh.everDonated), followedBefore:Boolean(fresh.followedBefore), updatedAt:resolvedAccount.updatedAt||fresh.updatedAt||'' } });
+    }
+
     // Twitch: no requiere que haya comentado previamente; el usuario se puede consultar por su canal.
     const account=database.getPoints(req.user.id, 'twitch', username);
     const viewer=database.findViewerProfile(req.user.id, 'twitch', username);
@@ -1503,7 +1559,7 @@ app.get("/api/points/user", requireUser, async (req, res) => {
 });
 
 app.post("/api/points/user", requireUser, (req, res) => {
-    const platform=String(req.body?.platform||'tiktok').toLowerCase()==='twitch'?'twitch':'tiktok';
+    const platform=normalizePlatform(req.body?.platform || 'tiktok');
     const username=String(req.body?.username||req.body?.uniqueId||'').trim().replace(/^@+/, '');
     const displayName=String(req.body?.displayName||username).trim() || username;
     const amount=Math.max(1,Math.min(100000000,Math.floor(Number(req.body?.amount)||0)));
@@ -1562,13 +1618,14 @@ app.get("/api/voicebot/power-users", (req, res) => {
     const power = settings?.voiceBot?.power || {};
     const tiktokUsers = liveSession.getPowerUsers(ownerId, 'tiktok');
     const twitchUsers = liveSession.getPowerUsers(ownerId, 'twitch');
-    res.json({ powerUsers: [...tiktokUsers, ...twitchUsers], power });
+    const kickUsers = liveSession.getPowerUsers(ownerId, 'kick');
+    res.json({ powerUsers: [...tiktokUsers, ...twitchUsers, ...kickUsers], power });
 });
 
 
 app.get("/api/moderators/lookup", requireUser, async (req, res) => {
     try {
-        const platform = String(req.query.platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+        const platform = normalizePlatform(req.query.platform);
         const username = String(req.query.username || "").trim();
         if (!username) return res.status(400).json({ error: "Escribe un usuario para buscar." });
         const profile = await lookupPublicProfile(platform, username);
@@ -1601,6 +1658,13 @@ app.get("/api/avatar", async (req, res) => {
     } else if (platform === "tiktok") {
         avatarUrl = await resolveTiktokAvatar(username);
         source = avatarUrl ? "tiktok" : "fallback";
+    } else if (platform === "kick") {
+        try {
+            const data = await kick.getChannelInfo(username);
+            const user = data?.user || {};
+            avatarUrl = String(user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || "").trim();
+        } catch {}
+        source = avatarUrl ? "kick" : "fallback";
     }
 
     res.json({
@@ -1664,11 +1728,11 @@ function getSettingsForUser(userId) {
 
 function saveConnectionProfile(ownerId, platform, profile = {}) {
     const owner = String(ownerId || "").trim();
-    const key = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const key = normalizePlatform(platform);
     if (!owner) return null;
     const current = database.getUserSettings(owner) || {};
     const merged = deepMerge(structuredClone(DEFAULT_SETTINGS), current);
-    merged.connectionProfiles = merged.connectionProfiles || { tiktok: { username: "", avatarUrl: "" }, twitch: { username: "", avatarUrl: "" } };
+    merged.connectionProfiles = merged.connectionProfiles || { tiktok: { username: "", avatarUrl: "" }, twitch: { username: "", avatarUrl: "" }, kick: { username: "", avatarUrl: "" } };
     merged.connectionProfiles[key] = {
         ...(merged.connectionProfiles[key] || {}),
         username: String(profile.username || merged.connectionProfiles[key]?.username || "").trim(),
@@ -1680,7 +1744,7 @@ function saveConnectionProfile(ownerId, platform, profile = {}) {
 }
 
 function getSavedConnectionProfile(ownerId, platform) {
-    const key = String(platform || "").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+    const key = normalizePlatform(platform);
     const settings = ownerId ? getSettingsForUser(ownerId) : DEFAULT_SETTINGS;
     return { ...(settings.connectionProfiles?.[key] || {}) };
 }
@@ -2933,7 +2997,7 @@ app.post("/api/voicebot/tts", async (req, res) => {
         const emotion = String(req.body?.emotion || "").trim();
         const singSlashCommand = req.body?.singSlashCommand !== false;
         const antiSpamEnabled = Boolean(req.body?.antiSpamFilter) && !noFilter;
-        const antiSpamPlatform = String(req.body?.platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+        const antiSpamPlatform = normalizePlatform(req.body?.platform);
         const antiSpamUser = String(req.body?.antiSpamUser || "").trim();
 
         if (!text) return res.status(400).json({ error: "El texto está vacío." });
@@ -3097,13 +3161,13 @@ io.on("connection", (socket) => {
     socket.emit("musicState", music.getPublicSnapshot(socket.user?.id || ""));
     if (socket.user && !socket.isVoiceList) socket.emit("voiceListPresence", voiceListPresencePayload(socket.user.id));
     socket.emit("roulette:sync", roulette.getPublicSnapshot(socket.user?.id || ""));
-    for (const platform of ["tiktok", "twitch"]) {
+    for (const platform of SUPPORTED_PLATFORMS) {
         const savedProfile = socket.user ? getSavedConnectionProfile(socket.user.id, platform) : {};
         const visible = { username: savedProfile.username || "", avatarUrl: savedProfile.avatarUrl || "", connected: false, live: false, mode: "saved" };
         if (socket.user) Object.assign(visible, getUserAccountState(socket.user.id, platform));
         socket.emit("accountState", { ...visible, platform });
     }
-    const history = socket.user && (liveSession.isActive(socket.user.id, "tiktok") || liveSession.isActive(socket.user.id, "twitch"))
+    const history = socket.user && (SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(socket.user.id, platform)))
         ? liveHistorySnapshot(socket.user.id)
         : { chat: [], events: [] };
     socket.emit("liveHistory", history);
@@ -3215,6 +3279,59 @@ io.on("connection", (socket) => {
         }
     });
 
+    socket.on("connectKick", async (channel) => {
+        const cleanChannel = kick.cleanChannel(channel);
+        let profile = null;
+        try {
+            if (!socket.user) throw new Error("Sesión requerida para conectar Kick.");
+            if (!cleanChannel) throw new Error("Escribe un canal de Kick, por ejemplo @nombre.");
+
+            emitAccountState("kick", {
+                username: cleanChannel, connected: false, live: false, mode: "connecting",
+                clearFeeds: false, stateReason: "connecting"
+            }, socket.user.id);
+
+            profile = await lookupPublicProfile("kick", cleanChannel).catch((lookupError) => {
+                console.warn(`[connections] No se pudo obtener el perfil Kick @${cleanChannel}:`, lookupError?.message || lookupError);
+                return null;
+            });
+
+            const savedBeforeAvatar = getSavedConnectionProfile(socket.user.id, "kick");
+            const resolvedUsername = String(profile?.username || cleanChannel).replace(/^@+/, "").trim();
+            const sameKickUser = String(savedBeforeAvatar.username || "").replace(/^@+/, "").toLowerCase() === resolvedUsername.toLowerCase();
+            const avatarUrl = String(profile?.avatarUrl || (sameKickUser ? savedBeforeAvatar.avatarUrl || "" : ""));
+
+            saveConnectionProfile(socket.user.id, "kick", { username: resolvedUsername, avatarUrl });
+            if (avatarUrl) await syncConnectedProfilePhoto(socket.user.id, "kick", resolvedUsername, avatarUrl);
+
+            emitAccountState("kick", {
+                username: resolvedUsername, avatarUrl, connected: false, live: Boolean(profile?.isLive),
+                mode: "connecting", clearFeeds: false, stateReason: "connecting"
+            }, socket.user.id);
+
+            const info = await kick.connect(resolvedUsername, scopedEventEmitter(socket.user.id), socket.user.id);
+            const finalAvatar = String(info?.avatarUrl || avatarUrl || "");
+            saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar });
+            emitAccountState("kick", {
+                username: String(info?.username || resolvedUsername), avatarUrl: finalAvatar,
+                connected: true, live: Boolean(info?.isLive), mode: info?.isLive ? "live" : "waiting",
+                clearFeeds: false, stateReason: "connected"
+            }, socket.user.id);
+            liveSession.begin(socket.user.id, "kick");
+            socket.emit("system", { message: `Kick conectado a @${String(info?.username || resolvedUsername)}.` });
+        } catch (err) {
+            try { kick.disconnect(socket.user?.id || ""); } catch {}
+            globalThis.__STREAMFUSION_LIVE_END_HOOK__?.(socket.user?.id || "", "kick");
+            const savedProfile = getSavedConnectionProfile(socket.user?.id || "", "kick");
+            emitAccountState("kick", {
+                username: savedProfile.username || cleanChannel,
+                avatarUrl: savedProfile.avatarUrl || String(profile?.avatarUrl || ""),
+                connected: false, live: false, mode: "saved", stateReason: "error"
+            }, socket.user?.id || "");
+            socket.emit("system", { message: err?.message || "Error al conectar Kick." });
+        }
+    });
+
     socket.on("disconnectTikTok", async () => {
         try {
             await tiktok.disconnect(socket.user?.id || "");
@@ -3260,6 +3377,21 @@ io.on("connection", (socket) => {
             socket.emit("system", {
                 message: err?.message || "No se pudo desconectar Twitch.",
             });
+        }
+    });
+
+    socket.on("disconnectKick", async () => {
+        try {
+            kick.disconnect(socket.user?.id || "");
+            globalThis.__STREAMFUSION_LIVE_END_HOOK__?.(socket.user?.id || "", "kick");
+            const savedProfile = getSavedConnectionProfile(socket.user?.id || "", "kick");
+            emitAccountState("kick", {
+                username: savedProfile.username || "", connected: false, live: false, mode: "saved",
+                avatarUrl: savedProfile.avatarUrl || "", clearFeeds: true, stateReason: "manual-disconnect"
+            }, socket.user?.id || "");
+            socket.emit("system", { message: "Kick desconectado." });
+        } catch (err) {
+            socket.emit("system", { message: err?.message || "No se pudo desconectar Kick." });
         }
     });
 
@@ -3380,7 +3512,7 @@ io.on("connection", (socket) => {
                 return;
             }
 
-            const platform = String(payload?.platform || "tiktok").toLowerCase() === "twitch" ? "twitch" : "tiktok";
+            const platform = normalizePlatform(payload?.platform);
             const username = String(payload?.username || "").trim();
             if (!username) {
                 if (typeof ack === "function") ack({ ok: false, error: "Falta el usuario de prueba." });
