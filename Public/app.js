@@ -614,7 +614,16 @@
     if (event.includes('gift')) return 'gift';
     if (event.includes('raid')) return 'raid';
     if (event.includes('host')) return 'host';
-    if (event.includes('reward') || data?.reward || data?.reward_title) return 'reward';
+    if (event.includes('reward') || data?.reward || data?.reward_title || rawType === 'reward') return 'reward';
+    if (event.includes('banned') || rawType === 'moderation-ban') return 'moderation-ban';
+    if (event.includes('unbanned') || rawType === 'moderation-unban') return 'moderation-unban';
+    if (event.includes('message.deleted') || rawType === 'message-deleted') return 'message-deleted';
+    if (event.includes('pinnedmessage') || rawType === 'pinned-message' || rawType === 'pinned-message-deleted') return rawType === 'pinned-message-deleted' ? 'pinned-message-deleted' : 'pinned-message';
+    if (event.includes('pollupdate') || rawType === 'poll-update') return 'poll-update';
+    if (event.includes('polldelete') || rawType === 'poll-delete') return 'poll-delete';
+    if (event.includes('livestream.status') || rawType === 'stream-status') return 'stream-status';
+    if (event.includes('livestream.metadata') || rawType === 'stream-metadata') return 'stream-metadata';
+    if (rawType === 'stats') return 'stats';
     return rawType && !['event','system','unknown',''].includes(rawType) ? rawType : 'event';
   }
 
@@ -646,7 +655,7 @@
     entry.activityKind = subscriptionActivity ? 'event' : (monetaryGift ? 'gift' : entry.activityKind || 'event');
     entry.group = subscriptionActivity ? 'event' : (monetaryGift ? 'gift' : ['follow','join','raid','host'].includes(type) ? 'event' : entry.group || 'system');
     const sender = data?.follower || data?.subscriber || data?.gifter || data?.sender || data?.user || data?.redeemer || data?.raider || data?.hoster || {};
-    const username = String(entry.username || entry.displayName || entry.user || sender.username || sender.slug || data?.username || data?.gifter_username || 'Usuario').trim();
+    const username = String(entry.username || entry.displayName || entry.user || sender.username || sender.slug || data?.username || data?.gifter_username || (['stream-status','stream-metadata','poll-update','poll-delete','message-deleted','pinned-message','pinned-message-deleted'].includes(type) ? 'Kick' : 'Usuario')).trim();
     const avatar = entry.avatar || entry.avatarUrl || entry.profilePictureUrl || sender.profile_picture || sender.profilePicture || sender.profile_picture_url || sender.avatar || sender.avatar_url || '';
     entry.username = username;
     entry.displayName = String(entry.displayName || entry.user || sender.display_name || sender.username || sender.slug || username).trim();
@@ -683,8 +692,28 @@
       entry.action = 'Host'; entry.emoji = '📣'; entry.message = entry.message || `${entry.displayName} te está hosteando.`;
     } else if (type === 'reward') {
       entry.action = String(data?.reward?.title || data?.reward_title || entry.action || 'Recompensa canjeada'); entry.emoji = '🎟️'; entry.message = entry.message || `${entry.displayName} canjeó ${entry.action}.`;
+    } else if (type === 'moderation-ban') {
+      entry.action = 'Usuario baneado'; entry.emoji = '🔨'; entry.message = entry.message || `${entry.displayName} fue baneado.`;
+    } else if (type === 'moderation-unban') {
+      entry.action = 'Usuario desbaneado'; entry.emoji = '🔓'; entry.message = entry.message || `${entry.displayName} fue desbaneado.`;
+    } else if (type === 'message-deleted') {
+      entry.action = 'Mensaje eliminado'; entry.emoji = '🗑️'; entry.message = entry.message || 'Se eliminó un mensaje del chat.';
+    } else if (type === 'pinned-message') {
+      entry.action = 'Mensaje fijado'; entry.emoji = '📌'; entry.message = entry.message || `${entry.displayName} fijó un mensaje.`;
+    } else if (type === 'pinned-message-deleted') {
+      entry.action = 'Mensaje fijado retirado'; entry.emoji = '📍'; entry.message = entry.message || 'Se retiró un mensaje fijado.';
+    } else if (type === 'poll-update') {
+      entry.action = 'Encuesta actualizada'; entry.emoji = '📊'; entry.message = entry.message || 'La encuesta fue actualizada.';
+    } else if (type === 'poll-delete') {
+      entry.action = 'Encuesta finalizada'; entry.emoji = '📊'; entry.message = entry.message || 'La encuesta finalizó.';
+    } else if (type === 'stream-status') {
+      entry.action = entry.action || 'Estado del directo'; entry.emoji = entry.emoji || '📡'; entry.message = entry.message || 'El estado del directo cambió.';
+    } else if (type === 'stream-metadata') {
+      entry.action = entry.action || 'Información del directo actualizada'; entry.emoji = entry.emoji || '📝'; entry.message = entry.message || 'Se actualizó la información del directo.';
+    } else if (type === 'stats') {
+      entry.activityKind = 'stats'; entry.group = 'stats'; return entry;
     } else if (!entry.action || entry.action === 'Evento') {
-      entry.action = 'Actividad de Kick'; entry.emoji = '✨'; entry.message = entry.message || 'Actividad de Kick.';
+      entry.action = String(entry.event || 'Evento Kick'); entry.emoji = '✨'; entry.message = entry.message || `Evento de Kick: ${entry.action}.`;
     }
     return entry;
   }
@@ -748,7 +777,16 @@
     if (type==='raid') return { icon:'🚀', title:'RAID', message:item?.message || `${displayNameForActivity(item)} llegó en raid.` };
     if (type==='host') return { icon:'📣', title:'HOST', message:item?.message || `${displayNameForActivity(item)} te está hosteando.` };
     if (type==='reward') return { icon:'🎟️', title:'RECOMPENSA', message:item?.message || `Canjeó ${item?.action || 'una recompensa'}.` };
-    return { icon:'✨', title:'KICK', message:item?.message || 'Actividad de Kick.' };
+    if (type==='moderation-ban') return { icon:'🔨', title:'USUARIO BANEADO', message:item?.message || `${displayNameForActivity(item)} fue baneado.` };
+    if (type==='moderation-unban') return { icon:'🔓', title:'USUARIO DESBANEADO', message:item?.message || `${displayNameForActivity(item)} fue desbaneado.` };
+    if (type==='message-deleted') return { icon:'🗑️', title:'MENSAJE ELIMINADO', message:item?.message || 'Se eliminó un mensaje del chat.' };
+    if (type==='pinned-message') return { icon:'📌', title:'MENSAJE FIJADO', message:item?.message || `${displayNameForActivity(item)} fijó un mensaje.` };
+    if (type==='pinned-message-deleted') return { icon:'📍', title:'MENSAJE FIJADO RETIRADO', message:item?.message || 'Se retiró un mensaje fijado.' };
+    if (type==='poll-update') return { icon:'📊', title:'ENCUESTA ACTUALIZADA', message:item?.message || 'La encuesta fue actualizada.' };
+    if (type==='poll-delete') return { icon:'📊', title:'ENCUESTA FINALIZADA', message:item?.message || 'La encuesta finalizó.' };
+    if (type==='stream-status') return { icon:'📡', title:item?.action || 'ESTADO DEL DIRECTO', message:item?.message || 'El estado del directo cambió.' };
+    if (type==='stream-metadata') return { icon:'📝', title:'DIRECTO ACTUALIZADO', message:item?.message || 'Se actualizó la información del directo.' };
+    return { icon:'✨', title:String(item?.action || item?.event || 'EVENTO KICK').toUpperCase(), message:item?.message || `Evento de Kick: ${item?.action || item?.event || 'evento'}.` };
   }
 
   function streamActivityRow(item, kind='event') {
@@ -844,6 +882,7 @@
     return 'system';
   }
   function visibleActivity(item) {
+    if (String(item?.activityKind || '').toLowerCase() === 'stats' || String(item?.type || '').toLowerCase() === 'stats') return false;
     if (settings.personalization?.showDashboardActivity === false) return false;
     return (settings.personalization?.eventVisibility?.[eventVisibilityKey(item)] ?? true) !== false;
   }

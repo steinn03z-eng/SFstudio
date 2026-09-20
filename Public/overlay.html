@@ -7726,14 +7726,14 @@ function currentViewSettingsKey(){
       const raw = data || {};
       const type = String(raw?.type || raw?.eventType || raw?.kind || '').toLowerCase();
       const monetaryGift = type === 'gift' || type === 'bits' || raw?.activityKind === 'gift' || Number(raw?.amount || raw?.giftCoins || 0) > 0 || Boolean(raw?.currency);
-      const activityKind = raw?.activityKind || (['sub','subscription','resub','subscription-gift'].includes(type) ? 'event' : monetaryGift ? 'gift' : 'event');
-      const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : type === 'reward' ? 'Recompensa canjeada' : 'Actividad');
+      const activityKind = raw?.activityKind || (type === 'stats' ? 'stats' : (['sub','subscription','resub','subscription-gift'].includes(type) ? 'event' : monetaryGift ? 'gift' : 'event'));
+      const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : type === 'reward' ? 'Recompensa canjeada' : type === 'moderation-ban' ? 'Usuario baneado' : type === 'moderation-unban' ? 'Usuario desbaneado' : type === 'message-deleted' ? 'Mensaje eliminado' : type === 'pinned-message' ? 'Mensaje fijado' : type === 'pinned-message-deleted' ? 'Mensaje fijado retirado' : type === 'poll-update' ? 'Encuesta actualizada' : type === 'poll-delete' ? 'Encuesta finalizada' : type === 'stream-status' ? 'Estado del directo' : type === 'stream-metadata' ? 'Información del directo actualizada' : 'Evento Kick');
       return { ...raw, platform: String(raw?.platform || 'tiktok').toLowerCase(), type, activityKind, group:activityKind, displayName: raw?.displayName || raw?.nickname || raw?.user || raw?.username || raw?.uniqueId || 'Usuario', action };
     }
     function isOverlayGiftType(item){
       const t = String(item?.type || '').toLowerCase();
       const group = String(item?.activityKind || item?.group || '').toLowerCase();
-      if (['sub','subscription','resub','subscription-gift','follow','raid','host','reward'].includes(t)) return false;
+      if (['sub','subscription','resub','subscription-gift','follow','raid','host','reward','moderation-ban','moderation-unban','message-deleted','pinned-message','pinned-message-deleted','poll-update','poll-delete','stream-status','stream-metadata','stats'].includes(t)) return false;
       if (t === 'bits') return true;
       if (t === 'gift') return group === 'gift' || Number(item?.amount || item?.giftCoins || 0) > 0 || Boolean(item?.currency);
       return false;
@@ -7749,6 +7749,7 @@ function currentViewSettingsKey(){
       }
       for (const item of events) {
         const normalized = normalizeOverlaySocketEvent(item);
+        if (String(normalized?.type || '').toLowerCase() === 'stats' || String(normalized?.activityKind || '').toLowerCase() === 'stats') continue;
         const gift = isOverlayGiftType(normalized);
         const target = gift ? state.gifts : state.events;
         const exists = target.some(existing => buildOverlayDedupKey(gift ? 'gift' : 'event', existing) === buildOverlayDedupKey(gift ? 'gift' : 'event', normalized));
@@ -7770,6 +7771,7 @@ function currentViewSettingsKey(){
     socket.on('connect', () => { updateOverlayStatus(); void refreshOverlayHistory(); });
     socket.on('event', (data) => {
       const normalizedEvent = normalizeOverlaySocketEvent(data);
+      if (String(normalizedEvent?.type || '').toLowerCase() === 'stats' || String(normalizedEvent?.activityKind || '').toLowerCase() === 'stats') { updateOverlayStatus(); return; }
       if (isOverlayGiftType(normalizedEvent)) { if (view === 'gifts') pushGift(normalizedEvent); }
       else if (view === 'events') pushEvent(normalizedEvent);
       updateOverlayStatus();

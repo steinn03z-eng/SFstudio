@@ -99,10 +99,14 @@ function resolveSender(data, preferred = []) {
       data?.username ||
       data?.gifter_username ||
       data?.gifter?.username ||
+      data?.gifter ||
       data?.subscriber?.username ||
       data?.follower?.username ||
       data?.gifted_by ||
       data?.host_username ||
+      data?.hoster ||
+      data?.raider ||
+      data?.hosted_by ||
       "Usuario",
   ).trim();
 
@@ -156,35 +160,64 @@ function timestampOf(data) {
 }
 
 function normalizeEventType(name, data) {
-  const eventName = String(name || "").toLowerCase();
+  const eventName = String(name || "").toLowerCase().trim();
   const raw = data && typeof data === "object" ? data : {};
+  const hasUser = (value) => Boolean(value && typeof value === "object" && (value.username || value.slug || value.id || value.user_id));
 
-  // Current official Kick event names. Keep this exact enough that aggregate
-  // events such as FollowersUpdated are not mistaken for an individual follow.
+  // Explicit event names: current official webhook names + historical realtime names.
   if (eventName === "channel.followed" || eventName.endsWith("\\events\\channelfollowedevent") || eventName.endsWith("followedevent")) return "follow";
   if (eventName === "channel.subscription.gifts" || eventName.includes("giftedsubscriptions") || eventName.includes("subscriptiongifted")) return "subscription-gift";
   if (eventName === "channel.subscription.renewal" || eventName.includes("subscriptionrenewal")) return "resub";
   if (eventName === "channel.subscription.new" || eventName.includes("subscriptionevent") || eventName.includes("subscription.new")) return "sub";
-  if (eventName === "kicks.gifted" || (eventName.includes("kicks") && eventName.includes("gift"))) return "gift";
-  if (eventName.includes("gift")) return "gift";
+  if (eventName === "kicks.gifted" || eventName.includes("kicks.gift")) return "gift";
   if (eventName.includes("streamhost") || eventName.includes("stream.host") || eventName.endsWith("hostevent")) return "host";
   if (eventName === "channel.raid" || eventName.includes("raid")) return "raid";
-  if (eventName === "channel.reward.redemption.updated" || eventName.includes("reward") || eventName.includes("redemption")) return "reward";
-  if (eventName.includes("pointsupdated") || eventName.includes("points_updated")) {
-    const reason = String(raw?.reason || raw?.message || raw?.description || "").toLowerCase();
-    if (reason.includes("canje") || reason.includes("redeem") || raw?.reward || raw?.reward_title || raw?.redemption) return "reward";
-  }
-  if (eventName.includes("ban") || eventName.includes("livestreamupdated") || eventName.includes("updatedlivestream") || eventName.includes("livestream.status") || eventName.includes("streamerislive") || eventName.includes("stopstream")) return "system";
+  if (eventName === "channel.reward.redemption.updated" || eventName.includes("rewardredeem") || eventName.includes("reward.redemption") || eventName.includes("rewardredeemed") || eventName.includes("redemption")) return "reward";
+  if (eventName === "moderation.banned" || eventName.includes("userbannedevent") || eventName.endsWith(".banned")) return "moderation-ban";
+  if (eventName.includes("userunbannedevent") || eventName.endsWith(".unbanned")) return "moderation-unban";
+  if (eventName.includes("messagedeletedevent") || eventName.includes("message.deleted")) return "message-deleted";
+  if (eventName.includes("pinnedmessagecreated") || eventName.includes("pinned.message.created")) return "pinned-message";
+  if (eventName.includes("pinnedmessagedeleted") || eventName.includes("pinned.message.deleted")) return "pinned-message-deleted";
+  if (eventName.includes("pollupdate")) return "poll-update";
+  if (eventName.includes("polldelete")) return "poll-delete";
+  if (eventName === "livestream.status.updated" || eventName.includes("livestreamstatus") || eventName.includes("streamerislive") || eventName.includes("stopstream")) return "stream-status";
+  if (eventName === "livestream.metadata.updated" || eventName.includes("livestreammetadata")) return "stream-metadata";
 
-  // Infer from payload shape only when the transport did not give us a named event.
+  // Aggregate/telemetry events: useful for stats, but NOT a user activity.
+  if (
+    eventName.includes("followersupdated") ||
+    eventName.includes("giftsleaderboardupdated") ||
+    eventName.includes("kicksleaderboardupdated") ||
+    eventName.includes("goalprogressupdate") ||
+    eventName.includes("goalupdated") ||
+    eventName.includes("goalachieved") ||
+    eventName.includes("goalcanceled") ||
+    eventName.includes("chatroomupdated") ||
+    eventName.includes("chatsettingschanged") ||
+    eventName.includes("pointsupdated") ||
+    eventName.includes("livestreamupdated") ||
+    eventName.includes("updatedlivestream") ||
+    eventName.includes("activityupdated")
+  ) {
+    const reason = String(raw?.reason || raw?.message || raw?.description || "").toLowerCase();
+    if (eventName.includes("pointsupdated") && (reason.includes("canje") || reason.includes("redeem") || raw?.reward || raw?.reward_title || raw?.redemption)) return "reward";
+    return "stats";
+  }
+
+  // Payload inference for legacy frames that do not carry the canonical event name.
   if (raw?.gifted_quantity || raw?.giftees || raw?.gifted_users || raw?.recipients) return "subscription-gift";
   if (raw?.gift_transaction_id || raw?.gift || raw?.kicks || raw?.gift_coins) return "gift";
   if (raw?.followed === true || raw?.followed === "true" || raw?.follower || raw?.follower_username) return "follow";
   if (raw?.subscription || raw?.subscriber || raw?.months_subscribed || raw?.is_subscribed === true) return "sub";
   if (raw?.raider || raw?.raid) return "raid";
   if (raw?.hoster || raw?.host_username) return "host";
-  if (raw?.reward || raw?.reward_title || raw?.redemption) return "reward";
+  if (raw?.reward || raw?.reward_title || raw?.redemption || raw?.redeemer) return "reward";
+  if (raw?.banned_user || raw?.moderator || raw?.banned_username) return "moderation-ban";
+  if (raw?.poll_id || raw?.pollId) return "poll-update";
+  if (raw?.status && (raw?.is_live !== undefined || raw?.livestream_id)) return "stream-status";
+  if (raw?.metadata && raw?.broadcaster) return "stream-metadata";
   if (raw?.type && typeof raw.type === "string" && raw.type.toLowerCase() !== "event") return raw.type.toLowerCase();
+
   return "event";
 }
 
@@ -215,7 +248,7 @@ function normalizeIncomingKickEvent(data, eventName) {
   const gift = payload?.gift && typeof payload.gift === "object" ? payload.gift : null;
   if ((!sender.username || sender.username === "Usuario") && (type === "reward" || eventName.toLowerCase().includes("points"))) {
     const reasonText = firstNonEmpty(payload?.reason, payload?.message, payload?.description, "");
-    const match = /^@?([^\s]+)\s+(?:canje[oó]|redeemed|redeem)\b/i.exec(reasonText);
+    const match = /^@?([^\s]+)\s+(?:canje[oó]|redeemed|redeem)(?=\s|$)/i.exec(reasonText);
     if (match?.[1]) sender = { ...sender, username: match[1], displayName: match[1], uniqueId: sender.uniqueId || match[1] };
   }
   const giftees = Array.isArray(payload?.giftees) ? payload.giftees
@@ -272,7 +305,7 @@ function normalizeIncomingKickEvent(data, eventName) {
       message = `${sender.username || "Alguien"} envió ${giftName || "un regalo"}${quantity > 1 ? ` ×${quantity}` : ""}.`;
       icon = "🎁";
       group = "gift";
-      if (eventName.toLowerCase().includes("kicks")) currency = "KICKS";
+      currency = firstNonEmpty(payload?.currency, payload?.gift_currency, eventName.toLowerCase().includes("kicks") ? "KICKS" : "");
       break;
     case "raid": {
       const raidCount = Number(payload?.viewers ?? payload?.viewers_count ?? payload?.count ?? 0) || 0;
@@ -284,7 +317,10 @@ function normalizeIncomingKickEvent(data, eventName) {
       break;
     }
     case "host": {
-      const from = firstNonEmpty(payload?.hoster?.username, payload?.hoster, sender.username, "Alguien");
+      const from = firstNonEmpty(payload?.hoster?.username, payload?.hoster, sender.username, payload?.host_username, "Alguien");
+      if ((!sender.username || sender.username === "Usuario") && from && from !== "Alguien") {
+        sender = { ...sender, username: from, displayName: from, uniqueId: sender.uniqueId || from };
+      }
       action = "Host";
       message = `${from} te está hosteando.`;
       icon = "📣";
@@ -304,15 +340,101 @@ function normalizeIncomingKickEvent(data, eventName) {
       group = "event";
       break;
     }
+    case "moderation-ban": {
+      const banned = resolveSender(payload, ["banned_user", "user", "sender"]);
+      const moderator = resolveSender(payload, ["moderator", "sender", "user"]);
+      const target = banned.username || payload?.banned_username || "Un usuario";
+      const actor = moderator.username || "Moderación";
+      action = "Usuario baneado";
+      message = actor && actor !== target ? `${actor} baneó a ${target}.` : `${target} fue baneado.`;
+      icon = "🔨";
+      group = "event";
+      // The affected user is the visual identity of the moderation card.
+      if (banned.username) sender = banned;
+      break;
+    }
+    case "moderation-unban": {
+      action = "Usuario desbaneado";
+      message = `${sender.username || payload?.username || payload?.unbanned_username || "Un usuario"} fue desbaneado.`;
+      icon = "🔓";
+      group = "event";
+      break;
+    }
+    case "message-deleted":
+      action = "Mensaje eliminado";
+      message = `Se eliminó un mensaje del chat.`;
+      icon = "🗑️";
+      group = "event";
+      sender.username = sender.username || "Moderación";
+      sender.displayName = sender.displayName || sender.username;
+      break;
+    case "pinned-message": {
+      const pinned = payload?.message && typeof payload.message === "object" ? payload.message : payload;
+      const pinnedSender = resolveSender(pinned, ["sender", "user"]);
+      if (pinnedSender.username && sender.username === "Usuario") sender = pinnedSender;
+      action = "Mensaje fijado";
+      message = `${sender.username || "Un usuario"} fijó un mensaje${pinned?.content ? `: ${String(pinned.content).slice(0, 120)}` : "."}`;
+      icon = "📌";
+      group = "event";
+      break;
+    }
+    case "pinned-message-deleted":
+      action = "Mensaje fijado retirado";
+      message = "Se retiró un mensaje fijado del chat.";
+      icon = "📍";
+      group = "event";
+      break;
+    case "poll-update":
+      action = "Encuesta actualizada";
+      message = `${firstNonEmpty(payload?.question, "La encuesta")} está disponible o fue actualizada.`;
+      icon = "📊";
+      group = "event";
+      sender.username = sender.username || "Canal";
+      sender.displayName = sender.displayName || "Canal";
+      break;
+    case "poll-delete":
+      action = "Encuesta finalizada";
+      message = "Se eliminó o finalizó una encuesta.";
+      icon = "📊";
+      group = "event";
+      sender.username = sender.username || "Canal";
+      sender.displayName = sender.displayName || "Canal";
+      break;
+    case "stream-status": {
+      const isLive = payload?.is_live === true || payload?.isLive === true || String(payload?.status || '').toLowerCase() === 'live';
+      action = isLive ? "Directo iniciado" : "Directo actualizado";
+      message = isLive ? "El directo de Kick ha comenzado." : firstNonEmpty(payload?.ended_at ? "El directo de Kick ha terminado." : "El estado del directo cambió.");
+      icon = isLive ? "🔴" : "📡";
+      group = "event";
+      break;
+    }
+    case "stream-metadata": {
+      const title = firstNonEmpty(payload?.metadata?.title, payload?.title);
+      action = "Información del directo actualizada";
+      message = title ? `Título: ${title}` : "Se actualizó la información del directo.";
+      icon = "📝";
+      group = "event";
+      break;
+    }
+    case "stats":
+      // Aggregate counters are not individual user activity; keep them out of the
+      // activity feed so we never fabricate "Usuario: actividad del canal" cards.
+      action = "";
+      message = "";
+      icon = "";
+      group = "system";
+      break;
     case "system":
       action = firstNonEmpty(payload?.action, payload?.title, "Actividad");
-      message = firstNonEmpty(payload?.message, payload?.content, payload?.description, `${sender.username || "Kick"}: actividad del canal.`);
+      message = firstNonEmpty(payload?.message, payload?.content, payload?.description, "Se produjo una actualización del canal.");
       icon = "•";
       group = "event";
       break;
     default:
-      action = firstNonEmpty(payload?.action, payload?.title, payload?.type, "Actividad de Kick");
-      message = message || firstNonEmpty(payload?.message, payload?.content, payload?.description, `${sender.username || "Kick"}: actividad del canal.`);
+      // Unknown but concrete application events are retained with their actual
+      // event name instead of the misleading generic "Actividad de Kick".
+      action = firstNonEmpty(payload?.action, payload?.title, payload?.type, eventName || "Evento Kick");
+      message = message || firstNonEmpty(payload?.message, payload?.content, payload?.description, `Evento de Kick: ${action}.`);
       icon = "✨";
       group = "event";
   }
@@ -336,6 +458,7 @@ function normalizeIncomingKickEvent(data, eventName) {
     verified: Boolean(payload?.is_verified || sender?.verified || payload?.verified),
     platform: "kick",
     source: "event",
+    activityEligible: type !== "stats",
     timestamp: timestampOf(payload),
     event: eventName,
     eventId: eventId || undefined,
@@ -805,8 +928,14 @@ function emitEvent(client, eventName, payload) {
 
   const normalized = normalizeEvent(payload, eventName);
   globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(normalized);
+  if (normalized?.activityEligible === false) {
+    // Aggregate channel counters are handled as stats, never as fake user activity.
+    emitStats(client);
+    return;
+  }
   const enrichedPayload = awardPoints(client.ownerId, normalized) || normalized;
   emitScoped(client.io, client.ownerId, "event", enrichedPayload);
+  recordEvent(client.ownerId, enrichedPayload);
   // Keep the generic event stream for Dashboard/TikTok/Twitch compatibility,
   // but also expose a dedicated gift stream so the gifts overlay never has to
   // guess whether an event should be rendered as a gift.
@@ -814,7 +943,6 @@ function emitEvent(client, eventName, payload) {
       String(enrichedPayload?.type || "").toLowerCase() === "gift") {
     emitScoped(client.io, client.ownerId, "gift", enrichedPayload);
   }
-  recordEvent(client.ownerId, enrichedPayload);
 
   if (enrichedPayload.type === "gift" && Number(enrichedPayload.amount || enrichedPayload.giftCoins || 0) > 0) {
     musicHook(client.ownerId, enrichedPayload);
