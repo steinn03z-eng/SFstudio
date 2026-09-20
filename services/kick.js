@@ -530,16 +530,24 @@ function emitStats(client) {
 
 async function emitChat(client, payload) {
   const raw = payload && typeof payload === "object" ? payload : {};
-  const nested = raw?.message && typeof raw.message === "object" ? raw.message : {};
-  const source = Object.keys(nested).length ? { ...raw, ...nested } : raw;
-  const sender = resolveSender(source);
+  // Kick has emitted both flat payloads and the historical
+  // { message: {...}, user: {...} } shape. Normalize both before routing.
+  const messageData = raw?.message && typeof raw.message === "object" ? raw.message : raw;
+  const userData = raw?.user && typeof raw.user === "object" ? raw.user : null;
+  const source = {
+    ...raw,
+    ...messageData,
+    ...(userData ? { user: userData, sender: raw?.sender || userData } : {}),
+  };
+  const sender = resolveSender(source, userData ? ["user", "sender"] : []);
   const content = String(
-    source?.content || source?.message || raw?.message?.message || raw?.data?.content || "",
+    messageData?.content || messageData?.message || raw?.content || raw?.text || raw?.message_text || "",
   ).trim();
   const messageId = String(
-    source?.id || source?.message_id || source?.messageId || raw?.id || raw?.message?.id || "",
+    messageData?.id || messageData?.message_id || raw?.id || raw?.message_id || raw?.messageId || "",
   ).trim();
-  if (!content) return;
+  if (!content || content === "[object Object]") return;
+
   if (messageId && client.seenMessageIds.has(messageId)) return;
   if (messageId) {
     client.seenMessageIds.add(messageId);
@@ -548,7 +556,7 @@ async function emitChat(client, payload) {
       client.seenMessageIds.delete(first);
     }
   } else {
-    const fp = `fp|${sender.uniqueId || sender.username}|${content}|${Math.floor(timestampOf(source) / 1500)}`;
+    const fp = `fp|${sender.uniqueId || sender.username}|${content}|${Math.floor(timestampOf(messageData) / 1500)}`;
     const now = Date.now();
     for (const [key, at] of client.seenMessageFingerprints) {
       if (now - at > 6000) client.seenMessageFingerprints.delete(key);
@@ -560,7 +568,13 @@ async function emitChat(client, payload) {
   let avatar = sender.avatar;
   if (!avatar) avatar = await lookupKickUserAvatar(client.channelName, sender.username);
 
-  globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({ platform: "kick", username: sender.username, uniqueId: sender.uniqueId, avatar });
+  globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
+    platform: "kick",
+    username: sender.username,
+    uniqueId: sender.uniqueId,
+    avatar,
+    displayName: sender.displayName,
+  });
 
   const chat = {
     id: messageId || undefined,
@@ -575,8 +589,8 @@ async function emitChat(client, payload) {
     badges: sender.badges,
     comment: content,
     message: content,
-    timestamp: timestampOf(payload),
-    verified: false,
+    timestamp: timestampOf(messageData),
+    verified: Boolean(userData?.verified || source?.verified),
   };
 
   const enrichedPayload = awardPoints(client.ownerId, chat) || chat;
@@ -736,17 +750,13 @@ async function openSocket(client) {
   closeSocket(client);
   stopPing(client);
 
-  let descriptor;
-  try {
-    descriptor = await getRealtimeDescriptor(client.channelId);
-  } catch (error) {
-    // Preserve the previously working anonymous Pusher transport as a fallback.
-    console.warn("[Kick] descriptor realtime no disponible; usando Pusher fallback:", error?.message || error);
-    descriptor = {
-      provider: "pusher",
-      url: KICK_PUSHER_URL,
-    };
-  }
+  // Keep the previously working anonymous Kick transport as the primary path.
+  // The browser supplies the chatroom ID, so the server does not need to call
+  // Kick's Cloudflare-protected channel endpoint.
+  const descriptor = {
+    provider: "pusher",
+    url: KICK_PUSHER_URL,
+  };
   const WS = globalThis.WebSocket;
   if (typeof WS !== "function") {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
@@ -754,7 +764,7 @@ async function openSocket(client) {
 
   const ws = new WS(descriptor.url);
   client.ws = ws;
-  client.provider = descriptor.provider || "centrifugo";
+  client.provider = "pusher";
 
   await new Promise((resolve, reject) => {
     let settled = false;
@@ -766,29 +776,18 @@ async function openSocket(client) {
 
     ws.onopen = () => {
       client.reconnectDelay = 5_000;
-      if (client.provider === "pusher") {
-        // Keep the previously working Pusher transport, but subscribe to all
-        // channel/chatroom variants that Kick clients have used. Some event
-        // families are published on `channel.*` while chat is on `chatrooms.*`.
-        // Duplicate deliveries are removed by message/event IDs below.
-        const channels = [
-          `chatroom_${client.chatroomId}`,
-          `chatrooms.${client.chatroomId}.v2`,
-          `channel_${client.channelId}`,
-          `chatrooms.${client.chatroomId}`,
-          `channel.${client.channelId}`,
-          `predictions-channel-${client.channelId}`,
-        ].filter((value, index, all) => value && all.indexOf(value) === index);
-        for (const channel of channels) {
-          send(client, {
-            event: "pusher:subscribe",
-            data: { auth: "", channel },
-          });
-        }
-      } else {
-        // Kick's current chat transport is Centrifugo JSON protocol v2.
-        send(client, { id: 1, connect: {} });
-        send(client, { id: 2, subscribe: { channel: `chatrooms.${client.chatroomId}.v2` } });
+      send(client, {
+        event: "pusher:subscribe",
+        data: { auth: "", channel: `chatrooms.${client.chatroomId}.v2` },
+      });
+      // Channel events are useful for follows/subscriptions/gifts when Kick publishes
+      // them there. Chat remains subscribed only once; duplicate chat frames are also
+      // deduplicated by message ID below.
+      if (client.channelId) {
+        send(client, {
+          event: "pusher:subscribe",
+          data: { auth: "", channel: `channel.${client.channelId}` },
+        });
       }
       settle(resolve);
     };
@@ -821,7 +820,7 @@ async function openSocket(client) {
   });
 }
 
-export async function connect(channelName, io, ownerId) {
+export async function connect(channelName, io, ownerId, resolvedInfo = null) {
   const id = ownerKey(ownerId);
   if (!id) throw new Error("ownerId es obligatorio para conectar Kick");
 
@@ -830,9 +829,24 @@ export async function connect(channelName, io, ownerId) {
   const slug = cleanChannel(channelName);
   if (!slug) throw new Error("Introduce un canal de Kick, por ejemplo @nombre");
 
-  const channelInfo = await getChannelInfo(slug);
-  const channelId = Number(channelInfo?.id || channelInfo?.user_id || 0);
-  const chatroomId = Number(channelInfo?.chatroom?.id || 0);
+  // Preferimos los IDs resueltos por el navegador. Kick protege el endpoint
+  // server-side con Cloudflare, así que el servidor no debe depender de esa llamada
+  // cuando el usuario ya pudo resolver el canal desde kick.com en su navegador.
+  const supplied = resolvedInfo && typeof resolvedInfo === "object" ? resolvedInfo : null;
+  const channelInfo = supplied?.chatroomId ? {
+    id: Number(supplied.channelId || 0),
+    slug,
+    user: {
+      username: String(supplied.username || slug),
+      name: String(supplied.displayName || supplied.username || slug),
+      profile_picture: String(supplied.avatarUrl || ""),
+    },
+    chatroom: { id: Number(supplied.chatroomId) },
+    livestream: supplied.isLive ? { is_live: true } : null,
+  } : await getChannelInfo(slug);
+
+  const channelId = Number(supplied?.channelId || channelInfo?.id || channelInfo?.user_id || 0);
+  const chatroomId = Number(supplied?.chatroomId || channelInfo?.chatroom?.id || 0);
 
   if (!chatroomId) {
     throw new Error(`No se encontró el chatroom del canal @${slug}`);

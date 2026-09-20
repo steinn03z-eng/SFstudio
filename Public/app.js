@@ -1012,6 +1012,38 @@
     });
   }
 
+  async function resolveKickChannelInBrowser(channel){
+    const slug=String(channel||'').trim().replace(/^@+/,'').replace(/^https?:\/\/(?:www\.)?kick\.com\//i,'').split(/[?#/]/)[0].trim().toLowerCase();
+    if(!slug) throw new Error('Escribe un canal de Kick, por ejemplo @nombre.');
+    const urls=[
+      `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`
+    ];
+    let lastError='';
+    for(const url of urls){
+      try{
+        const response=await fetch(url,{method:'GET',credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
+        if(!response.ok){ lastError=`HTTP ${response.status}`; continue; }
+        const data=await response.json();
+        const chatroomId=Number(data?.chatroom?.id || data?.chatroom_id || data?.chatroom?.chatroom_id || 0);
+        const channelId=Number(data?.id || data?.channel_id || data?.user_id || data?.user?.id || 0);
+        if(chatroomId){
+          const user=data?.user||{};
+          return {
+            slug,
+            channelId,
+            chatroomId,
+            username:String(user?.username || user?.slug || data?.slug || slug).replace(/^@+/,'') || slug,
+            displayName:String(user?.name || user?.display_name || user?.username || data?.slug || slug) || slug,
+            avatarUrl:String(user?.profile_pic || user?.profile_picture || user?.avatar || data?.profile_pic || '').trim(),
+            isLive:Boolean(data?.livestream?.is_live || data?.livestream)
+          };
+        }
+      }catch(error){ lastError=error?.message || String(error); }
+    }
+    throw new Error(`No se pudo resolver el chat de Kick para @${slug}${lastError?` (${lastError})`:''}. Abre el canal en Kick y vuelve a intentarlo.`);
+  }
+
   async function connectPlatform(platform, inputId, emitEvent, buttonId){
     const input=$(inputId);
     const button=$(buttonId);
@@ -1022,7 +1054,13 @@
     try{
       invalidatePlatformSession(platform);
       const ready=await waitForSocketReady();
-      ready.emit(emitEvent, value, (ack) => {
+      let payload=value;
+      if(platform==='kick'){
+        if(button) button.textContent='Resolviendo Kick…';
+        const resolved=await resolveKickChannelInBrowser(value);
+        payload={channel:resolved.slug, channelId:resolved.channelId, chatroomId:resolved.chatroomId, profile:resolved};
+      }
+      ready.emit(emitEvent, payload, (ack) => {
         if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
         else if(ack?.error){ toast('Conexión', ack.error, 'err'); }
       });

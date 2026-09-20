@@ -3302,9 +3302,10 @@ io.on("connection", (socket) => {
         }
     });
 
-    socket.on("connectKick", async (channel) => {
-        const cleanChannel = kick.cleanChannel(channel);
-        let profile = null;
+    socket.on("connectKick", async (channelRequest, ack) => {
+        const request = channelRequest && typeof channelRequest === "object" ? channelRequest : { channel: channelRequest };
+        const cleanChannel = kick.cleanChannel(request.channel || request.slug || "");
+        let profile = request.profile && typeof request.profile === "object" ? request.profile : null;
         try {
             if (!socket.user) throw new Error("Sesión requerida para conectar Kick.");
             if (!cleanChannel) throw new Error("Escribe un canal de Kick, por ejemplo @nombre.");
@@ -3314,10 +3315,10 @@ io.on("connection", (socket) => {
                 clearFeeds: false, stateReason: "connecting"
             }, socket.user.id);
 
-            profile = await lookupPublicProfile("kick", cleanChannel).catch((lookupError) => {
-                console.warn(`[connections] No se pudo obtener el perfil Kick @${cleanChannel}:`, lookupError?.message || lookupError);
-                return null;
-            });
+            if (!profile) {
+                const saved = getSavedConnectionProfile(socket.user.id, "kick");
+                profile = saved?.username ? { username: saved.username, avatarUrl: saved.avatarUrl || "", displayName: saved.username } : null;
+            }
 
             const savedBeforeAvatar = getSavedConnectionProfile(socket.user.id, "kick");
             const resolvedUsername = String(profile?.username || cleanChannel).replace(/^@+/, "").trim();
@@ -3332,7 +3333,14 @@ io.on("connection", (socket) => {
                 mode: "connecting", clearFeeds: false, stateReason: "connecting"
             }, socket.user.id);
 
-            const info = await kick.connect(resolvedUsername, scopedEventEmitter(socket.user.id), socket.user.id);
+            const info = await kick.connect(resolvedUsername, scopedEventEmitter(socket.user.id), socket.user.id, {
+                channelId: Number(request.channelId || 0),
+                chatroomId: Number(request.chatroomId || 0),
+                username: String(profile?.username || resolvedUsername),
+                displayName: String(profile?.displayName || resolvedUsername),
+                avatarUrl: String(profile?.avatarUrl || avatarUrl || ""),
+                isLive: Boolean(profile?.isLive),
+            });
             const finalAvatar = String(info?.avatarUrl || avatarUrl || "");
             saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar });
             emitAccountState("kick", {
