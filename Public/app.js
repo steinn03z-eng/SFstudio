@@ -295,7 +295,7 @@
     const src = String(value || '').trim();
     if (!src) return false;
     if (/coin-logo\.png/i.test(src)) return false;
-    return /^https?:\/\//i.test(src) || /^\/profile-photo\//i.test(src);
+    return /^https?:\/\//i.test(src) || /^\/profile-photo\//i.test(src) || /^\/api\/kick-avatar(?:\?|$)/i.test(src);
   }
 
   async function resolveAvatar(platform, username) {
@@ -307,6 +307,10 @@
     const promise=(async()=>{
       if(String(platform).toLowerCase()==='kick'){
         const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
+        if(kickChannel){
+          const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}`;
+          try{ const pr=await fetch(proxy,{credentials:'same-origin',cache:'no-store',method:'HEAD'}); if(pr.ok) return proxy; }catch{}
+        }
         const kickUrls = [];
         if(kickChannel){
           kickUrls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);

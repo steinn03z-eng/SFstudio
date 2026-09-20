@@ -145,6 +145,12 @@ function resolveSender(data, preferred = []) {
   return { username, displayName, uniqueId, color, avatar, badges };
 }
 
+function kickAvatarProxyUrl(channel, username) {
+  const c = cleanChannel(channel);
+  const u = String(username || '').trim().replace(/^@+/, '').toLowerCase();
+  return c && u ? `/api/kick-avatar?username=${encodeURIComponent(u)}&channel=${encodeURIComponent(c)}` : '';
+}
+
 function timestampOf(data) {
   const candidate =
     data?.created_at ??
@@ -869,7 +875,7 @@ async function emitChat(client, payload) {
   // Avatar enrichment must never delay chat, TTS, music or points. Resolve it
   // asynchronously and send a small patch event so the dashboard/overlay can
   // replace the fallback avatar once Kick's profile endpoint answers.
-  if (!avatar && sender.username) {
+  if (sender.username) {
     void lookupKickUserAvatar(client.channelName, sender.username).then((avatarUrl) => {
       if (!avatarUrl) return;
       globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
@@ -883,9 +889,9 @@ async function emitChat(client, payload) {
         platform: "kick",
         username: sender.username,
         uniqueId: sender.uniqueId,
-        avatar: avatarUrl,
-        avatarUrl,
-        profilePictureUrl: avatarUrl,
+        avatar: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
+        avatarUrl: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
+        profilePictureUrl: kickAvatarProxyUrl(client.channelName, sender.username) || avatarUrl,
         messageId: enrichedPayload?.id || undefined,
       });
     }).catch(() => {});
@@ -928,6 +934,21 @@ function emitEvent(client, eventName, payload) {
 
   const normalized = normalizeEvent(payload, eventName);
   globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(normalized);
+  if (normalized?.platform === 'kick' && normalized?.username) {
+    const proxy = kickAvatarProxyUrl(client.channelName, normalized.username);
+    if (proxy && (!normalized.avatar || String(normalized.avatar).includes('default-avatar') || String(normalized.avatar).includes('default-profile-pictures'))) {
+      normalized.avatar = normalized.avatarUrl = normalized.profilePictureUrl = proxy;
+    }
+    void lookupKickUserAvatar(client.channelName, normalized.username).then((avatarUrl) => {
+      if (!avatarUrl) return;
+      const proxyUrl = kickAvatarProxyUrl(client.channelName, normalized.username) || avatarUrl;
+      emitScoped(client.io, client.ownerId, 'kickAvatarUpdate', {
+        platform:'kick', username:normalized.username, uniqueId:normalized.uniqueId,
+        avatar:proxyUrl, avatarUrl:proxyUrl, profilePictureUrl:proxyUrl,
+        eventId:normalized.eventId || undefined,
+      });
+    }).catch(()=>{});
+  }
   if (normalized?.activityEligible === false) {
     // Aggregate channel counters are handled as stats, never as fake user activity.
     emitStats(client);
@@ -983,7 +1004,12 @@ async function handleFrame(client, raw) {
   if (!eventName) return;
 
   if (eventName === 'pusher:ping') { sendPusherPong(client); return; }
-  if (eventName === 'pusher:pong' || eventName === 'pusher:connection_established') return;
+  if (
+    eventName === 'pusher:pong' ||
+    eventName === 'pusher:connection_established' ||
+    eventName === 'pusher:subscription_succeeded' ||
+    eventName.startsWith('pusher_internal:')
+  ) return;
   if (eventName === 'pusher:error') {
     const message = typeof data === 'object' ? JSON.stringify(data) : String(data || '');
     emitSystem(client, 'Kick devolvió un error de transporte.', { detail: message.slice(0, 400) });

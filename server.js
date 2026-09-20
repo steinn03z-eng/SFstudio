@@ -1691,6 +1691,32 @@ app.get("/api/moderators/lookup", requireUser, async (req, res) => {
 });
 
 
+function isKickDefaultAvatarUrl(value) {
+    const url = String(value || '').toLowerCase();
+    return url.includes('default-profile-pictures') || /default-avatar[-_].*\.(?:webp|png|jpg|jpeg)/i.test(url);
+}
+
+function extractKickProfileImageFromHtml(html) {
+    const text = String(html || '')
+        .replace(/\\\\//g, '/')
+        .replace(/\u002F/gi, '/')
+        .replace(/\u0026/gi, '&');
+    const patterns = [
+        /https?:\/\/(?:www\.)?files\.kick\.com\/images\/user\/\d+\/profile_image\/[^\"'\s<]+/gi,
+        /https?:\/\/(?:www\.)?d2egosedh0nm8l\.cloudfront\.net\/images\/user\/\d+\/profile_image\/[^\"'\s<]+/gi,
+        /\"profilepic\"\s*:\s*\"([^\"]+)\"/gi,
+        /\"profile_picture\"\s*:\s*\"([^\"]+)\"/gi,
+        /property=[\"']og:image(?:secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']/gi,
+    ];
+    for (const re of patterns) {
+        const match = re.exec(text);
+        if (!match) continue;
+        const candidate = String(match[1] || match[0] || '').replace(/\\\\//g, '/');
+        if (/^https?:\/\//i.test(candidate) && /profile_image|og:image/i.test(candidate)) return candidate;
+    }
+    return '';
+}
+
 async function resolveKickUserAvatarViaCurl(username, channelName = "") {
     const clean = cleanUser(username);
     const channel = cleanUser(channelName);
@@ -1703,6 +1729,31 @@ async function resolveKickUserAvatarViaCurl(username, channelName = "") {
         `https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,
         `https://kick.com/api/v2/channels/users/${encodeURIComponent(clean)}`,
     );
+    // Kick's public profile page embeds the real profile image URL even when the
+    // realtime chat event only exposes a default-avatar URL or no image field.
+    const profilePages = [
+        `https://kick.com/${encodeURIComponent(clean)}`,
+        `https://www.kick.com/${encodeURIComponent(clean)}`,
+    ];
+    for (const url of profilePages) {
+        try {
+            const child = spawn(process.platform === 'win32' ? 'curl.exe' : 'curl', [
+                '--silent','--show-error','--location','--compressed','--http1.1',
+                '--max-time','6',
+                '--user-agent','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36',
+                '--header','accept:text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                '--header','referer:https://kick.com/',
+                url,
+            ],{stdio:['ignore','pipe','pipe'],windowsHide:true});
+            let out='';
+            child.stdout.on('data',d=>{out+=d.toString();});
+            const code=await new Promise(resolve=>child.on('close',resolve));
+            if(code !== 0 || !out) continue;
+            const avatar = extractKickProfileImageFromHtml(out);
+            if (/^https?:\/\//i.test(avatar) && !isKickDefaultAvatarUrl(avatar)) return avatar;
+        } catch {}
+    }
+
     for (const url of urls) {
         try {
             const data = await new Promise((resolve, reject) => {
@@ -1731,7 +1782,7 @@ async function resolveKickUserAvatarViaCurl(username, channelName = "") {
             ].filter(Boolean);
             for (const profile of candidates) {
                 const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||profile?.profile_thumb||profile?.profile_thumb_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
-                if(/^https?:\/\//i.test(avatar)) return avatar;
+                if(/^https?:\/\//i.test(avatar) && !isKickDefaultAvatarUrl(avatar)) return avatar;
             }
         } catch {}
     }
@@ -1784,6 +1835,55 @@ app.get("/api/avatar", async (req, res) => {
         source: avatarUrl ? source : "none",
     });
 });
+
+// Public, read-only Kick avatar proxy for chatters. The browser/OBS loads the
+// image from StreamFusion itself, avoiding CDN hotlink/CORS differences.
+app.get("/api/kick-avatar", async (req, res) => {
+    const username = cleanUser(req.query.username);
+    const channel = cleanUser(req.query.channel);
+    if (!username) return res.status(400).end();
+    try {
+        let avatarUrl = await resolveKickUserAvatarViaCurl(username, channel);
+        if (!avatarUrl) return res.status(404).end();
+        const parsed = new URL(avatarUrl);
+        const allowed = new Set([
+            'files.kick.com',
+            'www.files.kick.com',
+            'd2egosedh0nm8l.cloudfront.net',
+        ]);
+        if (!allowed.has(parsed.hostname.toLowerCase())) return res.status(403).end();
+
+        const curl = process.platform === 'win32' ? 'curl.exe' : 'curl';
+        const args = [
+            '--silent','--show-error','--location','--compressed','--http1.1',
+            '--max-time','8',
+            '--user-agent',USER_AGENT,
+            '--header','accept:image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+            '--header','referer:https://kick.com/',
+            avatarUrl,
+        ];
+        const image = await new Promise((resolve, reject) => {
+            const child = spawn(curl, args, { stdio:['ignore','pipe','pipe'], windowsHide:true });
+            const chunks=[]; let errorText='';
+            child.stdout.on('data', d=>chunks.push(Buffer.from(d)));
+            child.stderr.on('data', d=>{ errorText += d.toString(); });
+            child.on('error', reject);
+            child.on('close', code => {
+                if (code !== 0 || !chunks.length) return reject(new Error(errorText || `curl exit ${code}`));
+                resolve(Buffer.concat(chunks));
+            });
+        });
+        const ext=String(path.extname(parsed.pathname)).toLowerCase();
+        const contentType = ext === '.png' ? 'image/png' : ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' : ext === '.avif' ? 'image/avif' : 'image/webp';
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'public, max-age=86400, stale-while-revalidate=604800');
+        return res.end(image);
+    } catch (error) {
+        console.warn('[Kick] avatar proxy failed:', error?.message || error);
+        return res.status(404).end();
+    }
+});
+
 
 
 async function fishFetchJson(pathname, { query = {}, method = "GET", body = null } = {}) {

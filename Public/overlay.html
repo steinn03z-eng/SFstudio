@@ -6931,6 +6931,13 @@ function currentViewSettingsKey(){
         const kickChannel = String(kickSession.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
         const urls=[];
         if(kickChannel){
+          try{
+            const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}`;
+            const pr=await fetch(proxy,{credentials:'same-origin',cache:'no-store',method:'HEAD'});
+            if(pr.ok){ overlayKickAvatarCache.set(clean,proxy); return proxy; }
+          }catch{}
+        }
+        if(kickChannel){
           urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
           urls.push(`https://kick.com/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
         }
@@ -6957,7 +6964,10 @@ function currentViewSettingsKey(){
     }
     function enrichOverlayAvatar(item){
       const platform=String(item?.platform||'').toLowerCase();
-      if(platform!=='kick' || avatarForItem(item)) return;
+      if(platform!=='kick') return;
+      const currentAvatar = avatarForItem(item);
+      const currentText = String(currentAvatar || '');
+      if(currentAvatar && !/default-profile-pictures|default-avatar[-_]/i.test(currentText)) return;
       const username=item?.username||item?.uniqueId||item?.user||item?.displayName||'';
       if(!username) return;
       resolveOverlayKickAvatar(username).then((url)=>{
