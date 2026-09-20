@@ -29,7 +29,7 @@ import * as music from "./services/music.js";
 
 globalThis.__STREAMFUSION_ROULETTE_HOOK__ = roulette;
 
-globalThis.__STREAMFUSION_POINTS_HOOK__ = (ownerId, payload) => points.processLivePayload(ownerId, payload);
+globalThis.__STREAMFUSION_POINTS_HOOK__ = (ownerId, payload) => { globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(payload); return points.processLivePayload(ownerId, payload); };
 globalThis.__STREAMFUSION_MUSIC_HOOK__ = (ownerId, payload) => music.processChat(ownerId, payload, io);
 
 globalThis.__STREAMFUSION_LIVE_END_HOOK__ = (ownerId, platform) => { const id=String(ownerId||"").trim(); const p=normalizePlatform(platform); if(id){ liveSession.end(id,p); clearLiveHistory(id); io.to(`user:${id}`).emit("liveEnded", {platform:p}); } };
@@ -54,6 +54,20 @@ function getUserAccountState(userId, platform) {
     return { ...(accountStateDefaults[key] || {}), ...(current[key] || {}) };
 }
 
+const kickAvatarCache = new Map();
+globalThis.__STREAMFUSION_KICK_AVATAR_CACHE__ = kickAvatarCache;
+function rememberKickAvatar(payload = {}) {
+    if (String(payload?.platform || '').toLowerCase() !== 'kick') return;
+    const username = cleanUser(payload?.username || payload?.uniqueId || '');
+    const avatarUrl = String(payload?.avatar || payload?.avatarUrl || payload?.profilePictureUrl || '').trim();
+    if (!username || !/^https?:\/\//i.test(avatarUrl)) return;
+    kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
+    if (kickAvatarCache.size > 5000) {
+        const first = kickAvatarCache.keys().next().value;
+        kickAvatarCache.delete(first);
+    }
+}
+
 const voiceListPresence = new Map();
 function voiceListPresencePayload(userId) { const connections = Number(voiceListPresence.get(String(userId)) || 0); return { online: connections > 0, connections }; }
 function emitVoiceListPresence(userId) { if (userId) io.to(`user:${userId}`).emit("voiceListPresence", voiceListPresencePayload(userId)); }
@@ -76,6 +90,8 @@ function emitAccountState(platform, overrides = {}, ownerId = "") {
 
 const app = express();
 const server = http.createServer(app);
+
+globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__ = rememberKickAvatar;
 
 const io = new Server(server, {
     cors: {
@@ -1659,12 +1675,19 @@ app.get("/api/avatar", async (req, res) => {
         avatarUrl = await resolveTiktokAvatar(username);
         source = avatarUrl ? "tiktok" : "fallback";
     } else if (platform === "kick") {
-        try {
-            const data = await kick.getChannelInfo(username);
-            const user = data?.user || {};
-            avatarUrl = String(user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || "").trim();
-        } catch {}
-        source = avatarUrl ? "kick" : "fallback";
+        const cached = kickAvatarCache.get(username.toLowerCase());
+        if (cached?.avatarUrl && Date.now() - Number(cached.updatedAt || 0) < 24 * 60 * 60 * 1000) {
+            avatarUrl = cached.avatarUrl;
+            source = "kick-cache";
+        } else {
+            try {
+                const data = await kick.getChannelInfo(username);
+                const user = data?.user || {};
+                avatarUrl = String(user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || "").trim();
+                if (avatarUrl) kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
+            } catch {}
+            source = avatarUrl ? "kick" : "fallback";
+        }
     }
 
     res.json({
@@ -3331,68 +3354,6 @@ io.on("connection", (socket) => {
             socket.emit("system", { message: err?.message || "Error al conectar Kick." });
         }
     });
-    socket.on("connectKickResolved", async (payload) => {
-        const cleanChannel = kick.cleanChannel(payload?.slug || payload?.channel || "");
-        const provided = payload?.channelInfo && typeof payload.channelInfo === "object" ? payload.channelInfo : null;
-        let profile = provided;
-        try {
-            if (!socket.user) throw new Error("Sesión requerida para conectar Kick.");
-            if (!cleanChannel) throw new Error("Escribe un canal de Kick, por ejemplo @nombre.");
-            if (!provided) throw new Error("No se recibió la información pública del canal de Kick.");
-
-            const channelId = Number(provided?.id || provided?.channel_id || provided?.user_id || 0);
-            const chatroomId = Number(provided?.chatroom?.id || provided?.chatroom_id || 0);
-            if (!channelId || !chatroomId) {
-                throw new Error("Kick no devolvió un ID de canal y chatroom válidos.");
-            }
-
-            emitAccountState("kick", {
-                username: cleanChannel, connected: false, live: false, mode: "connecting",
-                clearFeeds: false, stateReason: "connecting"
-            }, socket.user.id);
-
-            const savedBeforeAvatar = getSavedConnectionProfile(socket.user.id, "kick");
-            const user = provided?.user || provided?.channel?.user || provided?.profile || {};
-            const resolvedUsername = String(user?.username || user?.slug || provided?.slug || cleanChannel).replace(/^@+/, "").trim();
-            const savedName = String(savedBeforeAvatar.username || "").replace(/^@+/, "").toLowerCase();
-            const avatarUrl = String(
-                user?.profile_pic || user?.profile_picture || user?.avatar ||
-                provided?.profile_pic || provided?.avatar_url ||
-                (savedName === resolvedUsername.toLowerCase() ? savedBeforeAvatar.avatarUrl || "" : "")
-            ).trim();
-
-            saveConnectionProfile(socket.user.id, "kick", { username: resolvedUsername, avatarUrl });
-            if (avatarUrl) await syncConnectedProfilePhoto(socket.user.id, "kick", resolvedUsername, avatarUrl);
-
-            const info = await kick.connectResolved(resolvedUsername, {
-                ...provided,
-                id: channelId,
-                chatroom: { ...(provided.chatroom || {}), id: chatroomId },
-                realtimeUrl: String(provided?.realtimeUrl || provided?.realtime_url || '').trim(),
-            }, scopedEventEmitter(socket.user.id), socket.user.id);
-
-            const finalAvatar = String(info?.avatarUrl || avatarUrl || "");
-            saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar });
-            emitAccountState("kick", {
-                username: String(info?.username || resolvedUsername), avatarUrl: finalAvatar,
-                connected: true, live: Boolean(info?.isLive), mode: info?.isLive ? "live" : "waiting",
-                clearFeeds: false, stateReason: "connected"
-            }, socket.user.id);
-            liveSession.begin(socket.user.id, "kick");
-            socket.emit("system", { message: `Kick conectado a @${String(info?.username || resolvedUsername)}.` });
-        } catch (err) {
-            try { kick.disconnect(socket.user?.id || ""); } catch {}
-            globalThis.__STREAMFUSION_LIVE_END_HOOK__?.(socket.user?.id || "", "kick");
-            const savedProfile = getSavedConnectionProfile(socket.user?.id || "", "kick");
-            emitAccountState("kick", {
-                username: savedProfile.username || cleanChannel,
-                avatarUrl: savedProfile.avatarUrl || String(profile?.avatarUrl || ""),
-                connected: false, live: false, mode: "saved", stateReason: "error"
-            }, socket.user?.id || "");
-            socket.emit("system", { message: err?.message || "Error al conectar Kick." });
-        }
-    });
-
 
     socket.on("disconnectTikTok", async () => {
         try {
