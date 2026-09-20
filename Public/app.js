@@ -25,7 +25,7 @@
     announcements:[],
     musicWidget:{enabled:true,commandPrefix:'!',requestCommand:'musica',pointCost:100,maxDurationSeconds:300,maxQueue:10,showNext:true,showProgress:true,showRequester:true,allowModeratorCommands:false,adminCommandPrefixes:{pause:'!',stop:'!',skip:'!',repeat:'!',volume:'!'},adminCommands:{pause:'pausa',stop:'detener',skip:'siguiente',repeat:'repetir',volume:'vol'},style:{scale:1,accent:'#8b5cf6',accent2:'#ec4899',progressMode:'gradient2',progressColor:'#8b5cf6',progressColor2:'#ec4899',progressColor3:'#22d3ee',textColor:'#ffffff',secondaryTextColor:'#b9b9c8',titleFont:'Inter',artistFont:'Inter',titleSize:28,artistSize:15,vinylSize:170,design:'vinyl-glow',showVinyl:true}},
     tiktokModerators:[], twitchModerators:[], kickModerators:[],
-    personalization:{theme:'dark',font:'inter',animation:'slide',chatLayout:'vertical',chatDirection:'down',chatTheme:'cloud',chatAdjustMessages:false,avatarFrame:'platform',bubbleFrame:'platform',avatarSize:'md',nameSize:'md',nameWeight:'800',showPlatformPill:true,showTimestamps:true,showActivity:true,bubbleRadius:12,avatarBorderWidth:2,messagePadding:7,rowGap:5,tiktokNameColor:'white',twitchNameColor:'real',chatOverlayCardSide:'center',badgeStyle:'emoji',tiktokNameColor:'white',twitchNameColor:'real',messageEffect:'shadow',nameEffect:'shadow',textColor:'auto',showBadges:true,showEmotes:true,highlightSupporters:true,supporterHighlightStyle:'gold',eventStyle:'chat',eventSimulationMode:'single',giftStyle:'chat',giftSimulationMode:'single',highlightEventUsername:true,highlightLikes:true,highlightFollows:true,highlightJoins:true,highlightShares:true,highlightSystem:true,highlightFanclub:true,highlightSuperfan:true,highlightGifts:true,highlightSubs:true,highlightBits:true,highlightRaids:true,autoClearChat:false,clearChatSeconds:30,eventsLayout:'vertical',eventsDirection:'down',eventsMode:'slide',eventsPanelSize:'normal',eventsOverlayShape:'normal',eventsOverlayCardSide:'center',eventsCardFrame:true,giftsLayout:'vertical',giftsDirection:'down',giftsMode:'slide',giftsPanelSize:'normal',giftsOverlayShape:'normal',giftsOverlayCardSide:'center',giftsCardFrame:true,giftHighlightStyle:'gold',overlayEventHighlightStyle:'platform',overlayGiftImageSize:'md',overlayGiftComposition:'normal',overlayNameColorMode:'platform',overlayNameColor:'#ffffff',overlayEventFont:'inherit',overlayGiftFont:'inherit',overlayGiftDisplayMode:'full',overlayGiftCompositionMode:'vertical-centered',eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true,superfan:true}},
+    personalization:{theme:'dark',font:'inter',animation:'slide',chatLayout:'vertical',chatDirection:'down',chatTheme:'cloud',chatAdjustMessages:false,avatarFrame:'platform',bubbleFrame:'platform',avatarSize:'md',nameSize:'md',nameWeight:'800',showPlatformPill:true,showTimestamps:true,showActivity:true,bubbleRadius:12,avatarBorderWidth:2,messagePadding:7,rowGap:5,tiktokNameColor:'white',twitchNameColor:'real',kickNameColor:'real',chatOverlayCardSide:'center',badgeStyle:'emoji',tiktokNameColor:'white',twitchNameColor:'real',messageEffect:'shadow',nameEffect:'shadow',textColor:'auto',showBadges:true,showEmotes:true,highlightSupporters:true,supporterHighlightStyle:'gold',eventStyle:'chat',eventSimulationMode:'single',giftStyle:'chat',giftSimulationMode:'single',highlightEventUsername:true,highlightLikes:true,highlightFollows:true,highlightJoins:true,highlightShares:true,highlightSystem:true,highlightFanclub:true,highlightSuperfan:true,highlightGifts:true,highlightSubs:true,highlightBits:true,highlightRaids:true,autoClearChat:false,clearChatSeconds:30,eventsLayout:'vertical',eventsDirection:'down',eventsMode:'slide',eventsPanelSize:'normal',eventsOverlayShape:'normal',eventsOverlayCardSide:'center',eventsCardFrame:true,giftsLayout:'vertical',giftsDirection:'down',giftsMode:'slide',giftsPanelSize:'normal',giftsOverlayShape:'normal',giftsOverlayCardSide:'center',giftsCardFrame:true,giftHighlightStyle:'gold',overlayEventHighlightStyle:'platform',overlayGiftImageSize:'md',overlayGiftComposition:'normal',overlayNameColorMode:'platform',overlayNameColor:'#ffffff',overlayEventFont:'inherit',overlayGiftFont:'inherit',overlayGiftDisplayMode:'full',overlayGiftCompositionMode:'vertical-centered',eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true,superfan:true}},
     appearance:{theme:'dark',panelColor:'#131625',accent:'#7c5cff',sidebarColor:'#101321',pageBackground:'#0b0d18',backgroundImage:'',style:'base'},
     profilePhoto:{source:'none',url:'',reference:'',label:'',updatedAt:0},
     connectionProfiles:{tiktok:{username:'',avatarUrl:''},twitch:{username:'',avatarUrl:''},kick:{username:'',avatarUrl:''}},
@@ -458,6 +458,11 @@
       if (p.twitchNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(p.nameCustomColor || '')) return p.nameCustomColor;
       return '#c7a2ff';
     }
+    if (platform === 'kick') {
+      if (p.kickNameColor === 'white') return '#ffffff';
+      if (p.kickNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(p.nameCustomColor || '')) return p.nameCustomColor;
+      return '#8cff68';
+    }
     if (p.tiktokNameColor === 'real') return '#fe6f92';
     if (p.tiktokNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(p.nameCustomColor || '')) return p.nameCustomColor;
     return '#ffffff';
@@ -560,7 +565,31 @@
 
   function normalizeIncomingActivity(item) {
     const entry = { ...(item || {}) };
-    const type = String(entry.type || '').trim().toLowerCase();
+    const nested = entry?.data && typeof entry.data === 'object' ? entry.data : {};
+    const resolvedType = String(entry.type || entry.eventType || entry.event || '').trim().toLowerCase();
+    const type = resolvedType.includes('giftedsubscriptions') ? 'subscription-gift'
+      : resolvedType.includes('subscription') && resolvedType.includes('gift') ? 'subscription-gift'
+      : resolvedType.includes('subscription') ? 'sub'
+      : resolvedType.includes('follow') ? 'follow'
+      : resolvedType.includes('gift') ? 'gift'
+      : resolvedType.includes('host') ? 'host'
+      : resolvedType.includes('raid') ? 'raid'
+      : resolvedType.includes('bits') ? 'bits'
+      : resolvedType;
+    if (!entry.username && !entry.displayName && !entry.user && !entry.uniqueId) {
+      const subject = type === 'follow' ? nested.follower : type === 'sub' || type === 'subscription' ? nested.subscriber : type === 'subscription-gift' ? nested.gifter : type === 'gift' ? (nested.sender || nested.gifter) : (nested.sender || nested.user);
+      if (subject && typeof subject === 'object') {
+        entry.username = subject.username || subject.slug || '';
+        entry.displayName = subject.display_name || subject.name || entry.username;
+        entry.uniqueId = String(subject.user_id || subject.id || entry.username || '');
+        entry.avatar = subject.profile_picture || subject.profile_pic || subject.avatar || entry.avatar || '';
+      }
+    }
+    const giftObj = nested.gift && typeof nested.gift === 'object' ? nested.gift : entry.gift && typeof entry.gift === 'object' ? entry.gift : null;
+    if (!entry.gift && giftObj) entry.gift = giftObj;
+    if (!entry.giftName && giftObj?.name) entry.giftName = giftObj.name;
+    if (entry.amount == null && (nested.amount != null || giftObj?.amount != null)) entry.amount = nested.amount ?? giftObj.amount;
+    if (!entry.message && (nested.message || nested.content)) entry.message = nested.message || nested.content;
     const allowed = new Set(['like','follow','share','join','gift','sub','subscription','resub','bits','raid','host','superfan','fanclub','question','system']);
     if (!allowed.has(type)) return entry;
     entry.type = type;
@@ -642,7 +671,7 @@
     if(isGift){
       const giftObj=item.gift&&typeof item.gift==='object'?item.gift:null;
       const giftImage=item.giftImage||giftObj?.image||giftObj?.url||giftObj?.imageUrl||'';
-      const rawGiftName=(typeof item.gift==='string'?item.gift:'')||item.giftName||giftObj?.name||giftObj?.title||'Regalo';
+      const rawGiftName=(typeof item.gift==='string'?item.gift:'')||item.giftName||giftObj?.name||giftObj?.title||(String(item?.type||'').toLowerCase()==='sub'?'Suscripción':String(item?.type||'').toLowerCase()==='subscription-gift'?'Suscripciones regaladas':'Regalo');
       const giftName=giftDisplayName({...(giftObj||{}),giftName:rawGiftName,key:giftObj?.key||item.giftKey});
       const amount=item.amount==null||item.amount===''?1:item.amount;
       const display=p.overlayGiftDisplayMode||'full';
@@ -947,8 +976,8 @@
     const activityDirection=settings.personalization?.eventsDirection || 'down';
     const initialActivity=orderedItems(activity,activityDirection);
     $('view').innerHTML=`<div class="hero"><div><div class="dashboard-connection-status ${status.dot}"><span class="status-dot"></span><strong>${esc(status.label)}</strong><span class="status-glitch" aria-hidden="true"></span></div><h2>Todo lo que pasa en tu live,<br><em>en un solo lugar.</em></h2><p>Tu conexión permanece activa aunque cambies de sección o abras otras pestañas. El chat, eventos y regalos siguen entrando en segundo plano.</p></div></div>
-      <div class="dashboard-grid"><section class="card feed"><header><div><p class="eyebrow">EN VIVO</p><h3>Chat unificado</h3></div><div class="header-actions"><select id="dashChatFilter"><option value="all">Todos</option><option value="tiktok">TikTok</option><option value="twitch">Twitch</option></select></div></header><div id="dashChat" class="chat-feed ${chatDirection==='up'?'direction-up':''}">${chat.length?chat.map(x=>messageRow(x)).join(''):'<div class="empty">No hay comentarios para este filtro todavía.</div>'}</div></section>
-      <section class="card activity activity-panel"><header><div><p class="eyebrow">ACTIVIDAD</p><h3>Eventos & regalos</h3></div><div class="activity-toolbar"><select id="dashActivityFilter"><option value="all">Todos</option><option value="tiktok">TikTok</option><option value="twitch">Twitch</option></select><button id="dashActivitySettings" class="icon-btn" type="button" title="Ajustes de actividad">⚙</button></div></header><div id="dashActivity" class="event-feed ${activityDirection==='up'?'direction-up':''}" data-direction="${activityDirection}">${initialActivity.length?initialActivity.map(renderActivityItem).join(''):'<div class="empty">Aún no hay actividad.</div>'}</div><div id="dashActivityPopup" class="activity-settings-layer" hidden><div class="activity-settings-backdrop" data-close-activity-settings></div><div class="activity-settings-popover" role="dialog" aria-modal="true"><div class="popover-head"><div><p class="eyebrow">AJUSTES DE ACTIVIDAD</p><strong>Qué se mostrará</strong></div><button id="closeActivitySettings" class="mini-close" type="button" aria-label="Cerrar">×</button></div><p class="muted popover-description">Activa o desactiva cada tipo de actividad.</p><div class="activity-settings-grid">${['likes','bits','follows','joins','shares','subscriptions','raids','hosts','gifts','superfan','system'].map(k=>`<label><input type="checkbox" data-activity-visibility="${k}" ${(settings.personalization?.eventVisibility?.[k]??true)!==false?'checked':''}><span>${({likes:'Like',bits:'💎',follows:'Seguidores',joins:'Se unió al directo',shares:'Compartió',subscriptions:'Suscripciones',raids:'Raids',hosts:'Hosts',gifts:'Envió regalo',superfan:'Superfan',system:'Otros eventos'})[k]}</span><em>${({likes:'❤️',bits:'💎',follows:'👤',joins:'👻',shares:'🗣️',subscriptions:'⭐',raids:'🚀',hosts:'📣',gifts:'🎁',superfan:'🌟',system:'•'})[k]}</em></label>`).join('')}</div></div></div></section></div>`;
+      <div class="dashboard-grid"><section class="card feed"><header><div><p class="eyebrow">EN VIVO</p><h3>Chat unificado</h3></div><div class="header-actions"><select id="dashChatFilter"><option value="all">Todos</option><option value="tiktok">TikTok</option><option value="twitch">Twitch</option><option value="kick">Kick</option></select></div></header><div id="dashChat" class="chat-feed ${chatDirection==='up'?'direction-up':''}">${chat.length?chat.map(x=>messageRow(x)).join(''):'<div class="empty">No hay comentarios para este filtro todavía.</div>'}</div></section>
+      <section class="card activity activity-panel"><header><div><p class="eyebrow">ACTIVIDAD</p><h3>Eventos & regalos</h3></div><div class="activity-toolbar"><select id="dashActivityFilter"><option value="all">Todos</option><option value="tiktok">TikTok</option><option value="twitch">Twitch</option><option value="kick">Kick</option></select><button id="dashActivitySettings" class="icon-btn" type="button" title="Ajustes de actividad">⚙</button></div></header><div id="dashActivity" class="event-feed ${activityDirection==='up'?'direction-up':''}" data-direction="${activityDirection}">${initialActivity.length?initialActivity.map(renderActivityItem).join(''):'<div class="empty">Aún no hay actividad.</div>'}</div><div id="dashActivityPopup" class="activity-settings-layer" hidden><div class="activity-settings-backdrop" data-close-activity-settings></div><div class="activity-settings-popover" role="dialog" aria-modal="true"><div class="popover-head"><div><p class="eyebrow">AJUSTES DE ACTIVIDAD</p><strong>Qué se mostrará</strong></div><button id="closeActivitySettings" class="mini-close" type="button" aria-label="Cerrar">×</button></div><p class="muted popover-description">Activa o desactiva cada tipo de actividad.</p><div class="activity-settings-grid">${['likes','bits','follows','joins','shares','subscriptions','raids','hosts','gifts','superfan','system'].map(k=>`<label><input type="checkbox" data-activity-visibility="${k}" ${(settings.personalization?.eventVisibility?.[k]??true)!==false?'checked':''}><span>${({likes:'Like',bits:'💎',follows:'Seguidores',joins:'Se unió al directo',shares:'Compartió',subscriptions:'Suscripciones',raids:'Raids',hosts:'Hosts',gifts:'Envió regalo',superfan:'Superfan',system:'Otros eventos'})[k]}</span><em>${({likes:'❤️',bits:'💎',follows:'👤',joins:'👻',shares:'🗣️',subscriptions:'⭐',raids:'🚀',hosts:'📣',gifts:'🎁',superfan:'🌟',system:'•'})[k]}</em></label>`).join('')}</div></div></div></section></div>`;
     const cf=$('dashChatFilter');cf.value=settings.filters.chat||'all';cf.onchange=()=>{settings.filters.chat=cf.value;renderDashboard(true);};
     const af=$('dashActivityFilter');af.value=settings.filters.activity||'all';af.onchange=()=>{settings.filters.activity=af.value;updateDashboardFeeds();};
     const popup=$('dashActivityPopup'); const toggleActivitySettings=(open)=>{if(!popup)return;popup.hidden=!open;document.body.classList.toggle('activity-settings-open',open);};
@@ -1021,7 +1050,22 @@
           lastError=new Error('Kick no devolvió el chatroom de ese canal.');
           continue;
         }
-        return {...info,id:channelId||info?.id,chatroom:{...(info?.chatroom||{}),id:chatroomId},slug:info?.slug||slug};
+        let realtimeUrl = '';
+        try {
+          const realtimeResponse = await fetch(`https://web.kick.com/api/v1/realtime/channels/${encodeURIComponent(channelId || info?.id)}/chat/connection`, {
+            method:'POST', mode:'cors', credentials:'include', cache:'no-store',
+            headers:{'Accept':'application/json, text/plain, */*','Content-Type':'application/json'}, body:'{}'
+          });
+          const realtimeRaw = await realtimeResponse.text();
+          let realtimeData=null;
+          try { realtimeData=realtimeRaw?JSON.parse(realtimeRaw):null; } catch {}
+          if(realtimeResponse.ok){
+            const connections=Array.isArray(realtimeData?.data?.connections)?realtimeData.data.connections:[];
+            const selected=connections.find(x=>String(x?.provider||'').toLowerCase()==='centrifugo')||connections[0];
+            realtimeUrl=String(selected?.credentials?.url||'').trim();
+          }
+        } catch {}
+        return {...info,id:channelId||info?.id,chatroom:{...(info?.chatroom||{}),id:chatroomId},slug:info?.slug||slug,realtimeUrl};
       }catch(err){
         lastError=err instanceof Error?err:new Error(String(err||'Error al consultar Kick.'));
       }
@@ -1227,7 +1271,7 @@
     cBadges:['personalization','showBadges'], cActivity:['personalization','showActivity'], cAutoClear:['personalization','autoClearChat'],
     cClearSeconds:['personalization','clearChatSeconds'], cPlatformPill:['personalization','showPlatformPill'], cTimestamp:['personalization','showTimestamps'],
     cShowEmotes:['personalization','showEmotes'], cBubbleRadius:['personalization','bubbleRadius'], cAvatarBorder:['personalization','avatarBorderWidth'],
-    cMessagePadding:['personalization','messagePadding'], cRowGap:['personalization','rowGap'], cTikName:['personalization','tiktokNameColor'], cTwitchName:['personalization','twitchNameColor'],
+    cMessagePadding:['personalization','messagePadding'], cRowGap:['personalization','rowGap'], cTikName:['personalization','tiktokNameColor'], cTwitchName:['personalization','twitchNameColor'], cKickName:['personalization','kickNameColor'],
     // Eventos
     eLayout:['personalization','eventsLayout'], eDirection:['personalization','eventsDirection'], eMode:['personalization','eventsMode'],
     eSize:['personalization','eventsPanelSize'], eShape:['personalization','eventsOverlayShape'], eSide:['personalization','eventsOverlayCardSide'], eFrame:['personalization','eventsCardFrame'],
@@ -1296,6 +1340,7 @@
       ${ctl('Peso del nombre','cNameWeight','select',p.nameWeight,'<option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra Bold</option><option value="900">Black</option>')}
       ${ctl('Color nombre TikTok','cTikName','select',p.tiktokNameColor||'white','<option value="white">Blanco</option><option value="real">Rosa TikTok</option>')}
       ${ctl('Color nombre Twitch','cTwitchName','select',p.twitchNameColor||'real','<option value="real">Morado Twitch</option><option value="white">Blanco</option>')}
+      ${ctl('Color nombre Kick','cKickName','select',p.kickNameColor||'real','<option value="real">Verde Kick</option><option value="white">Blanco</option>')}
     </div>`;
     if (activeCustomizeSection==='message') return `<div class="custom-control-grid">
       ${ctl('Marco comentario','cBubble','select',p.bubbleFrame,'<option value="platform">Plataforma</option><option value="role">Rol</option><option value="none">Sin marco</option>')}
@@ -1307,7 +1352,7 @@
       ${ctl('Mostrar emotes','cShowEmotes','check',p.showEmotes !== false)}
     </div>`;
     if (activeCustomizeSection==='info') return `<div class="custom-control-grid">
-      ${ctl('Mostrar plataforma TT / TW','cPlatformPill','check',p.showPlatformPill !== false)}
+      ${ctl('Mostrar plataforma TT / TW / K','cPlatformPill','check',p.showPlatformPill !== false)}
       ${ctl('Mostrar hora','cTimestamp','check',p.showTimestamps !== false)}
       ${ctl('Mostrar actividad','cActivity','check',p.showActivity !== false)}
       ${ctl('Auto limpiar chat','cAutoClear','check',p.autoClearChat)}
@@ -1392,6 +1437,7 @@
         {key:'shares',platform:'tiktok',user:'PixelMajo',icon:'🗣️',type:'share',text:'compartió tu directo',timestamp:base+14000},
         {key:'joins',platform:'tiktok',user:'Maybe♡',icon:'👻',type:'join',text:'se unió al directo',timestamp:base+21000},
         {key:'follows',platform:'twitch',user:'JosueLopez',icon:'👤',type:'follow',text:'comenzó a seguirte en Twitch',timestamp:base+28000},
+        {key:'follows',platform:'kick',user:'KickViewer',icon:'👤',type:'follow',text:'comenzó a seguirte en Kick',timestamp:base+35000},
         {key:'raids',platform:'twitch',user:'RaidLeader',icon:'🚀',type:'raid',text:'hizo raid con 37 espectadores',timestamp:base+49000},
         {key:'hosts',platform:'twitch',user:'HostMaster',icon:'📣',type:'host',text:'hosteó el canal',timestamp:base+56000},
         {key:'system',platform:'twitch',user:'Nocturno',icon:'⛔',type:'ban',text:'fue baneado del canal',timestamp:base+63000},
@@ -1414,7 +1460,8 @@
         {platform:'tiktok',user:'LunaByte',gift:heart.name,displayNameEs:giftDisplayName(heart),giftKey:heart.key,giftImage:heart.image,amount:1,coins:heart.coins,timestamp:base},
         {platform:'tiktok',user:'SofiGG',gift:rose.name,displayNameEs:giftDisplayName(rose),giftKey:rose.key,giftImage:rose.image,amount:5,coins:rose.coins,timestamp:base+10000},
         {platform:'twitch',user:'BitMaster',gift:'Bits',giftName:'Bits',giftKey:'bits',giftEmoji:'💎',amount:100,bits:100,message:'envió 100 Bits',timestamp:base+20000,twitchGiftType:'bits'},
-        {platform:'twitch',user:'SubQueen',gift:'Suscripción de regalo',giftName:'Suscripción de regalo',giftKey:'subscriptiongift',giftEmoji:'⭐',amount:5,message:'regaló 5 suscripciones',timestamp:base+30000,twitchGiftType:'subscription-gift'}
+        {platform:'twitch',user:'SubQueen',gift:'Suscripción de regalo',giftName:'Suscripción de regalo',giftKey:'subscriptiongift',giftEmoji:'⭐',amount:5,message:'regaló 5 suscripciones',timestamp:base+30000,twitchGiftType:'subscription-gift'},
+        {platform:'kick',user:'KickDonor',gift:'Kicks',giftName:'Kicks',giftKey:'kicks',giftEmoji:'🎁',amount:100,message:'envió 100 Kicks',timestamp:base+40000}
       ];
     }
     return state.previewGiftSeeds;

@@ -7023,7 +7023,9 @@ function currentViewSettingsKey(){
       const textColor = resolveChatTextColor(settings.personal?.textColor || 'auto') || '#e4e8f0';
       const nameColor = platform === 'twitch'
         ? (settings.personal?.twitchNameColor === 'white' ? '#ffffff' : '#c7a2ff')
-        : (settings.personal?.tiktokNameColor === 'real' ? '#fe6f92' : '#ffffff');
+        : platform === 'kick'
+          ? (settings.personal?.kickNameColor === 'white' ? '#ffffff' : '#8cff68')
+          : (settings.personal?.tiktokNameColor === 'real' ? '#fe6f92' : '#ffffff');
       return `--row-accent:${accent};--item-accent:${accent};--name-color:${nameColor};--entry-text-color:${textColor};--chat-font:${fontFamily(settings.personal?.font || 'inter')}`;
     }
 
@@ -7063,6 +7065,10 @@ function currentViewSettingsKey(){
         if (pp.twitchNameColor === 'white') nameColor = '#ffffff';
         else if (pp.twitchNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
         else nameColor = '#c7a2ff';
+      } else if (platform === 'kick') {
+        if (pp.kickNameColor === 'white') nameColor = '#ffffff';
+        else if (pp.kickNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
+        else nameColor = '#8cff68';
       } else if (pp.tiktokNameColor === 'real') nameColor = '#fe6f92';
       else if (pp.tiktokNameColor === 'custom' && /^#[0-9a-f]{6}$/i.test(pp.nameCustomColor || '')) nameColor = pp.nameCustomColor;
       const textColor = pp.textColor === 'auto' || !pp.textColor ? '#e8ecf4' : pp.textColor;
@@ -7122,14 +7128,14 @@ function currentViewSettingsKey(){
       const roleBadges = pp.showBadges !== false ? badgeChips(item?.badges, platform) : '';
       const giftObj = item?.gift && typeof item.gift === 'object' ? item.gift : null;
       const giftImage = normalizeImageSource(item?.giftImage || giftObj?.image || giftObj?.url || giftObj?.imageUrl || '');
-      const rawGiftName = (typeof item?.gift === 'string' ? item.gift : '') || item?.giftName || giftObj?.name || giftObj?.title || 'Regalo';
+      const rawGiftName = (typeof item?.gift === 'string' ? item.gift : '') || item?.giftName || giftObj?.name || giftObj?.title || (String(item?.type||'').toLowerCase()==='sub' ? 'Suscripción' : String(item?.type||'').toLowerCase()==='subscription-gift' ? 'Suscripciones regaladas' : 'Regalo');
       const giftCatalog = lookupGiftCatalog(item?.giftKey || rawGiftName);
       const giftName = giftCatalog?.name || giftCatalog?.alt || rawGiftName;
       const amount = item?.amount == null || item?.amount === '' ? 1 : item.amount;
       const displayMode = String(pp.overlayGiftDisplayMode || 'full');
       const compositionMode = String(pp.overlayGiftCompositionMode || pp.overlayGiftComposition || 'vertical-centered');
       const imageSize = String(pp.overlayGiftImageSize || 'md');
-      const nameColor = pp.overlayNameColorMode === 'custom' ? String(pp.overlayNameColor || '#ffffff') : (platform === 'twitch' ? '#c7a2ff' : '#ff7396');
+      const nameColor = pp.overlayNameColorMode === 'custom' ? String(pp.overlayNameColor || '#ffffff') : (platform === 'twitch' ? '#c7a2ff' : platform === 'kick' ? '#8cff68' : '#ff7396');
       const amountStyle = pp.giftAmountStyle === 'muted' ? 'muted' : pp.giftAmountStyle === 'bold' ? 'bold' : 'accent';
       const icon = kind === 'gift' ? '<span>🎁</span>' : esc(item?.emoji || itemEmoji(item, 'event'));
       let body = '';
@@ -7542,14 +7548,44 @@ function currentViewSettingsKey(){
     function pushChat(data){ registerActivityBadges(data); rememberSupporter(data); rememberPersistentFrameProfile(data); const direction = settings.personal?.chatDirection || 'down'; rememberOverlayChatScroll(direction); const item = { ...data, platform: data?.platform || 'tiktok', uniqueId: data?.uniqueId || data?.username || data?.user || '', username: data?.username || data?.uniqueId || data?.user || '', user: data?.user || data?.displayName || data?.uniqueId || data?.username || 'Usuario', displayName: data?.displayName || data?.nickname || data?.user || data?.uniqueId || data?.username || 'Usuario', avatar: String(data?.avatar || data?.avatarUrl || data?.profilePictureUrl || ''), message: data?.message || '', badges: data?.badges || [], action: data?.action || 'Comentario', timestamp: data?.timestamp || Date.now(), id: data?.id || data?.messageId || data?.commentId || '' }; if(shouldSkipOverlayDuplicate('chat', item)) return; state.chat.push(item); if(state.chat.length > 240) state.chat.splice(0, state.chat.length - 240); state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds); render(); }
     function normalizeOverlayActivity(data, fallbackType='event'){
       const raw = data || {};
-      const type = String(raw.type || fallbackType || 'event').trim().toLowerCase();
-      const group = String(raw.group || (['gift','sub','subscription','resub','bits','raid','host'].includes(type) ? 'gift' : ['like','follow','share','join'].includes(type) ? 'event' : fallbackType)).trim().toLowerCase();
-      const uniqueId = normalizeUsername(raw.uniqueId || raw.username || raw.identityKey || (typeof raw.user === 'string' ? raw.user : raw.user?.uniqueId) || '');
-      const user = String(raw.user || raw.displayName || raw.nickname || uniqueId || 'Usuario').trim() || 'Usuario';
-      const avatar = String(raw.avatar || raw.avatarUrl || raw.profilePictureUrl || '').trim();
-      const action = raw.action || (type === 'share' ? 'Compartió' : type === 'follow' ? 'Follow' : type === 'like' ? 'Like' : type === 'join' ? 'Entrada' : type === 'gift' ? 'Regalo' : 'Evento');
-      return { ...raw, platform:String(raw.platform || 'tiktok').toLowerCase(), identityKey:normalizeUsername(raw.identityKey || uniqueId || user).toLowerCase(), uniqueId:uniqueId || user, username:raw.username || uniqueId || user, user, displayName:raw.displayName || user, nickname:raw.nickname || user, avatar, avatarUrl:avatar, profilePictureUrl:avatar, badges:raw.badges || [], type, group, action, emoji:raw.emoji || (type === 'share' ? '🗣️' : type === 'follow' ? '👤' : type === 'like' ? '❤️' : type === 'join' ? '👻' : raw.emoji || ''), timestamp:raw.timestamp || Date.now(), id:raw.id || raw.messageId || raw.eventId || raw.msgId || '' };
+      const nested = raw?.data && typeof raw.data === 'object' ? raw.data : {};
+      const rawEvent = String(raw.type || raw.eventType || raw.event || fallbackType || 'event').trim().toLowerCase();
+      const type = rawEvent.includes('giftedsubscriptions') ? 'subscription-gift'
+        : rawEvent.includes('subscription') && rawEvent.includes('gift') ? 'subscription-gift'
+        : rawEvent.includes('subscription') ? 'sub'
+        : rawEvent.includes('follow') ? 'follow'
+        : rawEvent.includes('gift') ? 'gift'
+        : rawEvent.includes('host') ? 'host'
+        : rawEvent.includes('raid') ? 'raid'
+        : rawEvent.includes('bits') ? 'bits'
+        : rawEvent;
+      const subject = type === 'follow' ? nested.follower : type === 'sub' ? nested.subscriber : type === 'subscription-gift' ? nested.gifter : type === 'gift' ? (nested.sender || nested.gifter) : (nested.sender || nested.user);
+      const safeSubject = subject && typeof subject === 'object' ? subject : {};
+      const uniqueId = normalizeUsername(raw.uniqueId || raw.username || raw.identityKey || (typeof raw.user === 'string' ? raw.user : raw.user?.uniqueId) || safeSubject.user_id || safeSubject.id || '');
+      const user = String(raw.user || raw.displayName || raw.nickname || raw.username || safeSubject.username || safeSubject.slug || uniqueId || 'Usuario').trim() || 'Usuario';
+      const avatar = String(raw.avatar || raw.avatarUrl || raw.profilePictureUrl || safeSubject.profile_picture || safeSubject.profile_pic || safeSubject.avatar || '').trim();
+      const giftObj = raw.gift && typeof raw.gift === 'object' ? raw.gift : (nested.gift && typeof nested.gift === 'object' ? nested.gift : null);
+      const giftName = String(raw.giftName || raw.gift_name || giftObj?.name || giftObj?.title || '').trim();
+      const amount = raw.amount != null ? raw.amount : (nested.amount != null ? nested.amount : giftObj?.amount);
+      const message = String(raw.message || raw.content || nested.message || nested.content || giftObj?.message || '').trim();
+      const group = String(raw.group || (['gift','sub','subscription','resub','subscription-gift','bits','raid','host'].includes(type) ? 'gift' : ['like','follow','share','join'].includes(type) ? 'event' : fallbackType)).trim().toLowerCase();
+      const action = raw.action || (type === 'share' ? 'Compartió' : type === 'follow' ? 'Follow' : type === 'like' ? 'Like' : type === 'join' ? 'Entrada' : type === 'gift' ? 'Regalo' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'sub' ? 'Suscripción' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : 'Evento');
+      return { ...raw,
+        platform:String(raw.platform || 'tiktok').toLowerCase(),
+        identityKey:normalizeUsername(raw.identityKey || uniqueId || user).toLowerCase(),
+        uniqueId:uniqueId || user,
+        username:raw.username || safeSubject.username || uniqueId || user,
+        user, displayName:raw.displayName || safeSubject.display_name || safeSubject.name || user,
+        nickname:raw.nickname || user, avatar, avatarUrl:avatar, profilePictureUrl:avatar,
+        badges:raw.badges || safeSubject.badges || safeSubject.identity?.badges || [],
+        type, group, action,
+        emoji:raw.emoji || (type === 'subscription-gift' || type === 'gift' ? '🎁' : type === 'share' ? '🗣️' : type === 'follow' ? '👤' : type === 'like' ? '❤️' : type === 'join' ? '👻' : type === 'sub' ? '⭐' : type === 'bits' ? '💎' : type === 'raid' ? '🚀' : type === 'host' ? '📣' : ''),
+        gift:giftObj || undefined, giftName:giftName || undefined, amount:amount == null ? raw.amount : amount,
+        message, timestamp:raw.timestamp || (nested.created_at ? new Date(nested.created_at).getTime() : giftObj?.created_at ? new Date(giftObj.created_at).getTime() : Date.now()),
+        id:raw.id || raw.messageId || raw.eventId || raw.msgId || nested.id || ''
+      };
     }
+
     function pushEvent(data){ const item = normalizeOverlayActivity(data,'event'); registerActivityBadges(item); rememberSupporter(item); rememberPersistentFrameProfile(item); if(String(item.type).toLowerCase() === 'gift' || String(item.group).toLowerCase() === 'gift'){ pushGift(item); return; } if(shouldSkipOverlayDuplicate('event', item)) return; registerVoiceTriggerForItem(item); state.events.unshift(item); if(state.events.length > 240) state.events.length = 240; state.events = clearByAge(state.events, settings.personal.eventsAutoClear, settings.personal.eventsClearSeconds); render(); }
     function pushGift(data){ registerActivityBadges(data); rememberSupporter(data); rememberPersistentFrameProfile(data); const item = normalizeOverlayActivity(data,'gift'); rememberPersistentFrameProfile(item); item.group='gift'; item.type=item.type==='share'?'gift':item.type; item.action=item.action||'Regalo'; if(shouldSkipOverlayDuplicate('gift', item)) return; registerVoiceTriggerForItem(item); state.gifts.push(item); if(state.gifts.length > 240) state.gifts.length = 240; state.gifts = clearByAge(state.gifts, settings.personal.giftsAutoClear, settings.personal.giftsClearSeconds); render(); }
 
@@ -7641,7 +7677,7 @@ function currentViewSettingsKey(){
       }
       updateOverlayStatus();
     });
-    socket.on('event', (data) => { const raw = data || {}; const type = String(raw?.type || '').toLowerCase(); const normalizedEvent = { ...raw, platform: String(raw?.platform || 'tiktok').toLowerCase(), type, displayName: raw?.displayName || raw?.nickname || raw?.user || raw?.username || raw?.uniqueId || 'Usuario', action: raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : 'Evento') }; registerVoiceTriggerForItem(normalizedEvent); if(type === 'gift' || type === 'sub' || type === 'subscription' || type === 'resub' || type === 'bits' || type === 'raid' || type === 'host'){ if(view === 'gifts') pushGift(normalizedEvent || {}); else if(view === 'events') pushEvent({ ...(normalizedEvent || {}), group:'gift' }); updateOverlayStatus(); return; } if(view === 'events') pushEvent(normalizedEvent || {}); updateOverlayStatus(); });
+    socket.on('event', (data) => { const normalizedEvent = normalizeOverlayActivity(data || {}, 'event'); registerVoiceTriggerForItem(normalizedEvent); const type=String(normalizedEvent?.type||'').toLowerCase(); if(normalizedEvent.group==='gift' || type==='gift' || type==='subscription-gift' || type==='sub' || type==='subscription' || type==='resub' || type==='bits' || type==='raid' || type==='host'){ if(view === 'gifts') pushGift(normalizedEvent); else if(view === 'events') pushEvent({ ...normalizedEvent, group:'gift' }); updateOverlayStatus(); return; } if(view === 'events') pushEvent(normalizedEvent); updateOverlayStatus(); });
     setInterval(() => {
       if (view !== 'chat') return;
       const p = settings.personal || {};

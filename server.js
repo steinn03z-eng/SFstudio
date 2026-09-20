@@ -3368,6 +3368,7 @@ io.on("connection", (socket) => {
                 ...provided,
                 id: channelId,
                 chatroom: { ...(provided.chatroom || {}), id: chatroomId },
+                realtimeUrl: String(provided?.realtimeUrl || provided?.realtime_url || '').trim(),
             }, scopedEventEmitter(socket.user.id), socket.user.id);
 
             const finalAvatar = String(info?.avatarUrl || avatarUrl || "");

@@ -19,8 +19,6 @@ const USER_AGENT =
 
 const KICK_BASE = "https://kick.com";
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
-const KICK_PUSHER_URL =
-  "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
 
 function cleanChannel(value) {
   let channel = String(value || "").trim();
@@ -57,26 +55,37 @@ function normalizeBadges(badges) {
     .filter(Boolean);
 }
 
-function resolveSender(data) {
-  const sender = data?.sender || data?.user || data?.author || data?.owner || {};
-  const identity = sender?.identity || data?.identity || {};
+function resolveSender(data, preferredKeys = []) {
+  const payload = data && typeof data === "object" ? data : {};
+  let sender = {};
+  for (const key of preferredKeys) {
+    const candidate = payload?.[key];
+    if (candidate && typeof candidate === "object") {
+      sender = candidate;
+      break;
+    }
+  }
+  if (!Object.keys(sender).length) {
+    sender = payload?.sender || payload?.user || payload?.author || payload?.owner || {};
+  }
 
+  const identity = sender?.identity || payload?.identity || {};
   const username = String(
     sender.username ||
       sender.slug ||
       sender.display_name ||
-      data?.username ||
-      data?.user?.username ||
+      sender.displayName ||
+      payload?.username ||
       "Usuario",
   ).trim();
-
   const displayName = String(
-    sender.display_name || sender.name || username,
+    sender.display_name || sender.displayName || sender.name || username,
   ).trim();
-
-  const uniqueId = String(sender.id || sender.user_id || username).trim();
+  const uniqueId = String(
+    sender.id || sender.user_id || sender.userId || username,
+  ).trim();
   const color = String(
-    identity.color || sender.username_color || sender.color || "",
+    identity?.color || sender.username_color || sender.color || "",
   ).trim();
   const avatar = String(
     sender.profile_picture ||
@@ -85,22 +94,23 @@ function resolveSender(data) {
       sender.avatar_url ||
       "",
   ).trim();
-
   const badges = normalizeBadges(
-    identity.badges || sender.badges || data?.badges || [],
+    identity?.badges || sender.badges || sender.follower_badges || payload?.badges || [],
   );
-
   return { username, displayName, uniqueId, color, avatar, badges };
 }
 
 function timestampOf(data) {
   const candidate =
-    data?.created_at ||
-    data?.timestamp ||
-    data?.createdAt ||
-    data?.time ||
+    data?.created_at ??
+    data?.timestamp ??
+    data?.createdAt ??
+    data?.time ??
     Date.now();
-  const time = new Date(candidate).getTime();
+  const numeric = typeof candidate === "number" ? candidate : Number(candidate);
+  const time = Number.isFinite(numeric)
+    ? (numeric > 0 && numeric < 1e12 ? numeric * 1000 : numeric)
+    : new Date(candidate).getTime();
   return Number.isFinite(time) ? time : Date.now();
 }
 
@@ -112,31 +122,69 @@ function normalizeEventType(name, data) {
     return "sub";
   }
   if (eventName.includes("gift")) return "gift";
-  if (eventName.includes("host") || eventName.includes("raid")) return "raid";
+  if (eventName.includes("host")) return "host";
+  if (eventName.includes("raid")) return "raid";
   if (eventName.includes("ban")) return "system";
-  if (data?.type && typeof data.type === "string") return data.type;
+  if (data?.type && typeof data.type === "string") return data.type.toLowerCase();
   return "event";
 }
 
 function normalizeEvent(data, eventName) {
-  const payload = data && typeof data === "object" ? data : {};
-  const sender = resolveSender(payload);
+  const raw = data && typeof data === "object" ? data : {};
+  const payload = raw?.data && typeof raw.data === "object" ? raw.data : raw;
   const type = normalizeEventType(eventName, payload);
-
+  const preferred =
+    type === "follow" ? ["follower", "user", "sender"] :
+    type === "sub" ? ["subscriber", "user", "sender"] :
+    type === "subscription-gift" ? ["gifter", "sender", "user"] :
+    type === "gift" ? ["sender", "gifter", "user"] :
+    ["sender", "user", "author", "owner"];
+  const sender = resolveSender(payload, preferred);
+  const gift = payload?.gift && typeof payload.gift === "object" ? payload.gift : null;
+  const giftees = Array.isArray(payload?.giftees)
+    ? payload.giftees
+    : Array.isArray(payload?.gifted_users)
+      ? payload.gifted_users
+      : [];
+  const quantity = Number(
+    payload?.quantity ??
+      payload?.total ??
+      payload?.count ??
+      payload?.months ??
+      payload?.coins ??
+      payload?.kicks ??
+      (type === "subscription-gift" ? giftees.length : 0) ??
+      0,
+  ) || 0;
+  const amount = Number(
+    payload?.amount ??
+      payload?.value ??
+      gift?.amount ??
+      quantity ??
+      0,
+  ) || 0;
+  const giftName = String(
+    payload?.giftName ?? payload?.gift_name ?? gift?.name ?? gift?.title ??
+      (type === "sub" ? "Suscripción" : type === "subscription-gift" ? "Suscripciones regaladas" : ""),
+  ).trim();
+  const message = String(
+    payload?.message ?? payload?.content ?? gift?.message ?? "",
+  ).trim();
   return {
     type,
+    group: ["gift", "sub", "subscription", "resub", "subscription-gift", "bits", "raid", "host"].includes(type)
+      ? "gift"
+      : ["follow", "like", "share", "join"].includes(type)
+        ? "event"
+        : "system",
     action:
-      type === "follow"
-        ? "Follow"
-        : type === "sub"
-          ? "Suscripción"
-          : type === "subscription-gift"
-            ? "Suscripciones regaladas"
-            : type === "gift"
-              ? "Regalo"
-              : type === "raid"
-                ? "Raid"
-                : "Evento",
+      type === "follow" ? "Follow" :
+      type === "sub" ? "Suscripción" :
+      type === "subscription-gift" ? "Suscripciones regaladas" :
+      type === "gift" ? "Regalo" :
+      type === "raid" ? "Raid" :
+      type === "host" ? "Host" :
+      "Evento",
     username: sender.username,
     displayName: sender.displayName,
     uniqueId: sender.uniqueId,
@@ -147,18 +195,14 @@ function normalizeEvent(data, eventName) {
     source: "event",
     timestamp: timestampOf(payload),
     event: eventName,
+    message,
+    gift: gift || undefined,
+    giftName: giftName || undefined,
+    amount,
+    quantity,
+    gifteeCount: giftees.length || undefined,
+    giftCoins: Number(payload?.gift_coins ?? payload?.coins ?? gift?.amount ?? payload?.amount ?? 0) || 0,
     data: payload,
-    amount: Number(
-      payload.amount ||
-        payload.quantity ||
-        payload.total ||
-        payload.coins ||
-        payload.kicks ||
-        0,
-    ),
-    giftCoins: Number(
-      payload.gift_coins || payload.coins || payload.amount || 0,
-    ),
   };
 }
 
@@ -356,10 +400,30 @@ function emitStats(client) {
 }
 
 function emitChat(client, payload) {
-  const sender = resolveSender(payload);
-  const content = String(payload?.content || payload?.message || "").trim();
+  const raw = payload && typeof payload === "object" ? payload : {};
+  // Kick has emitted both flat payloads and the legacy/nested
+  // {message:{...}, user:{...}} ChatMessageEvent shape. Support both.
+  const messageObject = raw?.message && typeof raw.message === "object" ? raw.message : raw;
+  const senderPayload = {
+    ...raw,
+    sender: raw?.sender || messageObject?.sender,
+    user: raw?.user || messageObject?.user,
+  };
+  const sender = resolveSender(senderPayload, ["sender", "user", "subscriber"]);
+  const content = String(
+    messageObject?.content ??
+      (typeof messageObject?.message === "string" ? messageObject.message : "") ??
+      raw?.content ??
+      (typeof raw?.message === "string" ? raw.message : "") ??
+      "",
+  ).trim();
   const messageId = String(
-    payload?.id || payload?.message_id || payload?.messageId || "",
+    messageObject?.id ||
+      messageObject?.message_id ||
+      raw?.id ||
+      raw?.message_id ||
+      raw?.messageId ||
+      "",
   ).trim();
   if (!content) return;
   if (messageId && client.seenMessageIds.has(messageId)) return;
@@ -371,6 +435,7 @@ function emitChat(client, payload) {
     }
   }
 
+  const parent = messageObject?.replies_to || messageObject?.replied_to || raw?.replies_to || raw?.replied_to || null;
   const chat = {
     id: messageId || undefined,
     type: "chat",
@@ -384,8 +449,9 @@ function emitChat(client, payload) {
     badges: sender.badges,
     comment: content,
     message: content,
-    timestamp: timestampOf(payload),
-    verified: false,
+    timestamp: timestampOf(messageObject),
+    verified: Boolean(raw?.verified ?? raw?.is_verified ?? messageObject?.verified ?? senderPayload?.is_verified),
+    replyTo: parent && typeof parent === "object" ? String(parent.message_id || parent.id || "") : "",
   };
 
   const enrichedPayload = awardPoints(client.ownerId, chat) || chat;
@@ -497,16 +563,16 @@ async function openSocket(client) {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
   }
 
-  let socketUrl = KICK_PUSHER_URL;
-  if (!client.resolvedInBrowser) {
+  let socketUrl = String(client.realtimeUrl || "").trim();
+  if (!socketUrl) {
     const descriptor = await getRealtimeDescriptor(client.channelId);
     socketUrl = descriptor.url;
     client.provider = descriptor.provider || "centrifugo";
   } else {
-    // El navegador ya resolvió el canal y su chatroom. Esto evita que Railway
-    // tenga que consultar kick.com/api/v2/channels/{slug}, endpoint que puede
-    // devolver 403 por la protección de Kick. Pusher usa una clave pública.
-    client.provider = "pusher";
+    // El navegador puede haber resuelto el descriptor realtime. Reutilizarlo
+    // evita una petición adicional desde Railway y, sobre todo, evita volver al
+    // antiguo Pusher cloud que Kick retiró.
+    client.provider = "centrifugo";
   }
 
   const ws = new WS(socketUrl);
@@ -533,8 +599,12 @@ async function openSocket(client) {
         });
       } else {
         // Kick's current chat transport is Centrifugo JSON protocol v2.
+        // The chatroom carries messages; channel.<id> is also subscribed when
+        // available so event-like frames (subscriptions/follows/other activity)
+        // can be normalized through the same dispatcher.
         send(client, { id: 1, connect: {} });
         send(client, { id: 2, subscribe: { channel: `chatrooms.${client.chatroomId}.v2` } });
+        send(client, { id: 3, subscribe: { channel: `channel.${client.channelId}` } });
       }
       settle(resolve);
     };
@@ -597,6 +667,7 @@ async function connectWithInfo(channelName, channelInfo, io, ownerId, resolvedIn
     reconnectDelay: 5_000,
     manualDisconnect: false,
     resolvedInBrowser: Boolean(resolvedInBrowser),
+    realtimeUrl: String(channelInfo?.realtimeUrl || channelInfo?.realtime_url || "").trim(),
     seenMessageIds: new Set(),
   };
 
