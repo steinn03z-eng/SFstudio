@@ -281,6 +281,7 @@ const DEFAULT_SETTINGS = {
         overlayEventFont: "inherit",
         overlayGiftDisplayMode: "full",
         overlayGiftCompositionMode: "vertical-centered",
+        showDashboardActivity: true,
         eventVisibility: { likes:true, follows:true, joins:true, shares:true, system:true, gifts:true, subscriptions:true, bits:true, raids:true, hosts:true },
         highlightStyle: "platform",
         giftHighlightStyle: "gold",
@@ -1652,6 +1653,44 @@ app.get("/api/moderators/lookup", requireUser, async (req, res) => {
 });
 
 
+async function resolveKickUserAvatarViaCurl(username) {
+    const clean = cleanUser(username);
+    if (!clean) return '';
+    const urls = [
+        `https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,
+        `https://kick.com/api/v2/channels/users/${encodeURIComponent(clean)}`,
+    ];
+    for (const url of urls) {
+        try {
+            const data = await new Promise((resolve, reject) => {
+                const args = [
+                    '--silent','--show-error','--location','--compressed','--http1.1',
+                    '--max-time','5',
+                    '--user-agent','Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/153.0.0.0 Safari/537.36',
+                    '--header','accept: application/json, text/plain, */*',
+                    '--header','referer: https://kick.com/',
+                    '--header','origin: https://kick.com',
+                    url,
+                ];
+                const child=spawn(process.platform === 'win32' ? 'curl.exe' : 'curl',args,{stdio:['ignore','pipe','pipe'],windowsHide:true});
+                let out=''; let err='';
+                child.stdout.on('data',d=>{out+=d.toString();});
+                child.stderr.on('data',d=>{err+=d.toString();});
+                child.on('error',reject);
+                child.on('close',code=>{
+                    if(code!==0 || !out.trim()) return reject(new Error(err || `curl exit ${code}`));
+                    try{resolve(JSON.parse(out));}catch(e){reject(e);}
+                });
+            });
+            const profile=data?.user||data?.data?.user||data?.data||data||{};
+            const avatar=String(profile?.profile_picture||profile?.profile_pic||profile?.profilePicture||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profile_pic||data?.avatar||data?.profilepic||'').trim();
+            if(/^https?:\/\//i.test(avatar)) return avatar;
+        } catch {}
+    }
+    return '';
+}
+
+
 app.get("/api/avatar", async (req, res) => {
     const platform = String(req.query.platform || "").toLowerCase();
     const username = cleanUser(req.query.username);
@@ -1680,13 +1719,12 @@ app.get("/api/avatar", async (req, res) => {
             avatarUrl = cached.avatarUrl;
             source = "kick-cache";
         } else {
-            try {
-                const data = await kick.getChannelInfo(username);
-                const user = data?.user || {};
-                avatarUrl = String(user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || "").trim();
-                if (avatarUrl) kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
-            } catch {}
-            source = avatarUrl ? "kick" : "fallback";
+            // A chatter's avatar is a USER resource, not the channel resource.
+            // Never call getChannelInfo(username) here: that resolves a channel
+            // named after the chatter (or hits Kick's protected channel endpoint).
+            avatarUrl = await resolveKickUserAvatarViaCurl(username);
+            source = avatarUrl ? "kick-user" : "fallback";
+            if (avatarUrl) kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
         }
     }
 

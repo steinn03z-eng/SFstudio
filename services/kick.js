@@ -13,6 +13,7 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import { recordChat, recordEvent } from "./live-history.js";
 
 const execFileAsync = promisify(execFile);
 const clients = new Map();
@@ -30,7 +31,7 @@ function cleanChannel(value) {
   let channel = String(value || "").trim();
   if (!channel) return "";
   channel = channel.replace(/^@+/, "");
-  channel = channel.replace(/^https?:\/\/(?:www\.)?kick\.com\//i, "");
+  channel = channel.replace(/^(?:https?:\/\/)?(?:www\.)?kick\.com\//i, "");
   channel = channel.split(/[?#/]/)[0];
   return channel.trim().toLowerCase();
 }
@@ -72,9 +73,16 @@ function resolveSender(data, preferred = []) {
     data?.subscriber,
     data?.gifter,
     data?.redeemer,
+    data?.broadcaster,
+    data?.banned_user,
+    data?.moderator,
+    data?.hoster,
+    data?.raider,
     data?.gifter?.user,
     data?.subscriber?.user,
     data?.follower?.user,
+    data?.banned_user?.user,
+    data?.redeemer?.user,
   ].filter((value) => value && typeof value === "object");
 
   const sender = candidates.find((candidate) =>
@@ -119,6 +127,7 @@ function resolveSender(data, preferred = []) {
       sender.avatarUrl ||
       sender.picture ||
       sender.picture_url ||
+      sender.profile_picture_url ||
       "",
   ).trim();
 
@@ -242,7 +251,7 @@ function normalizeEvent(data, eventName) {
     badges: sender.badges,
     platform: "kick",
     source: "event",
-    timestamp: timestampOf(source),
+    timestamp: timestampOf(payload),
     event: eventName,
     eventId: sourceId || undefined,
     message,
@@ -261,22 +270,6 @@ function emitScoped(io, ownerId, event, payload) {
   if (!io) return;
   const room = `user:${ownerId}`;
   io.to(room).emit(event, payload);
-}
-
-function recordChat(ownerId, payload) {
-  try {
-    globalThis.__STREAMFUSION_RECORD_CHAT__?.(ownerId, payload);
-  } catch (error) {
-    console.error("[Kick] recordChat hook failed:", error);
-  }
-}
-
-function recordEvent(ownerId, payload) {
-  try {
-    globalThis.__STREAMFUSION_RECORD_EVENT__?.(ownerId, payload);
-  } catch (error) {
-    console.error("[Kick] recordEvent hook failed:", error);
-  }
 }
 
 function awardPoints(ownerId, payload) {
@@ -388,18 +381,64 @@ async function getChannelInfo(channelName) {
   const slug = cleanChannel(channelName);
   if (!slug) throw new Error("El canal de Kick está vacío");
 
-  // Kick blocks server-side HTTP clients on this internal endpoint with a 403
-  // when the TLS/client fingerprint does not look like a normal browser. curl uses
-  // a native TLS stack and is also the approach used by current community clients.
-  const data = await curlJson(
+  const urls = [
+    `${KICK_BASE}/api/v1/channels/${encodeURIComponent(slug)}`,
+    `${KICK_BASE}/api/v1/${encodeURIComponent(slug)}/chatroom`,
+    `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}/chatroom`,
     `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}`,
-  );
+  ];
+  const errors = [];
+  let channelData = null;
+  let chatroomId = 0;
+  let channelId = 0;
+  let user = {};
 
-  if (!data?.chatroom?.id) {
-    throw new Error(`Kick no devolvió un chatroom para @${slug}`);
+  for (const url of urls) {
+    try {
+      const data = await curlJson(url, { timeoutSeconds: 10 });
+      const candidateUser = data?.user || data?.data?.user || data?.broadcaster || {};
+      const candidateChannelId = Number(
+        data?.id || data?.channel_id || data?.broadcaster_user_id || data?.user_id ||
+        candidateUser?.id || data?.data?.id || 0
+      );
+      const candidateChatroomId = Number(
+        data?.chatroom?.id || data?.chatroom_id || data?.chatroom?.chatroom_id ||
+        data?.data?.chatroom?.id || data?.data?.chatroom_id || data?.data?.chatroom?.chatroom_id || 0
+      );
+      if (candidateChatroomId > 0) {
+        channelData = data;
+        chatroomId = candidateChatroomId;
+        channelId = candidateChannelId;
+        user = candidateUser;
+        break;
+      }
+    } catch (error) {
+      errors.push(String(error?.message || error));
+    }
   }
 
-  return data;
+  if (!chatroomId) {
+    const detail = errors.find(Boolean);
+    throw new Error(`Kick no devolvió un chatroom para @${slug}${detail ? `: ${detail}` : ''}`);
+  }
+
+  // Normalize the shape expected by the rest of StreamFusion.
+  return {
+    ...(channelData && typeof channelData === 'object' ? channelData : {}),
+    id: channelId || Number(channelData?.id || 0),
+    slug,
+    user: {
+      ...(user && typeof user === 'object' ? user : {}),
+      username: String(user?.username || user?.slug || slug),
+      name: String(user?.name || user?.display_name || user?.username || slug),
+      profile_picture: String(
+        user?.profile_picture || user?.profile_pic || user?.profilePicture ||
+        user?.avatar || user?.avatar_url || channelData?.profile_picture || channelData?.profile_pic || ''
+      ).trim(),
+    },
+    chatroom: { id: chatroomId },
+    livestream: channelData?.livestream ?? null,
+  };
 }
 
 const userAvatarCache = new Map();
@@ -409,38 +448,44 @@ const KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS = 4;
 
 async function lookupKickUserAvatar(channelName, username) {
   const channel = cleanChannel(channelName);
-  const user = String(username || "").trim().replace(/^@+/, "").toLowerCase();
-  if (!channel || !user) return "";
+  const user = String(username || '').trim().replace(/^@+/, '').toLowerCase();
+  if (!channel || !user) return '';
   const key = `${channel}:${user}`;
   const cached = userAvatarCache.get(key);
-  if (cached && Date.now() - Number(cached.updatedAt || 0) < USER_AVATAR_TTL) return cached.avatarUrl || "";
+  const ttl = cached?.avatarUrl ? USER_AVATAR_TTL : 30_000;
+  if (cached && Date.now() - Number(cached.updatedAt || 0) < ttl) return cached.avatarUrl || '';
   if (userAvatarInflight.has(key)) return userAvatarInflight.get(key);
 
   const promise = (async () => {
+    const endpoints = [
+      `${KICK_BASE}/api/v1/users/${encodeURIComponent(user)}`,
+      `${KICK_BASE}/api/v2/channels/users/${encodeURIComponent(user)}`,
+    ];
     try {
-      const data = await curlJson(
-        `${KICK_BASE}/api/v2/channels/${encodeURIComponent(channel)}/users/${encodeURIComponent(user)}`,
-        { timeoutSeconds: KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS },
-      );
-      const profile = data?.user || data || {};
-      const avatarUrl = String(
-        profile?.profile_pic || profile?.profile_picture || profile?.profilePicture ||
-        profile?.avatar || profile?.avatar_url || profile?.picture ||
-        data?.profile_pic || data?.profile_picture || data?.avatar || "",
-      ).trim();
-      if (/^https?:\/\//i.test(avatarUrl)) {
-        userAvatarCache.set(key, { avatarUrl, updatedAt: Date.now() });
-        return avatarUrl;
+      for (const url of endpoints) {
+        try {
+          const data = await curlJson(url, { timeoutSeconds: KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS });
+          const profile = data?.user || data?.data?.user || data?.data || data || {};
+          const avatarUrl = String(
+            profile?.profile_picture || profile?.profile_pic || profile?.profilePicture ||
+            profile?.avatar || profile?.avatar_url || profile?.picture || profile?.picture_url ||
+            data?.profile_picture || data?.profile_pic || data?.avatar || data?.profilepic || ''
+          ).trim();
+          if (/^https?:\/\//i.test(avatarUrl)) {
+            userAvatarCache.set(key, { avatarUrl, updatedAt: Date.now() });
+            return avatarUrl;
+          }
+        } catch {
+          // Try the next public website shape. Avatar enrichment must never block chat.
+        }
       }
     } catch (error) {
-      // Avatar enrichment must never break chat delivery. Cache the miss briefly
-      // so a chatter cannot trigger one HTTP request per message.
-      userAvatarCache.set(key, { avatarUrl: "", updatedAt: Date.now() });
-      console.warn(`[Kick] no se pudo obtener avatar de @${user}:`, error?.message || error);
+      console.warn(`[Kick] no se pudo enriquecer avatar de @${user}:`, error?.message || error);
     } finally {
       userAvatarInflight.delete(key);
     }
-    return "";
+    userAvatarCache.set(key, { avatarUrl: '', updatedAt: Date.now() });
+    return '';
   })();
   userAvatarInflight.set(key, promise);
   return promise;
@@ -600,6 +645,18 @@ async function emitChat(client, payload) {
   rouletteHook(client.ownerId, enrichedPayload);
 }
 
+function hasConcreteFollowPayload(data) {
+  const payload = data && typeof data === "object" ? data : {};
+  const candidates = [
+    payload?.follower,
+    payload?.user,
+    payload?.sender,
+    payload?.follower?.user,
+  ];
+  return candidates.some((value) => value && typeof value === "object" && (value.username || value.slug || value.id || value.user_id)) ||
+    Boolean(payload?.username || payload?.uniqueId || payload?.user_name || payload?.follower_username);
+}
+
 function eventFingerprint(eventName, payload) {
   const item = payload && typeof payload === "object" ? payload : {};
   const normalized = normalizeEvent(item, eventName);
@@ -637,95 +694,51 @@ function emitEvent(client, eventName, payload) {
 
 async function handleFrame(client, raw) {
   const frame = decodeMaybeJson(raw);
-  if (!frame || typeof frame !== "object") return;
+  if (!frame || typeof frame !== 'object') return;
 
-  // Current Kick realtime transport: Centrifugo JSON protocol v2.
+  // Current/legacy Pusher and current Centrifugo payloads are both accepted.
   if (Object.keys(frame).length === 0) {
-    // Centrifugo heartbeat. Echo an empty JSON object.
     send(client, {});
     return;
   }
-  if (frame.push && typeof frame.push === "object") {
+  if (frame.push && typeof frame.push === 'object') {
     const push = frame.push;
-    const channel = String(push.channel || "");
-    const pub = push.pub && typeof push.pub === "object" ? push.pub : null;
-    const payload = pub?.data && typeof pub.data === "object" ? pub.data : null;
-    const eventName = String(payload?.event || "");
+    const channel = String(push.channel || '');
+    const pub = push.pub && typeof push.pub === 'object' ? push.pub : null;
+    const payload = pub?.data && typeof pub.data === 'object' ? pub.data : null;
+    const eventName = String(payload?.event || '');
     const data = decodeMaybeJson(payload?.data);
-    if (eventName && channel) {
-      const lower = eventName.toLowerCase();
-      if (lower.includes("chatmessage")) await emitChat(client, data);
-      else if (lower.includes("followersupdated")) {
-        if (data?.followed === true || data?.followed === "true") emitEvent(client, eventName, data);
-      }
-      else if (
-        lower.includes("follow") ||
-        lower.includes("follower") ||
-        lower.includes("subscription") ||
-        lower.includes("gift") ||
-        lower.includes("host") ||
-        lower.includes("raid") ||
-        lower.includes("ban") ||
-        lower.includes("redemption") ||
-        lower.includes("streamerislive") ||
-        lower.includes("stopstream") ||
-        lower.includes("livestreamupdated") ||
-        lower.includes("updatedlivestream") ||
-      lower.includes("giftsleaderboardupdated") ||
-      lower.includes("luckyuserswhogotgift") ||
-      lower.includes("redemption")
-      ) emitEvent(client, eventName, data);
+    if (!eventName || !channel) return;
+    const lower = eventName.toLowerCase();
+    if (lower.includes('chatmessage')) {
+      await emitChat(client, data);
+      return;
     }
+    if (lower.startsWith('pusher:') || lower.startsWith('pusher_internal:')) return;
+    emitEvent(client, eventName, data);
     return;
   }
 
-  const eventName = String(frame.event || frame.type || "");
+  const eventName = String(frame.event || frame.type || '');
   const data = decodeMaybeJson(frame.data);
+  if (!eventName) return;
 
-  if (eventName === "pusher:ping") {
-    sendPusherPong(client);
-    return;
-  }
-  if (eventName === "pusher:pong") return;
-  if (eventName === "pusher:connection_established") return;
-
-  if (eventName === "pusher:error") {
-    const message = typeof data === "object" ? JSON.stringify(data) : String(data || "");
-    emitSystem(client, "Kick devolvió un error de transporte.", {
-      detail: message.slice(0, 400),
-    });
+  if (eventName === 'pusher:ping') { sendPusherPong(client); return; }
+  if (eventName === 'pusher:pong' || eventName === 'pusher:connection_established') return;
+  if (eventName === 'pusher:error') {
+    const message = typeof data === 'object' ? JSON.stringify(data) : String(data || '');
+    emitSystem(client, 'Kick devolvió un error de transporte.', { detail: message.slice(0, 400) });
     return;
   }
 
   const normalizedEvent = eventName.toLowerCase();
-  if (normalizedEvent.includes("chatmessage")) {
+  if (normalizedEvent.includes('chatmessage')) {
     await emitChat(client, data);
     return;
   }
-
-  if (normalizedEvent.includes("followersupdated") && !(data?.followed === true || data?.followed === "true")) {
-    return;
-  }
-
-  if (
-    normalizedEvent.includes("follow") ||
-    normalizedEvent.includes("follower") ||
-    normalizedEvent.includes("subscription") ||
-    normalizedEvent.includes("gift") ||
-    normalizedEvent.includes("host") ||
-    normalizedEvent.includes("raid") ||
-    normalizedEvent.includes("ban") ||
-    normalizedEvent.includes("redemption") ||
-    normalizedEvent.includes("streamerislive") ||
-    normalizedEvent.includes("stopstream") ||
-    normalizedEvent.includes("livestreamupdated") ||
-    normalizedEvent.includes("updatedlivestream") ||
-    normalizedEvent.includes("giftsleaderboardupdated") ||
-    normalizedEvent.includes("luckyuserswhogotgift") ||
-    normalizedEvent.includes("redemption")
-  ) {
-    emitEvent(client, eventName, data);
-  }
+  // Everything else at this level is an application event. New Kick event names
+  // should appear in Dashboard activity without needing a code change.
+  emitEvent(client, eventName, data);
 }
 
 function scheduleReconnect(client) {
@@ -776,17 +789,22 @@ async function openSocket(client) {
 
     ws.onopen = () => {
       client.reconnectDelay = 5_000;
-      send(client, {
-        event: "pusher:subscribe",
-        data: { auth: "", channel: `chatrooms.${client.chatroomId}.v2` },
-      });
-      // Channel events are useful for follows/subscriptions/gifts when Kick publishes
-      // them there. Chat remains subscribed only once; duplicate chat frames are also
-      // deduplicated by message ID below.
+      const channels = new Set([
+        `chatrooms.${client.chatroomId}.v2`,
+        `chatrooms.${client.chatroomId}`,
+        `chatroom_${client.chatroomId}`,
+        `chatroom.${client.chatroomId}`,
+      ].filter(Boolean));
       if (client.channelId) {
+        channels.add(`channel.${client.channelId}`);
+        channels.add(`channel_${client.channelId}`);
+        channels.add(`channel_${client.channelId}_v2`);
+        channels.add(`predictions-channel-${client.channelId}`);
+      }
+      for (const channel of channels) {
         send(client, {
           event: "pusher:subscribe",
-          data: { auth: "", channel: `channel.${client.channelId}` },
+          data: { auth: "", channel },
         });
       }
       settle(resolve);
