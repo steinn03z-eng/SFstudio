@@ -421,7 +421,7 @@
     function loadOverlayPresence(){ return loadStoredJSON(PRESENCE_KEY, { tiktok:{ connected:false, live:false, lastSignal:0, mode:"saved" }, twitch:{ connected:false, live:false, lastSignal:0, mode:"saved" } }); }
     function loadOverlaySession(){ return loadStoredJSON(SESSION_KEY, { tiktok:{ username:"", connected:false, avatarUrl:"" }, twitch:{ username:"", connected:false, avatarUrl:"" } }); }
     function overlayConnectionState(){
-      const platforms = ["tiktok", "twitch"];
+      const platforms = ["tiktok", "twitch", "kick"];
       const live = platforms.find((platform) => Boolean(state.accountState?.[platform]?.connected && state.accountState?.[platform]?.live));
       const connected = platforms.filter((platform) => Boolean(state.accountState?.[platform]?.connected));
       if (live) {
@@ -3294,8 +3294,8 @@ function currentViewSettingsKey(){
     // Las insignias de actividad y la imagen del último regalo pertenecen SOLO al LIVE actual.
     // No se hidratan desde localStorage: al cerrar/desconectar el directo deben desaparecer.
     function updateActivityBadgesFromStorage(){
-      state.activityBadges = { tiktok:{}, twitch:{} };
-      state.supporters = { tiktok:{}, twitch:{} };
+      state.activityBadges = { tiktok:{}, twitch:{}, kick:{} };
+      state.supporters = { tiktok:{}, twitch:{}, kick:{} };
     }
 
     function registerActivityBadges(item){

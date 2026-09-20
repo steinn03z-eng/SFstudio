@@ -284,7 +284,7 @@
 
     const defaults = { tiktokModerators: [], personal: { theme:"dark", overlayTheme:"neon", font:"inter", animation:"slide", chatLayout:"vertical", chatDirection:"down", chatTheme:"cloud", avatarFrame:"platform", bubbleFrame:"platform", avatarSize:"md", nameSize:"md", nameWeight:"800", chatHorizontalMode:"normal", chatOverlayShape:"normal", chatOverlayCardSide:"center", chatAdjustMessages:false, badgeStyle:"emoji", twitchNameColor:"real", tiktokNameColor:"white", messageEffect:"shadow", nameEffect:"shadow", textColor:"auto", showBadges:true, showEmotes:true, highlightSupporters:true, highlightSupportersTikTok:true, highlightSupportersTwitch:true, supporterHighlightStyle:"gold", eventsLayout:"vertical", eventsDirection:"down", eventsMode:"slide", eventsPanelSize:"normal", eventsOverlayShape:"normal", eventsOverlayCardSide:"center", eventsCardFrame:true, eventsAutoClear:false, eventsClearSeconds:30, giftsLayout:"vertical", giftsDirection:"down", giftsMode:"slide", giftsPanelSize:"normal", giftsOverlayShape:"normal", giftsOverlayCardSide:"center", giftsCardFrame:true, giftsAutoClear:false, giftsClearSeconds:30, highlightStyle:"platform", giftHighlightStyle:"gold", overlayEventHighlightStyle:"platform", overlayGiftImageSize:"md", overlayGiftComposition:"normal", overlayGiftDisplayMode:"full", overlayGiftCompositionMode:"vertical-centered", overlayNameColorMode:"platform", overlayNameColor:"#ffffff", overlayEventFont:"inherit", overlayGiftFont:"inherit", eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true}, highlightEventUsername:true, highlightLikes:true, highlightFollows:true, highlightJoins:true, highlightShares:true, highlightSystem:true, highlightFanclub:true, highlightSuperfan:true, highlightGifts:true, highlightSubs:true, highlightBits:true, highlightRaids:true, autoClearChat:false, clearChatSeconds:30, tiktokAvatarUrl:"" } };
     let settings = loadSettings();
-    let state = { chat:[], events:[], gifts:[], supporters: {}, activityBadges: {}, persistentFrameProfiles: { tiktok:{}, twitch:{} }, accountState: { tiktok:{ connected:false, live:false, mode:"saved" }, twitch:{ connected:false, live:false, mode:"saved" } } };
+    let state = { chat:[], events:[], gifts:[], supporters: {}, activityBadges: {}, persistentFrameProfiles: { tiktok:{}, twitch:{}, kick:{} }, accountState: { tiktok:{ connected:false, live:false, mode:"saved" }, twitch:{ connected:false, live:false, mode:"saved" } } };
     let followState = { chat:true, events:true, gifts:true };
     let voiceBotClientRevision = Number(localStorage.getItem(`${VOICEBOT_KEY}.revision`) || 0) || 0;
     let voiceBot = (settings?.voiceBot && typeof settings.voiceBot === "object") ? normalizeVoiceBotState(settings.voiceBot) : loadStoredJSON(VOICEBOT_KEY, voiceBotDefaults);
@@ -422,7 +422,7 @@
     function loadOverlayPresence(){ return loadStoredJSON(PRESENCE_KEY, { tiktok:{ connected:false, live:false, lastSignal:0, mode:"saved" }, twitch:{ connected:false, live:false, lastSignal:0, mode:"saved" } }); }
     function loadOverlaySession(){ return loadStoredJSON(SESSION_KEY, { tiktok:{ username:"", connected:false, avatarUrl:"" }, twitch:{ username:"", connected:false, avatarUrl:"" } }); }
     function overlayConnectionState(){
-      const platforms = ["tiktok", "twitch"];
+      const platforms = ["tiktok", "twitch", "kick"];
       const live = platforms.find((platform) => Boolean(state.accountState?.[platform]?.connected && state.accountState?.[platform]?.live));
       const connected = platforms.filter((platform) => Boolean(state.accountState?.[platform]?.connected));
       if (live) {
@@ -3394,7 +3394,7 @@ function currentViewSettingsKey(){
 
     function saveActivityBadges(){
       try {
-        const persistent = { tiktok:{}, twitch:{} };
+        const persistent = { tiktok:{}, twitch:{}, kick:{} };
         for (const platform of Object.keys(state.activityBadges || {})) {
           for (const [key, entry] of Object.entries(state.activityBadges[platform] || {})) {
             const saved = persistentActivityEntry(entry);
@@ -3406,11 +3406,11 @@ function currentViewSettingsKey(){
     }
 
     function updateActivityBadgesFromStorage(){
-      state.activityBadges = { tiktok:{}, twitch:{} };
-      state.supporters = { tiktok:{}, twitch:{} };
+      state.activityBadges = { tiktok:{}, twitch:{}, kick:{} };
+      state.supporters = { tiktok:{}, twitch:{}, kick:{} };
       try {
         const saved = JSON.parse(localStorage.getItem(ACTIVITY_BADGES_STORAGE_KEY) || "{}");
-        for (const platform of ["tiktok", "twitch"]) {
+        for (const platform of ["tiktok", "twitch", "kick"]) {
           const entries = saved?.[platform] || {};
           for (const [key, entry] of Object.entries(entries)) {
             const normalized = persistentActivityEntry(entry);

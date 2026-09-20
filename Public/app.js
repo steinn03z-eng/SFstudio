@@ -25,7 +25,7 @@
     announcements:[],
     musicWidget:{enabled:true,commandPrefix:'!',requestCommand:'musica',pointCost:100,maxDurationSeconds:300,maxQueue:10,showNext:true,showProgress:true,showRequester:true,allowModeratorCommands:false,adminCommandPrefixes:{pause:'!',stop:'!',skip:'!',repeat:'!',volume:'!'},adminCommands:{pause:'pausa',stop:'detener',skip:'siguiente',repeat:'repetir',volume:'vol'},style:{scale:1,accent:'#8b5cf6',accent2:'#ec4899',progressMode:'gradient2',progressColor:'#8b5cf6',progressColor2:'#ec4899',progressColor3:'#22d3ee',textColor:'#ffffff',secondaryTextColor:'#b9b9c8',titleFont:'Inter',artistFont:'Inter',titleSize:28,artistSize:15,vinylSize:170,design:'vinyl-glow',showVinyl:true}},
     tiktokModerators:[], twitchModerators:[], kickModerators:[],
-    personalization:{theme:'dark',font:'inter',animation:'slide',chatLayout:'vertical',chatDirection:'down',chatTheme:'cloud',chatAdjustMessages:false,avatarFrame:'platform',bubbleFrame:'platform',avatarSize:'md',nameSize:'md',nameWeight:'800',showPlatformPill:true,showTimestamps:true,showActivity:true,bubbleRadius:12,avatarBorderWidth:2,messagePadding:7,rowGap:5,tiktokNameColor:'white',twitchNameColor:'real',chatOverlayCardSide:'center',badgeStyle:'emoji',tiktokNameColor:'white',twitchNameColor:'real',messageEffect:'shadow',nameEffect:'shadow',textColor:'auto',showBadges:true,showEmotes:true,highlightSupporters:true,supporterHighlightStyle:'gold',eventStyle:'chat',eventSimulationMode:'single',giftStyle:'chat',giftSimulationMode:'single',highlightEventUsername:true,highlightLikes:true,highlightFollows:true,highlightJoins:true,highlightShares:true,highlightSystem:true,highlightFanclub:true,highlightSuperfan:true,highlightGifts:true,highlightSubs:true,highlightBits:true,highlightRaids:true,autoClearChat:false,clearChatSeconds:30,eventsLayout:'vertical',eventsDirection:'down',eventsMode:'slide',eventsPanelSize:'normal',eventsOverlayShape:'normal',eventsOverlayCardSide:'center',eventsCardFrame:true,giftsLayout:'vertical',giftsDirection:'down',giftsMode:'slide',giftsPanelSize:'normal',giftsOverlayShape:'normal',giftsOverlayCardSide:'center',giftsCardFrame:true,giftHighlightStyle:'gold',overlayEventHighlightStyle:'platform',overlayGiftImageSize:'md',overlayGiftComposition:'normal',overlayNameColorMode:'platform',overlayNameColor:'#ffffff',overlayEventFont:'inherit',overlayGiftFont:'inherit',overlayGiftDisplayMode:'full',overlayGiftCompositionMode:'vertical-centered',showDashboardActivity:true,eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true,superfan:true}},
+    personalization:{theme:'dark',font:'inter',animation:'slide',chatLayout:'vertical',chatDirection:'down',chatTheme:'cloud',chatAdjustMessages:false,avatarFrame:'platform',bubbleFrame:'platform',avatarSize:'md',nameSize:'md',nameWeight:'800',showPlatformPill:true,showTimestamps:true,showActivity:true,bubbleRadius:12,avatarBorderWidth:2,messagePadding:7,rowGap:5,tiktokNameColor:'white',twitchNameColor:'real',kickNameColor:'real',kickNameCustomColor:'#53fc18',chatOverlayCardSide:'center',badgeStyle:'emoji',messageEffect:'shadow',nameEffect:'shadow',textColor:'auto',showBadges:true,showEmotes:true,highlightSupporters:true,supporterHighlightStyle:'gold',eventStyle:'chat',eventSimulationMode:'single',giftStyle:'chat',giftSimulationMode:'single',highlightEventUsername:true,highlightLikes:true,highlightFollows:true,highlightJoins:true,highlightShares:true,highlightSystem:true,highlightFanclub:true,highlightSuperfan:true,highlightGifts:true,highlightSubs:true,highlightBits:true,highlightRaids:true,autoClearChat:false,clearChatSeconds:30,eventsLayout:'vertical',eventsDirection:'down',eventsMode:'slide',eventsPanelSize:'normal',eventsOverlayShape:'normal',eventsOverlayCardSide:'center',eventsCardFrame:true,giftsLayout:'vertical',giftsDirection:'down',giftsMode:'slide',giftsPanelSize:'normal',giftsOverlayShape:'normal',giftsOverlayCardSide:'center',giftsCardFrame:true,giftHighlightStyle:'gold',overlayEventHighlightStyle:'platform',overlayGiftImageSize:'md',overlayGiftComposition:'normal',overlayNameColorMode:'platform',overlayNameColor:'#ffffff',overlayEventFont:'inherit',overlayGiftFont:'inherit',overlayGiftDisplayMode:'full',overlayGiftCompositionMode:'vertical-centered',showDashboardActivity:true,eventVisibility:{likes:true,follows:true,joins:true,shares:true,system:true,gifts:true,subscriptions:true,bits:true,raids:true,hosts:true,superfan:true}},
     appearance:{theme:'dark',panelColor:'#131625',accent:'#7c5cff',sidebarColor:'#101321',pageBackground:'#0b0d18',backgroundImage:'',style:'base'},
     profilePhoto:{source:'none',url:'',reference:'',label:'',updatedAt:0},
     connectionProfiles:{tiktok:{username:'',avatarUrl:''},twitch:{username:'',avatarUrl:''},kick:{username:'',avatarUrl:''}},
@@ -316,7 +316,9 @@
           }
         }catch{}
       }
-      const d=await api(`/api/avatar?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(clean)}`).catch(()=>null);
+      const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
+      const channelParam = String(platform).toLowerCase()==='kick' && kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
+      const d=await api(`/api/avatar?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(clean)}${channelParam}`).catch(()=>null);
       return isUsableViewerAvatar(d?.avatarUrl) ? d.avatarUrl : '';
     })().then(url=>{state.avatarCache.set(key,url);return url;}).finally(()=>state.avatarPending.delete(key));
     state.avatarPending.set(key,promise);
@@ -433,7 +435,7 @@
     if (previewType === 'share' && settings.personalization.highlightShares !== false) badges.push('<span class="activity-badge" title="Compartió">🗣️</span>');
     if (previewType === 'follow' && settings.personalization.highlightFollows !== false) badges.push('<span class="activity-badge" title="Seguidor">👤</span>');
     if (previewType === 'bits') badges.push('<span class="activity-badge gift-activity" title="Bits">💎</span>');
-    if (previewType === 'sub' || previewType === 'subscription' || previewType === 'subscription-gift') badges.push('<span class="activity-badge gift-activity" title="Suscripción">⭐</span>');
+    if (previewType === 'sub' || previewType === 'subscription' || previewType === 'subscription-gift') badges.push('<span class="activity-badge" title="Suscripción">⭐</span>');
     if (item?.preview === true && previewGiftEmoji) badges.push(`<span class="activity-badge gift-activity" title="${esc(item.giftName || item.gift || 'Regalo')}">${esc(previewGiftEmoji)}</span>`);
     if (item?.preview === true && (item?.gift || item?.giftName) && settings.personalization.highlightGifts !== false) {
       const giftImage = item.giftImage || '';
@@ -592,20 +594,90 @@
     return 'Usuario';
   }
 
+  function inferKickActivityType(item) {
+    const event = String(item?.event || item?.name || '').toLowerCase();
+    const rawType = String(item?.type || '').toLowerCase();
+    const data = item?.data && typeof item.data === 'object' ? item.data : item;
+    if (event.includes('follow') || event.includes('follower') || data?.follower) return 'follow';
+    if (event.includes('subscription.gifts') || event.includes('giftedsubscriptions') || event.includes('subscriptiongifted') || data?.giftees || data?.gifted_users || data?.recipients) return 'subscription-gift';
+    if (event.includes('subscription.renewal') || event.includes('subscriptionrenewal') || rawType === 'resub') return 'resub';
+    if (event.includes('subscription') || data?.subscriber || data?.duration || rawType === 'sub' || rawType === 'subscription') return 'sub';
+    if (event.includes('kicks.gift') || data?.gift_transaction_id) return 'gift';
+    if (event.includes('gift')) return 'gift';
+    if (event.includes('raid')) return 'raid';
+    if (event.includes('host')) return 'host';
+    if (event.includes('reward') || data?.reward || data?.reward_title) return 'reward';
+    return rawType && !['event','system','unknown',''].includes(rawType) ? rawType : 'event';
+  }
+
   function normalizeIncomingActivity(item) {
     const entry = { ...(item || {}) };
-    const type = String(entry.type || '').trim().toLowerCase();
-    const allowed = new Set(['like','follow','share','join','gift','sub','subscription','resub','bits','raid','host','superfan','fanclub','question','subscription-gift','system']);
-    if (!allowed.has(type)) return entry;
+    const platform = String(entry.platform || '').toLowerCase();
+    if (platform !== 'kick') {
+      const type = String(entry.type || '').trim().toLowerCase();
+      const allowed = new Set(['like','follow','share','join','gift','sub','subscription','resub','bits','raid','host','superfan','fanclub','question','subscription-gift','system']);
+      if (!allowed.has(type)) return entry;
+      entry.type = type;
+      entry.group = entry.group || (['gift','sub','subscription','subscription-gift','resub','bits','raid','host'].includes(type) ? 'gift' : ['like','follow','share','join'].includes(type) ? 'event' : 'system');
+      if (type === 'share') { entry.action = 'Compartió'; entry.emoji = '🗣️'; }
+      if (type === 'follow') { entry.action = 'Follow'; entry.emoji = '👤'; }
+      if (type === 'like') { entry.action = 'Like'; entry.emoji = '❤️'; }
+      if (type === 'join') { entry.action = 'Entrada'; entry.emoji = '👻'; }
+      if (!entry.identityKey) entry.identityKey = normalizeUsername(entry.uniqueId || entry.username || entry.user || entry.displayName || '').toLowerCase();
+      if (!entry.username) entry.username = entry.uniqueId || '';
+      if (!entry.displayName) entry.displayName = entry.user || entry.nickname || entry.uniqueId || '';
+      return entry;
+    }
+
+    const data = entry.data && typeof entry.data === 'object' ? entry.data : entry;
+    const type = inferKickActivityType(entry);
     entry.type = type;
-    entry.group = entry.group || (['gift','sub','subscription','subscription-gift','resub','bits','raid','host'].includes(type) ? 'gift' : ['like','follow','share','join'].includes(type) ? 'event' : 'system');
-    if (type === 'share') { entry.action = 'Compartió'; entry.emoji = '🗣️'; }
-    if (type === 'follow') { entry.action = 'Follow'; entry.emoji = '👤'; }
-    if (type === 'like') { entry.action = 'Like'; entry.emoji = '❤️'; }
-    if (type === 'join') { entry.action = 'Entrada'; entry.emoji = '👻'; }
-    if (!entry.identityKey) entry.identityKey = normalizeUsername(entry.uniqueId || entry.username || entry.user || entry.displayName || '').toLowerCase();
-    if (!entry.username) entry.username = entry.uniqueId || '';
-    if (!entry.displayName) entry.displayName = entry.user || entry.nickname || entry.uniqueId || '';
+    entry.platform = 'kick';
+    const subscriptionActivity = ['sub','subscription','resub','subscription-gift'].includes(type);
+    const monetaryGift = ['gift','bits'].includes(type) || Number(entry.amount ?? data?.amount ?? data?.value ?? data?.coins ?? data?.kicks ?? 0) > 0 || Boolean(entry.currency || data?.currency);
+    entry.activityKind = subscriptionActivity ? 'event' : (monetaryGift ? 'gift' : entry.activityKind || 'event');
+    entry.group = subscriptionActivity ? 'event' : (monetaryGift ? 'gift' : ['follow','join','raid','host'].includes(type) ? 'event' : entry.group || 'system');
+    const sender = data?.follower || data?.subscriber || data?.gifter || data?.sender || data?.user || data?.redeemer || data?.raider || data?.hoster || {};
+    const username = String(entry.username || entry.displayName || entry.user || sender.username || sender.slug || data?.username || data?.gifter_username || 'Usuario').trim();
+    const avatar = entry.avatar || entry.avatarUrl || entry.profilePictureUrl || sender.profile_picture || sender.profilePicture || sender.profile_picture_url || sender.avatar || sender.avatar_url || '';
+    entry.username = username;
+    entry.displayName = String(entry.displayName || entry.user || sender.display_name || sender.username || sender.slug || username).trim();
+    entry.uniqueId = String(entry.uniqueId || entry.identityKey || sender.id || sender.user_id || data?.user_id || username).trim();
+    entry.identityKey = String(entry.identityKey || entry.uniqueId || username).toLowerCase();
+    entry.avatar = avatar;
+    entry.avatarUrl = avatar;
+    entry.profilePictureUrl = avatar;
+    entry.color = entry.color || data?.identity?.color || sender.identity?.color || sender.username_color || sender.color || '';
+    entry.badges = entry.badges || sender.identity?.badges || sender.badges || [];
+    entry.eventId = entry.eventId || entry.id || data?.id || data?.event_id || data?.gift_transaction_id || data?.correlation_id || undefined;
+    entry.timestamp = Number(entry.timestamp || data?.created_at || data?.timestamp || Date.now()) || Date.now();
+
+    const giftees = Array.isArray(entry.giftees) ? entry.giftees : Array.isArray(data?.giftees) ? data.giftees : Array.isArray(data?.gifted_users) ? data.gifted_users : Array.isArray(data?.recipients) ? data.recipients : [];
+    const duration = Number(entry.duration ?? data?.duration ?? data?.months ?? data?.months_subscribed ?? 0) || 0;
+    const quantity = Number(entry.quantity ?? data?.quantity ?? data?.gifted_quantity ?? data?.gifted_total ?? data?.count ?? giftees.length ?? 0) || 0;
+    const giftObj = entry.gift && typeof entry.gift === 'object' ? entry.gift : (data?.gift && typeof data.gift === 'object' ? data.gift : null);
+    const giftName = String(entry.giftName || data?.giftName || data?.gift_name || giftObj?.name || giftObj?.title || (type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'sub' || type === 'resub' ? 'Suscripción' : 'Regalo')).trim();
+    const amount = Number(entry.amount ?? data?.amount ?? data?.value ?? data?.coins ?? data?.kicks ?? giftObj?.amount ?? 0) || 0;
+
+    if (type === 'follow') {
+      entry.action = 'Nuevo seguidor'; entry.emoji = '➕'; entry.message = entry.message || `${entry.displayName} comenzó a seguir el canal.`;
+    } else if (type === 'sub') {
+      entry.action = 'Nueva suscripción'; entry.emoji = '⭐'; entry.quantity = Math.max(1, duration || quantity || 1); entry.message = entry.message || `${entry.displayName} se suscribió${entry.quantity > 1 ? ` por ${entry.quantity} meses` : ''}.`;
+    } else if (type === 'resub') {
+      entry.action = 'Suscripción renovada'; entry.emoji = '🔄'; entry.quantity = Math.max(1, duration || quantity || 1); entry.message = entry.message || `${entry.displayName} renovó su suscripción${entry.quantity > 1 ? ` por ${entry.quantity} meses` : ''}.`;
+    } else if (type === 'subscription-gift') {
+      entry.action = 'Suscripciones regaladas'; entry.emoji = '🎟️'; entry.quantity = Math.max(1, quantity || giftees.length || 1); entry.gifteeCount = giftees.length || entry.gifteeCount; entry.message = entry.message || `${entry.displayName} regaló ${entry.quantity} suscripción${entry.quantity === 1 ? '' : 'es'}.`;
+    } else if (type === 'gift') {
+      entry.action = giftName && giftName !== 'Regalo' ? giftName : 'Regalo'; entry.emoji = '🎁'; entry.gift = giftObj || entry.gift; entry.giftName = giftName; entry.quantity = Math.max(1, quantity || 1); entry.amount = amount; entry.currency = entry.currency || (String(entry.event || '').toLowerCase().includes('kicks') ? 'KICKS' : ''); entry.message = entry.message || `${entry.displayName} envió ${giftName}${entry.quantity > 1 ? ` ×${entry.quantity}` : ''}.`;
+    } else if (type === 'raid') {
+      entry.action = 'Raid'; entry.emoji = '🚀'; entry.message = entry.message || `${entry.displayName} llegó en raid.`;
+    } else if (type === 'host') {
+      entry.action = 'Host'; entry.emoji = '📣'; entry.message = entry.message || `${entry.displayName} te está hosteando.`;
+    } else if (type === 'reward') {
+      entry.action = String(data?.reward?.title || data?.reward_title || entry.action || 'Recompensa canjeada'); entry.emoji = '🎟️'; entry.message = entry.message || `${entry.displayName} canjeó ${entry.action}.`;
+    } else if (!entry.action || entry.action === 'Evento') {
+      entry.action = 'Actividad de Kick'; entry.emoji = '✨'; entry.message = entry.message || 'Actividad de Kick.';
+    }
     return entry;
   }
 
@@ -618,7 +690,9 @@
     const body = p.showEmotes === false ? stripEmojis(rawBody) : rawBody;
     const time = new Date(item.timestamp || Date.now()).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
     const avatar = item.preview === true ? previewAvatarUrl(item) : (isUsableViewerAvatar(item.avatar) ? item.avatar : '');
-    const isGift = kind === 'gift' || eventVisibilityKey(item) === 'gifts' || Boolean(item.gift || item.giftName);
+    const itemType = String(item?.type || item?.event || '').toLowerCase();
+    const isSubscription = ['sub','subscription','resub','subscription-gift'].includes(itemType);
+    const isGift = !isSubscription && (kind === 'gift' || eventVisibilityKey(item) === 'gifts' || Boolean(item.gift || item.giftName || item.amount || item.giftCoins || item.currency));
     const showTime = p.showTimestamps !== false;
     const showPlatform = p.showPlatformPill !== false;
     const theme = p.chatTheme || 'cloud';
@@ -645,10 +719,30 @@
   }
 
   function activityKind(item) {
-    if (String(item?.activityKind||'').toLowerCase()==='gift') return 'gift';
     const type = String(item?.type || item?.event || '').toLowerCase();
-    return (type.includes('gift') || Boolean(item?.gift || item?.giftName)) ? 'gift' : 'event';
+    const subscription = ['sub','subscription','resub','subscription-gift'].includes(type);
+    if (subscription) return 'event';
+    if (String(item?.activityKind||'').toLowerCase()==='gift') return 'gift';
+    const monetaryGift = type === 'gift' || type === 'bits' || Number(item?.amount ?? item?.giftCoins ?? item?.coins ?? 0) > 0 || Boolean(item?.currency);
+    return monetaryGift ? 'gift' : 'event';
   }
+  function kickActivityPresentation(item, kind='event') {
+    if (String(item?.platform || '').toLowerCase() !== 'kick') return null;
+    const type = String(item?.type || '').toLowerCase();
+    const qty = Math.max(1, Number(item?.quantity || item?.gifteeCount || 1) || 1);
+    const giftName = giftDisplayName({ ...(item?.gift && typeof item.gift==='object'?item.gift:{}), giftName:item?.giftName || item?.gift?.name || item?.gift?.title || 'Regalo', key:item?.giftId || item?.gift?.gift_id });
+    const amount = Number(item?.amount || item?.gift?.amount || 0) || 0;
+    if (type==='follow') return { icon:'➕', title:'NUEVO SEGUIDOR', message:`${displayNameForActivity(item)} comenzó a seguirte.` };
+    if (type==='sub') return { icon:'⭐', title:'NUEVA SUSCRIPCIÓN', message:`${displayNameForActivity(item)} se suscribió${qty>1?` por ${qty} meses`:''}.` };
+    if (type==='resub') return { icon:'🔄', title:'SUSCRIPCIÓN RENOVADA', message:`${displayNameForActivity(item)} renovó su suscripción${qty>1?` por ${qty} meses`:''}.` };
+    if (type==='subscription-gift') return { icon:'🎟️', title:'SUSCRIPCIONES REGALADAS', message:`${displayNameForActivity(item)} regaló ${qty} suscripción${qty===1?'':'es'}.` };
+    if (type==='gift') return { icon:'🎁', title:'REGALO', message:`${displayNameForActivity(item)} envió ${giftName}${qty>1?` ×${qty}`:''}${amount>0 && item?.currency==='KICKS'?` · ${amount} KICKS`:''}.` };
+    if (type==='raid') return { icon:'🚀', title:'RAID', message:item?.message || `${displayNameForActivity(item)} llegó en raid.` };
+    if (type==='host') return { icon:'📣', title:'HOST', message:item?.message || `${displayNameForActivity(item)} te está hosteando.` };
+    if (type==='reward') return { icon:'🎟️', title:'RECOMPENSA', message:item?.message || `Canjeó ${item?.action || 'una recompensa'}.` };
+    return { icon:'✨', title:'KICK', message:item?.message || 'Actividad de Kick.' };
+  }
+
   function streamActivityRow(item, kind='event') {
     const p=settings.personalization||{};
     const platform=String(item.platform||'tiktok').toLowerCase();
@@ -658,7 +752,8 @@
     const avatarHtml=avatar ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy">` : `<span class="avatar-initial-fallback" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" aria-label="${esc(userName)}">${esc(String(userName).trim().charAt(0).toUpperCase() || platformShort(platform))}</span>`;
     const isGift=kind==='gift';
     const itemType=String(item?.type||'').toLowerCase();
-    const typeLabel=String(item.action||item.type|| (isGift?'Regalo':'Evento')).toUpperCase();
+    const kickView = platform==='kick' ? kickActivityPresentation(item, kind) : null;
+    const typeLabel=String(kickView?.title || item.action||item.type|| (isGift?'Regalo':'Actividad')).toUpperCase();
     const rawText=item.message||item.action||'';
     const cleanText=stripEmojis(rawText)||rawText;
     const highlight=isGift?(p.giftHighlightStyle||'gold'):(p.overlayEventHighlightStyle||'platform');
@@ -690,11 +785,11 @@
       else body=`<div class="gift-stream-content composition-${esc(p.overlayGiftCompositionMode||'vertical-centered')}">${imageHtml}${giftText}</div>`;
       icon='🎁';
     } else {
-      icon=esc(item.emoji||typeEmojiForDashboard(item));
-      body=`<span>${esc(cleanText)}</span>`;
+      icon=esc(kickView?.icon || item.emoji || typeEmojiForDashboard(item));
+      body=`<span>${esc(kickView?.message || cleanText)}</span>`;
     }
     const showUser=isGift ? true : p.highlightEventUsername!==false;
-    return `<article class="activity-preview activity-real ${isGift?'stage-gifts':'stage-events'} ${isGift?'gift':'event'}-${esc(highlight)} ${isGift?'gift':'event'}-layout-${esc(layout)} ${isGift?'gift':'event'}-direction-${esc(direction)} ${isGift?'gift':'event'}-mode-${esc(mode)} ${isGift?'gift':'event'}-size-${esc(size)} ${isGift?'gift':'event'}-shape-${esc(shape)} ${isGift?'gift':'event'}-side-${esc(side)} ${frame?'':'no-frame'}" style="--activity-accent:${accent};font-family:${font}">
+    return `<article class="activity-preview activity-real ${platform==='kick'?'kick-activity-card ':''}${isGift?'stage-gifts':'stage-events'} ${isGift?'gift':'event'}-${esc(highlight)} ${isGift?'gift':'event'}-layout-${esc(layout)} ${isGift?'gift':'event'}-direction-${esc(direction)} ${isGift?'gift':'event'}-mode-${esc(mode)} ${isGift?'gift':'event'}-size-${esc(size)} ${isGift?'gift':'event'}-shape-${esc(shape)} ${isGift?'gift':'event'}-side-${esc(side)} ${frame?'':'no-frame'}" style="--activity-accent:${accent};font-family:${font}">
       <div class="activity-user-avatar ${frameClass(item)} size-${p.avatarSize||'md'}">${avatarHtml}</div>
       <div class="activity-icon">${isGift?'<span>🎁</span>':icon}</div>
       <div class="activity-copy"><small>${esc(typeLabel)}</small>${showUser?`<strong>${esc(userName)}</strong>`:''}${body}</div>
@@ -725,10 +820,11 @@
   }
   function eventVisibilityKey(item) {
     const type = String(item?.type || item?.event || '').toLowerCase();
+    const isSubscription = ['sub','subscription','resub','subscription-gift'].includes(type);
     // Monetary/support actions belong to Regalos, never to Eventos.
-    if (item?.activityKind === 'gift' || item?.gift || item?.giftName || type.includes('gift')) return 'gifts';
-    if (type === 'bits' || item?.bits) return 'gifts';
-    if (type === 'sub' || type.includes('subscription')) return 'gifts';
+    if (!isSubscription && (item?.activityKind === 'gift' || type === 'gift' || (item?.gift && !isSubscription))) return 'gifts';
+    if (type === 'bits' || item?.bits || item?.monetary === true) return 'gifts';
+    if (type === 'sub' || type === 'subscription' || type === 'resub' || type === 'subscription-gift' || type.includes('subscription')) return 'subscriptions';
     if (type === 'like') return 'likes';
     if (type.includes('follow') || type === 'follow') return 'follows';
     if (type.includes('join') || type === 'member') return 'joins';
@@ -1154,6 +1250,7 @@
       state.previewChat = [
         {preview:true,platform:'tiktok',displayName:'LunaByte',username:'lunabyte',uniqueId:'lunabyte',badges:['verified'],message:'¡Se ve genial este diseño!',timestamp:base},
         {preview:true,platform:'twitch',displayName:'MauroLive',username:'maurolive',uniqueId:'maurolive',badges:['subscriber'],message:'Saludos desde Twitch 👋',timestamp:base + 1000},
+        {preview:true,platform:'kick',displayName:'Kuinaza',username:'kuinaza',uniqueId:'kuinaza',badges:['verified'],message:'Saludos desde Kick 💚',timestamp:base + 1500},
         {preview:true,platform:'tiktok',displayName:'Sofi_gg',username:'sofi_gg',uniqueId:'sofi_gg',message:'¿Podemos probar otra fuente?',timestamp:base + 2000}
       ];
     }
@@ -1255,6 +1352,7 @@
       {platform:'twitch',displayName:'MauroLive',username:'maurolive',uniqueId:'maurolive',message:'Saludos a todos',initials:'ML'},
       {platform:'tiktok',displayName:'Sofi_gg',username:'sofi_gg',uniqueId:'sofi_gg',message:'¿Podemos probar otra fuente?',initials:'SG'},
       {platform:'twitch',displayName:'RexPlay',username:'rexplay',uniqueId:'rexplay',message:'Buen directo 🔥',initials:'RP'},
+      {platform:'kick',displayName:'Kuinaza',username:'kuinaza',uniqueId:'kuinaza',message:'¡Hola desde Kick!',initials:'KU'},
       {platform:'tiktok',displayName:'NekoLive',username:'nekolive',uniqueId:'nekolive',message:'Qué buena configuración',initials:'NL'}
     ];
     const next={preview:true,...examples[chatSimulationSequence++ % examples.length],timestamp:Date.now(),action:'Comentario'};
@@ -1277,7 +1375,7 @@
     cBadges:['personalization','showBadges'], cActivity:['personalization','showActivity'], cAutoClear:['personalization','autoClearChat'],
     cClearSeconds:['personalization','clearChatSeconds'], cPlatformPill:['personalization','showPlatformPill'], cTimestamp:['personalization','showTimestamps'],
     cShowEmotes:['personalization','showEmotes'], cBubbleRadius:['personalization','bubbleRadius'], cAvatarBorder:['personalization','avatarBorderWidth'],
-    cMessagePadding:['personalization','messagePadding'], cRowGap:['personalization','rowGap'], cTikName:['personalization','tiktokNameColor'], cTwitchName:['personalization','twitchNameColor'],
+    cMessagePadding:['personalization','messagePadding'], cRowGap:['personalization','rowGap'], cTikName:['personalization','tiktokNameColor'], cTwitchName:['personalization','twitchNameColor'], cKickName:['personalization','kickNameColor'], cKickCustomColor:['personalization','kickNameCustomColor'],
     // Eventos
     eLayout:['personalization','eventsLayout'], eDirection:['personalization','eventsDirection'], eMode:['personalization','eventsMode'],
     eSize:['personalization','eventsPanelSize'], eShape:['personalization','eventsOverlayShape'], eSide:['personalization','eventsOverlayCardSide'], eFrame:['personalization','eventsCardFrame'],
@@ -1305,7 +1403,7 @@
   function customizeControlValue(id, el) {
     let value = el.type === 'checkbox' ? el.checked : el.value;
     if (['cClearSeconds','cBubbleRadius','cAvatarBorder','cMessagePadding','cRowGap'].includes(id)) value = Math.max(0, Number(value || 0));
-    if (['eLikes','eFollows','eJoins','eShares','eSystem','eGifts','eSubs','eBits','eRaids','eHosts','eUser','eGiftHi','gShowActivity'].includes(id)) value = Boolean(value);
+    if (['eLikes','eFollows','eJoins','eShares','eSubs','eSystem','eGifts','eBits','eRaids','eHosts','eUser','eGiftHi','gShowActivity'].includes(id)) value = Boolean(value);
     return value;
   }
 
@@ -1346,6 +1444,7 @@
       ${ctl('Peso del nombre','cNameWeight','select',p.nameWeight,'<option value="600">Semibold</option><option value="700">Bold</option><option value="800">Extra Bold</option><option value="900">Black</option>')}
       ${ctl('Color nombre TikTok','cTikName','select',p.tiktokNameColor||'white','<option value="white">Blanco</option><option value="real">Rosa TikTok</option>')}
       ${ctl('Color nombre Twitch','cTwitchName','select',p.twitchNameColor||'real','<option value="real">Morado Twitch</option><option value="white">Blanco</option>')}
+      ${ctl('Color nombre Kick','cKickName','select',p.kickNameColor||'real','<option value="real">Verde Kick</option><option value="white">Blanco</option><option value="custom">Personalizado</option>')}
     </div>`;
     if (activeCustomizeSection==='message') return `<div class="custom-control-grid">
       ${ctl('Marco comentario','cBubble','select',p.bubbleFrame,'<option value="platform">Plataforma</option><option value="role">Rol</option><option value="none">Sin marco</option>')}
@@ -1390,7 +1489,7 @@
     </div>`;
     if (activeCustomizeSection==='content') return `<div class="custom-control-grid">
       ${ctl('Likes','eLikes','check',v.likes !== false)} ${ctl('Seguidores','eFollows','check',v.follows !== false)} ${ctl('Entradas','eJoins','check',v.joins !== false)}
-      ${ctl('Compartidos','eShares','check',v.shares !== false)} ${ctl('Superfan','eSuperfan','check',v.superfan !== false)} ${ctl('Sistema','eSystem','check',v.system !== false)} ${ctl('Raids','eRaids','check',v.raids !== false)} ${ctl('Hosts','eHosts','check',v.hosts !== false)}
+      ${ctl('Compartidos','eShares','check',v.shares !== false)} ${ctl('Suscripciones','eSubs','check',v.subscriptions !== false)} ${ctl('Superfan','eSuperfan','check',v.superfan !== false)} ${ctl('Sistema','eSystem','check',v.system !== false)} ${ctl('Raids','eRaids','check',v.raids !== false)} ${ctl('Hosts','eHosts','check',v.hosts !== false)}
       <div class="custom-hint"><strong>Bits y suscripciones</strong><span>En Twitch se muestran exclusivamente en Regalos porque representan apoyo económico.</span></div>
     </div>`;
     if (activeCustomizeSection==='highlight') return `<div class="custom-control-grid">
@@ -1444,7 +1543,11 @@
         {key:'follows',platform:'twitch',user:'JosueLopez',icon:'👤',type:'follow',text:'comenzó a seguirte en Twitch',timestamp:base+28000},
         {key:'raids',platform:'twitch',user:'RaidLeader',icon:'🚀',type:'raid',text:'hizo raid con 37 espectadores',timestamp:base+49000},
         {key:'hosts',platform:'twitch',user:'HostMaster',icon:'📣',type:'host',text:'hosteó el canal',timestamp:base+56000},
-        {key:'system',platform:'twitch',user:'Nocturno',icon:'⛔',type:'ban',text:'fue baneado del canal',timestamp:base+63000},
+        {key:'follows',platform:'kick',user:'Kuinaza',icon:'➕',type:'follow',text:'comenzó a seguirte en Kick',timestamp:base+60000},
+        {key:'subscriptions',platform:'kick',user:'Soiffo',icon:'⭐',type:'sub',text:'se suscribió en Kick',timestamp:base+63000},
+        {key:'subscriptions',platform:'kick',user:'Santichos',icon:'🔄',type:'resub',text:'renovó su suscripción en Kick',timestamp:base+66000},
+        {key:'subscriptions',platform:'kick',user:'Lixtyyy',icon:'🎟️',type:'subscription-gift',text:'regaló 3 suscripciones',timestamp:base+69000},
+        {key:'system',platform:'twitch',user:'Nocturno',icon:'⛔',type:'ban',text:'fue baneado del canal',timestamp:base+70000},
         {key:'system',platform:'twitch',user:'Nocturno',icon:'✅',type:'unban',text:'fue desbaneado del canal',timestamp:base+70000}
       ];
     }
@@ -1464,7 +1567,8 @@
         {platform:'tiktok',user:'LunaByte',gift:heart.name,displayNameEs:giftDisplayName(heart),giftKey:heart.key,giftImage:heart.image,amount:1,coins:heart.coins,timestamp:base},
         {platform:'tiktok',user:'SofiGG',gift:rose.name,displayNameEs:giftDisplayName(rose),giftKey:rose.key,giftImage:rose.image,amount:5,coins:rose.coins,timestamp:base+10000},
         {platform:'twitch',user:'BitMaster',gift:'Bits',giftName:'Bits',giftKey:'bits',giftEmoji:'💎',amount:100,bits:100,message:'envió 100 Bits',timestamp:base+20000,twitchGiftType:'bits'},
-        {platform:'twitch',user:'SubQueen',gift:'Suscripción de regalo',giftName:'Suscripción de regalo',giftKey:'subscriptiongift',giftEmoji:'⭐',amount:5,message:'regaló 5 suscripciones',timestamp:base+30000,twitchGiftType:'subscription-gift'}
+        {platform:'twitch',user:'SubQueen',gift:'Suscripción de regalo',giftName:'Suscripción de regalo',giftKey:'subscriptiongift',giftEmoji:'⭐',amount:5,message:'regaló 5 suscripciones',timestamp:base+30000,twitchGiftType:'subscription-gift'},
+        {platform:'kick',user:'Kuinaza',gift:{name:'Rage Quit',amount:500,type:'LEVEL_UP'},giftName:'Rage Quit',giftKey:'ragequit',giftEmoji:'🎁',amount:500,giftCoins:500,currency:'KICKS',message:'envió Rage Quit · 500 KICKS',timestamp:base+40000}
       ];
     }
     return state.previewGiftSeeds;
@@ -1520,7 +1624,7 @@
     const cards=list.map(sample=>{
       const size=p.overlayGiftImageSize||'md';
       const display=p.overlayGiftDisplayMode||'full';
-      const nameColor=p.overlayNameColorMode==='custom'?(p.overlayNameColor||'#ffffff'):(sample.platform==='twitch'?'#c7a2ff':'#fe6f92');
+      const nameColor=p.overlayNameColorMode==='custom'?(p.overlayNameColor||'#ffffff'):(sample.platform==='twitch'?'#c7a2ff':sample.platform==='kick'?'#8cff68':'#fe6f92');
       const displayGift=sample.displayNameEs||giftDisplayName(sample);
       const title=display==='image'?displayGift:display==='text'?displayGift:`${displayGift}${p.giftAmountStyle==='muted'?'':` ×${sample.amount}`}`;
       const frame=p.giftsCardFrame===false?'no-frame':'';
@@ -1660,7 +1764,7 @@
     {id:'gold',name:'Gold',desc:'Premium brillante',bg1:'#d8b35a',bg2:'#8a6a2f',bg3:'#3f2d14'},
     {id:'neon',name:'Neon',desc:'Fuerte y moderno',bg1:'#9b5cff',bg2:'#22d3ee',bg3:'#0f172a'}
   ];
-  function defaultRoulettePreviewConfig(){return {mode:'baraja',enabled:true,audience:'all',platforms:{tiktok:true,twitch:true},participation:{entryMode:'comment',commentMode:'custom',commentText:'1',allowMultiple:false,maxEntriesPerUser:1,spamCooldownMs:2400},winnerComment:{enabled:true,voiceBotLinked:false,waitSeconds:30},auto:{enabled:false,startWaitSeconds:60,restartWaitSeconds:180},theme:{preset:'midnight',accent:'#64748b',accent2:'#22d3ee',accent3:'#9b5cff',frame:'glass',frameColor1:'#9b5cff',frameColor2:'#22d3ee',frameColor3:'#f472b6',background:'transparent',showGrid:false,cardTheme:'midnight'}};}
+  function defaultRoulettePreviewConfig(){return {mode:'baraja',enabled:true,audience:'all',platforms:{tiktok:true,twitch:true,kick:true},participation:{entryMode:'comment',commentMode:'custom',commentText:'1',allowMultiple:false,maxEntriesPerUser:1,spamCooldownMs:2400},winnerComment:{enabled:true,voiceBotLinked:false,waitSeconds:30},auto:{enabled:false,startWaitSeconds:60,restartWaitSeconds:180},theme:{preset:'midnight',accent:'#64748b',accent2:'#22d3ee',accent3:'#9b5cff',frame:'glass',frameColor1:'#9b5cff',frameColor2:'#22d3ee',frameColor3:'#f472b6',background:'transparent',showGrid:false,cardTheme:'midnight'}};}
   function getRoulettePreviewConfig(){
     if(!roulettePreviewConfig){
       try{
@@ -3037,7 +3141,7 @@
             <div class="music-tab-panel ${musicWidgetActiveTab==='admin'?'is-active':''}" data-music-panel="admin">
               <article class="widget-subsection music-admin-panel">
                 <div class="section-head"><div><p class="eyebrow">ADMINISTRACIÓN</p><h3>Control de reproducción</h3><p class="muted">La cuenta conectada es administradora por defecto. Los moderadores son opcionales.</p></div></div>
-                <div class="music-owner-admin-grid">${connectedAdmins||'<div class="music-admin-empty">No hay cuentas TikTok/Twitch conectadas. Conecta una para que aparezca como admin.</div>'}</div>
+                <div class="music-owner-admin-grid">${connectedAdmins||'<div class="music-admin-empty">No hay cuentas TikTok/Twitch/Kick conectadas. Conecta una para que aparezca como admin.</div>'}</div>
                 <div class="music-moderator-toggle"><label class="check-row"><input id="musicAllowModeratorCommands" type="checkbox" ${s.allowModeratorCommands?'checked':''}><span>Permitir comandos a moderadores</span></label><small>Solo usuarios con insignia <b>moderador</b> podrán usar los comandos especiales.</small></div>
                 <div class="music-admin-command-grid">${Object.entries(MUSIC_ADMIN_COMMANDS).map(([k])=>{const label=k==='pause'?'Pausa':k==='stop'?'Detener':k==='skip'?'Saltar':k==='repeat'?'Repetir':'Volumen';return `<div class="music-admin-command-card"><div class="music-admin-command-title"><strong>${label}</strong><span>Admin${s.allowModeratorCommands?' + moderador':''}</span></div><div class="music-admin-command-fields"><label>Prefijo<select data-music-admin-prefix="${k}">${MUSIC_PREFIX_OPTIONS.map(v=>`<option value="${esc(v)}" ${s.adminCommandPrefixes?.[k]===v?'selected':''}>${esc(v)}</option>`).join('')}</select></label><label>Comando<select data-music-admin-command="${k}">${adminOption(k)}</select></label></div><div class="music-admin-command-example">Ejemplo: <b data-music-admin-example="${k}">${esc(s.adminCommandPrefixes?.[k]||s.commandPrefix)}${esc(s.adminCommands?.[k]||'')}${k==='volume'?' 100':''}</b>${k==='volume'?'<small> · 0–100</small>':''}</div></div>`}).join('')}</div>
                 <div class="music-admin-preview"><span>Comandos activos</span><div data-music-active-commands>${Object.entries(MUSIC_ADMIN_COMMANDS).map(([k])=>`<b data-music-active-command="${k}">${esc(s.adminCommandPrefixes?.[k]||s.commandPrefix)}${esc(s.adminCommands?.[k]||k)}${k==='volume'?' 100':''}</b>`).join('&nbsp;&nbsp;')}</div></div>
@@ -3645,6 +3749,12 @@
   }
   async function openLibraryPage(){ try{await loadLibrary();}catch(e){toast('Biblioteca',e.message,'err');} renderLibrary(); }
 
+  function kickAvatarCacheSet(username, avatar){
+    const clean=normalizeUsername(username).toLowerCase();
+    if(!clean || !avatar) return;
+    state.avatarCache.set(avatarKey('kick', clean), avatar);
+  }
+
   function render(){ applyAppearance(); activateNav(); renderTop(); if(page==='dashboard')renderDashboard(); else if(page==='connections')renderConnections(); else if(page==='customize')renderCustomize(); else if(page==='overlays')renderOverlays(); else if(page==='roulette')renderRoulette(); else if(page==='voices')renderVoices(); else if(page==='points')renderPoints(); else if(page==='widgets')renderWidgets(); else if(page==='library')openLibraryPage(); else renderSettings(); }
 
   function classifyEvent(item){ return activityKind(item); }
@@ -3859,6 +3969,24 @@
     });
     startDashboardFeedCleanup();
     socket.on('chat',d=>acceptChat(d||{}));
+    socket.on('kickAvatarUpdate',d=>{
+      if(String(d?.platform||'').toLowerCase()!=='kick') return;
+      const username=normalizeUsername(d?.username||d?.uniqueId||'').toLowerCase();
+      const messageId=String(d?.messageId||'').trim();
+      const avatar=String(d?.avatar||d?.avatarUrl||d?.profilePictureUrl||'').trim();
+      if(!avatar) return;
+      let changed=false;
+      for(const item of state.chat){
+        const id=String(item?.id||item?.messageId||'').trim();
+        const itemUser=normalizeUsername(item?.username||item?.uniqueId||item?.user||'').toLowerCase();
+        if((messageId && id===messageId) || (!messageId && username && itemUser===username)) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; changed=true; }
+      }
+      for(const item of [...state.events,...state.gifts]){
+        const itemUser=normalizeUsername(item?.username||item?.uniqueId||item?.user||'').toLowerCase();
+        if(username && itemUser===username) { item.avatar=item.avatarUrl=item.profilePictureUrl=avatar; changed=true; }
+      }
+      if(changed){ kickAvatarCacheSet(username, avatar); if(page==='dashboard') updateDashboardFeeds(); else render(); }
+    });
     socket.on('event',d=>acceptEvent(d||{}));
     socket.on('roulette:sync',s=>{
       rouletteState=s||rouletteState;

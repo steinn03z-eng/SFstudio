@@ -149,7 +149,7 @@
 
     const defaults = { personal: { theme:"dark", overlayTheme:"neon", font:"inter", animation:"slide", chatLayout:"vertical", chatDirection:"down", chatTheme:"cloud", avatarFrame:"platform", bubbleFrame:"platform", avatarSize:"md", nameSize:"md", nameWeight:"800", chatHorizontalMode:"normal", chatOverlayShape:"normal", chatOverlayCardSide:"left", chatAdjustMessages:false, badgeStyle:"emoji", twitchNameColor:"real", tiktokNameColor:"white", messageEffect:"shadow", nameEffect:"shadow", textColor:"auto", showBadges:true, showEmotes:true, highlightSupporters:true, highlightSupportersTikTok:true, highlightSupportersTwitch:true, supporterHighlightStyle:"gold", eventStyle:"chat", giftStyle:"chat", eventsLayout:"vertical", eventsDirection:"down", eventsMode:"slide", eventsPanelSize:"normal", eventsOverlayShape:"normal", eventsOverlayCardSide:"left", eventsCardFrame:true, eventsAutoClear:false, eventsClearSeconds:30, giftsLayout:"vertical", giftsDirection:"down", giftsMode:"slide", giftsPanelSize:"normal", giftsOverlayShape:"normal", giftsOverlayCardSide:"left", giftsCardFrame:true, giftsAutoClear:false, giftsClearSeconds:30, highlightStyle:"platform", giftHighlightStyle:"gold", overlayEventHighlightStyle:"platform", overlayGiftImageSize:"md", overlayGiftComposition:"normal", highlightEventUsername:true, highlightLikes:true, highlightFollows:true, highlightJoins:true, highlightShares:true, highlightSystem:true, highlightFanclub:true, highlightSuperfan:true, highlightGifts:true, highlightSubs:true, highlightBits:true, highlightRaids:true, autoClearChat:false, clearChatSeconds:30, tiktokAvatarUrl:"" } };
     let settings = loadSettings();
-    let state = { chat:[], events:[], gifts:[], supporters: loadJSON(SUPPORTERS_KEY, { tiktok:{}, twitch:{} }), activityBadges: loadJSON(ACTIVITY_BADGES_KEY, { tiktok:{}, twitch:{} }) };
+    let state = { chat:[], events:[], gifts:[], supporters: loadJSON(SUPPORTERS_KEY, { tiktok:{}, twitch:{}, kick:{} }), activityBadges: loadJSON(ACTIVITY_BADGES_KEY, { tiktok:{}, twitch:{}, kick:{} }) };
     let followState = { chat:true, events:true, gifts:true };
     let voiceBot = loadStoredJSON(VOICEBOT_KEY, voiceBotDefaults);
     let voiceBotQueue = [];
@@ -190,7 +190,7 @@
     function overlayConnectionState(){
       const presence = loadOverlayPresence();
       const session = loadOverlaySession();
-      const platforms = ["tiktok", "twitch"];
+      const platforms = ["tiktok", "twitch", "kick"];
       const anyConnected = platforms.some((platform) => Boolean(session?.[platform]?.connected || presence?.[platform]?.connected));
       const anyLive = platforms.some((platform) => Boolean(session?.[platform]?.connected && presence?.[platform]?.live));
       if (anyLive) return { state:"live", label:"Conectado en directo" };
@@ -2254,7 +2254,7 @@ function currentViewSettingsKey(){
       if(filtered.length && (followState[key] || isAtEdge(list, layout, direction))) scrollToEdge(list, layout, direction, false);
     }
     function applySettings(nextSettings){ settings = migrateSettings(mergeDeep(structuredClone(defaults), nextSettings || {})); render(); }
-    function updateActivityBadgesFromStorage(){ state.activityBadges = loadJSON(ACTIVITY_BADGES_KEY, { tiktok:{}, twitch:{} }); state.supporters = loadJSON(SUPPORTERS_KEY, { tiktok:{}, twitch:{} }); render(); }
+    function updateActivityBadgesFromStorage(){ state.activityBadges = loadJSON(ACTIVITY_BADGES_KEY, { tiktok:{}, twitch:{}, kick:{} }); state.supporters = loadJSON(SUPPORTERS_KEY, { tiktok:{}, twitch:{}, kick:{} }); render(); }
     function clearByAge(list, enabled, seconds){ if(!enabled) return list; const cutoff = Date.now() - Math.max(10, Number(seconds || 30)) * 1000; return list.filter((item)=> (item.timestamp || 0) >= cutoff); }
     const overlayRecentKeys = new Map();
     const OVERLAY_DUPLICATE_WINDOW_MS = 1800;

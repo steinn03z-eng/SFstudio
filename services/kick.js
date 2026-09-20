@@ -85,10 +85,12 @@ function resolveSender(data, preferred = []) {
     data?.redeemer?.user,
   ].filter((value) => value && typeof value === "object");
 
-  const sender = candidates.find((candidate) =>
-    Boolean(candidate?.username || candidate?.slug || candidate?.display_name || candidate?.id || candidate?.user_id),
-  ) || {};
-  const identity = sender?.identity || data?.identity || {};
+  const selected = candidates.find((candidate) =>
+    Boolean(candidate?.username || candidate?.slug || candidate?.display_name || candidate?.displayName),
+  ) || candidates.find((candidate) => Boolean(candidate?.id || candidate?.user_id)) || {};
+  const nestedUser = selected?.user && typeof selected.user === "object" ? selected.user : null;
+  const sender = nestedUser ? { ...selected, ...nestedUser } : selected;
+  const identity = sender?.identity || nestedUser?.identity || data?.identity || {};
 
   const username = String(
     sender.username ||
@@ -118,6 +120,7 @@ function resolveSender(data, preferred = []) {
   // Some older frames use profile_thumb; current websocket frames may omit it entirely.
   const avatar = String(
     sender.profile_picture ||
+      sender.profilepic ||
       sender.profilePicture ||
       sender.profile_pic ||
       sender.profile_thumb ||
@@ -154,92 +157,158 @@ function timestampOf(data) {
 
 function normalizeEventType(name, data) {
   const eventName = String(name || "").toLowerCase();
-  if (eventName.includes("follow") || eventName.includes("follower")) return "follow";
-  if (eventName.includes("subscription") || eventName.includes("sub")) {
-    if (eventName.includes("gift") || eventName.includes("luckyuserswhogotgift")) return "subscription-gift";
-    return "sub";
-  }
-  if (eventName.includes("kicks") && eventName.includes("gift")) return "gift";
+  const raw = data && typeof data === "object" ? data : {};
+
+  // Exact/current Kick event names first, then legacy websocket names.
+  if (eventName.includes("channel.followed") || eventName.endsWith("followedevent") || eventName.includes("follow") || eventName.includes("follower")) return "follow";
+  if (eventName.includes("channel.subscription.gifts") || eventName.includes("giftedsubscriptions") || eventName.includes("subscriptiongifted")) return "subscription-gift";
+  if (eventName.includes("channel.subscription.renewal") || eventName.includes("subscriptionrenewal")) return "resub";
+  if (eventName.includes("channel.subscription.new") || eventName.includes("subscriptionevent") || eventName.includes("subscription.new")) return "sub";
+  if (eventName.includes("kicks.gifted") || (eventName.includes("kicks") && eventName.includes("gift"))) return "gift";
   if (eventName.includes("gift")) return "gift";
-  if (eventName.includes("streamhost") || eventName.includes("host")) return "host";
+  if (eventName.includes("streamhost") || eventName.includes("stream.host") || eventName.includes("host")) return "host";
   if (eventName.includes("raid")) return "raid";
+  if (eventName.includes("reward") || eventName.includes("redemption")) return "reward";
   if (eventName.includes("ban")) return "system";
-  if (eventName.includes("reward") || eventName.includes("redemption")) return "system";
-  if (eventName.includes("streamerislive") || eventName.includes("stopstream") || eventName.includes("livestreamupdated") || eventName.includes("updatedlivestream")) return "system";
-  if (data?.followed === true || data?.followed === "true" || data?.follower?.username) return "follow";
-  if (data?.subscription || data?.months_subscribed || data?.is_subscribed === true) return "sub";
-  if (data?.gifted_quantity || data?.gift_transaction_id || data?.gift) return "gift";
-  if (data?.type && typeof data.type === "string") return data.type.toLowerCase();
+  if (eventName.includes("livestreamupdated") || eventName.includes("updatedlivestream") || eventName.includes("livestream.status") || eventName.includes("streamerislive") || eventName.includes("stopstream")) return "system";
+
+  // Infer from payload shape only when the transport did not give us a named event.
+  // Check gifted-subscriptions/gifts before the generic subscription branch so a
+  // payload containing both `subscriber` and `gifted_users` is not misclassified.
+  if (raw?.gifted_quantity || raw?.giftees || raw?.gifted_users || raw?.recipients) return "subscription-gift";
+  if (raw?.gift_transaction_id || raw?.gift || raw?.kicks || raw?.gift_coins) return "gift";
+  if (raw?.followed === true || raw?.followed === "true" || raw?.follower || raw?.follower_username) return "follow";
+  if (raw?.subscription || raw?.subscriber || raw?.months_subscribed || raw?.is_subscribed === true || raw?.duration) return "sub";
+  if (raw?.raider || raw?.raid) return "raid";
+  if (raw?.hoster || raw?.host_username) return "host";
+  if (raw?.reward || raw?.reward_title) return "reward";
+  if (raw?.type && typeof raw.type === "string" && raw.type.toLowerCase() !== "event") return raw.type.toLowerCase();
   return "event";
 }
 
-function normalizeEvent(data, eventName) {
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return "";
+}
+
+function normalizeIncomingKickEvent(data, eventName) {
   const raw = data && typeof data === "object" ? data : {};
   const payload = raw?.data && typeof raw.data === "object" ? raw.data : raw;
   const type = normalizeEventType(eventName, payload);
   const preferred =
     type === "follow" ? ["follower", "user", "sender"] :
-    type === "sub" ? ["subscriber", "user", "sender"] :
+    type === "sub" || type === "resub" ? ["subscriber", "user", "sender"] :
     type === "subscription-gift" ? ["gifter", "sender", "user"] :
     type === "gift" ? ["sender", "gifter", "user"] :
-    type === "raid" || type === "host" ? ["hoster", "sender", "user"] :
+    type === "raid" ? ["raider", "sender", "user"] :
+    type === "host" ? ["hoster", "sender", "user"] :
+    type === "reward" ? ["redeemer", "user", "sender"] :
     ["sender", "user", "author", "owner"];
 
   const sender = resolveSender(payload, preferred);
   const gift = payload?.gift && typeof payload.gift === "object" ? payload.gift : null;
-  const giftees = Array.isArray(payload?.giftees)
-    ? payload.giftees
-    : Array.isArray(payload?.gifted_users)
-      ? payload.gifted_users
-      : Array.isArray(payload?.recipients)
-        ? payload.recipients
-        : [];
-  const quantity = Number(
-    payload?.quantity ??
-      payload?.total ??
-      payload?.count ??
-      payload?.gifted_quantity ??
-      payload?.months ??
-      payload?.coins ??
-      payload?.kicks ??
-      (type === "subscription-gift" ? giftees.length : 0) ??
-      0,
-  ) || 0;
-  const amount = Number(
-    payload?.amount ??
-      payload?.value ??
-      gift?.amount ??
-      quantity ??
-      0,
-  ) || 0;
-  const giftId = String(
-    payload?.gift_id || payload?.giftId || gift?.gift_id || gift?.id || "",
-  ).trim();
-  const giftName = String(
-    payload?.giftName ?? payload?.gift_name ?? gift?.name ?? gift?.title ??
-      (type === "sub" ? "Suscripción" : type === "subscription-gift" ? "Suscripciones regaladas" : type === "gift" ? "Regalo" : ""),
-  ).trim();
-  const message = String(
-    payload?.message ?? payload?.content ?? gift?.message ?? "",
-  ).trim();
-  const sourceId = String(
-    payload?.id || payload?.event_id || payload?.eventId || payload?.message_id || payload?.gift_transaction_id || "",
-  ).trim();
+  const giftees = Array.isArray(payload?.giftees) ? payload.giftees
+    : Array.isArray(payload?.gifted_users) ? payload.gifted_users
+      : Array.isArray(payload?.recipients) ? payload.recipients : [];
+  const duration = Number(payload?.duration ?? payload?.months ?? payload?.months_subscribed ?? payload?.count ?? 0) || 0;
+  const quantity = Math.max(0, Number(payload?.quantity ?? payload?.total ?? payload?.gifted_quantity ?? payload?.gifted_total ?? payload?.count ?? (type === "subscription-gift" ? giftees.length : 0)) || 0);
+  const amount = Number(payload?.amount ?? payload?.value ?? gift?.amount ?? payload?.coins ?? payload?.kicks ?? 0) || 0;
+  const giftId = firstNonEmpty(payload?.gift_id, payload?.giftId, gift?.gift_id, gift?.id);
+  const giftName = firstNonEmpty(
+    payload?.giftName, payload?.gift_name, gift?.name, gift?.title,
+    type === "sub" || type === "resub" ? "Suscripción" :
+    type === "subscription-gift" ? "Suscripciones regaladas" :
+    type === "gift" ? "Regalo" : ""
+  );
+  const eventId = firstNonEmpty(payload?.id, payload?.event_id, payload?.eventId, payload?.message_id, payload?.gift_transaction_id, payload?.correlation_id);
+  const eventText = firstNonEmpty(payload?.message, payload?.content, payload?.description, payload?.user_input);
+
+  let action = "Evento";
+  let message = eventText;
+  let icon = "✨";
+  let group = "system";
+  let currency = "";
+
+  switch (type) {
+    case "follow":
+      action = "Nuevo seguidor";
+      message = `${sender.username || "Alguien"} comenzó a seguir el canal.`;
+      icon = "➕";
+      group = "event";
+      break;
+    case "sub":
+      action = "Nueva suscripción";
+      message = `${sender.username || "Alguien"} se suscribió${duration > 1 ? ` por ${duration} meses` : ""}.`;
+      icon = "⭐";
+      group = "event";
+      break;
+    case "resub":
+      action = "Suscripción renovada";
+      message = `${sender.username || "Alguien"} renovó su suscripción${duration > 1 ? ` por ${duration} meses` : ""}.`;
+      icon = "🔄";
+      group = "event";
+      break;
+    case "subscription-gift": {
+      const count = Math.max(1, quantity || giftees.length || 1);
+      action = "Suscripciones regaladas";
+      message = `${sender.username || "Alguien"} regaló ${count} suscripción${count === 1 ? "" : "es"}.`;
+      icon = "🎟️";
+      group = "event";
+      break;
+    }
+    case "gift":
+      action = giftName && giftName !== "Regalo" ? giftName : "Regalo";
+      message = `${sender.username || "Alguien"} envió ${giftName || "un regalo"}${quantity > 1 ? ` ×${quantity}` : ""}.`;
+      icon = "🎁";
+      group = "gift";
+      if (eventName.toLowerCase().includes("kicks")) currency = "KICKS";
+      break;
+    case "raid": {
+      const raidCount = Number(payload?.viewers ?? payload?.viewers_count ?? payload?.count ?? 0) || 0;
+      const from = firstNonEmpty(payload?.raider?.username, payload?.raider?.slug, sender.username, payload?.from, "Alguien");
+      action = "Raid";
+      message = raidCount > 0 ? `${from} llegó con ${raidCount} espectadores.` : `${from} llegó en raid.`;
+      icon = "🚀";
+      group = "event";
+      break;
+    }
+    case "host": {
+      const from = firstNonEmpty(payload?.hoster?.username, payload?.hoster, sender.username, "Alguien");
+      action = "Host";
+      message = `${from} te está hosteando.`;
+      icon = "📣";
+      group = "event";
+      break;
+    }
+    case "reward":
+      action = firstNonEmpty(payload?.reward?.title, payload?.reward_title, "Recompensa canjeada");
+      message = `${sender.username || "Alguien"} canjeó ${action}.`;
+      icon = "🎟️";
+      group = "event";
+      break;
+    case "system":
+      action = firstNonEmpty(payload?.action, payload?.title, "Actividad");
+      icon = "•";
+      group = "system";
+      break;
+    default:
+      action = firstNonEmpty(payload?.action, payload?.title, payload?.type, "Evento");
+      message = message || firstNonEmpty(payload?.message, payload?.content, "Actividad de Kick.");
+      icon = "✨";
+      group = "event";
+  }
+
   return {
     type,
-    group: ["gift", "sub", "subscription", "resub", "bits", "raid", "host", "subscription-gift"].includes(type)
-      ? "gift"
-      : ["follow", "like", "share", "join"].includes(type)
-        ? "event"
-        : "system",
-    action:
-      type === "follow" ? "Follow" :
-      type === "sub" ? "Suscripción" :
-      type === "subscription-gift" ? "Suscripciones regaladas" :
-      type === "gift" ? "Regalo" :
-      type === "raid" ? "Raid" :
-      type === "host" ? "Host" :
-      "Evento",
+    group,
+    activityKind: group === "gift" ? "gift" : "event",
+    action,
+    message,
+    emoji: icon,
     username: sender.username,
     displayName: sender.displayName,
     uniqueId: sender.uniqueId,
@@ -249,21 +318,29 @@ function normalizeEvent(data, eventName) {
     profilePictureUrl: sender.avatar,
     color: sender.color,
     badges: sender.badges,
+    verified: Boolean(payload?.is_verified || sender?.verified || payload?.verified),
     platform: "kick",
     source: "event",
     timestamp: timestampOf(payload),
     event: eventName,
-    eventId: sourceId || undefined,
-    message,
+    eventId: eventId || undefined,
+    messageId: eventId || undefined,
     gift: gift || undefined,
     giftName: giftName || undefined,
     giftId: giftId || undefined,
-    quantity,
+    quantity: type === "subscription-gift" ? Math.max(1, quantity || giftees.length || 1) : quantity || undefined,
     gifteeCount: giftees.length || undefined,
-    amount,
-    giftCoins: Number(payload?.gift_coins ?? payload?.coins ?? gift?.amount ?? payload?.amount ?? 0) || 0,
+    duration: duration || undefined,
+    amount: amount || undefined,
+    giftCoins: Number(payload?.gift_coins ?? payload?.coins ?? gift?.amount ?? payload?.amount ?? 0) || undefined,
+    currency: currency || undefined,
     data: payload,
   };
+}
+
+// Compatibility wrapper retained for the rest of the adapter.
+function normalizeEvent(data, eventName) {
+  return normalizeIncomingKickEvent(data, eventName);
 }
 
 function emitScoped(io, ownerId, event, payload) {
@@ -458,6 +535,9 @@ async function lookupKickUserAvatar(channelName, username) {
 
   const promise = (async () => {
     const endpoints = [
+      // Kick's web client exposes a channel-scoped user resource that includes
+      // the chatter profile (including profilepic on legacy/current payloads).
+      `${KICK_BASE}/api/v1/channels/${encodeURIComponent(channel)}/${encodeURIComponent(user)}`,
       `${KICK_BASE}/api/v1/users/${encodeURIComponent(user)}`,
       `${KICK_BASE}/api/v2/channels/users/${encodeURIComponent(user)}`,
     ];
@@ -467,9 +547,10 @@ async function lookupKickUserAvatar(channelName, username) {
           const data = await curlJson(url, { timeoutSeconds: KICK_AVATAR_LOOKUP_TIMEOUT_SECONDS });
           const profile = data?.user || data?.data?.user || data?.data || data || {};
           const avatarUrl = String(
-            profile?.profile_picture || profile?.profile_pic || profile?.profilePicture ||
+            profile?.profile_picture || profile?.profilepic || profile?.profile_pic || profile?.profilePicture ||
             profile?.avatar || profile?.avatar_url || profile?.picture || profile?.picture_url ||
-            data?.profile_picture || data?.profile_pic || data?.avatar || data?.profilepic || ''
+            profile?.profile_thumb || profile?.profile_thumb_url ||
+            data?.profile_picture || data?.profilepic || data?.profile_pic || data?.avatar || data?.profilepic || ''
           ).trim();
           if (/^https?:\/\//i.test(avatarUrl)) {
             userAvatarCache.set(key, { avatarUrl, updatedAt: Date.now() });
@@ -610,8 +691,7 @@ async function emitChat(client, payload) {
     client.seenMessageFingerprints.set(fp, now);
   }
 
-  let avatar = sender.avatar;
-  if (!avatar) avatar = await lookupKickUserAvatar(client.channelName, sender.username);
+  const avatar = sender.avatar || "";
 
   globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
     platform: "kick",
@@ -643,6 +723,31 @@ async function emitChat(client, payload) {
   recordChat(client.ownerId, enrichedPayload);
   musicHook(client.ownerId, enrichedPayload);
   rouletteHook(client.ownerId, enrichedPayload);
+
+  // Avatar enrichment must never delay chat, TTS, music or points. Resolve it
+  // asynchronously and send a small patch event so the dashboard/overlay can
+  // replace the fallback avatar once Kick's profile endpoint answers.
+  if (!avatar && sender.username) {
+    void lookupKickUserAvatar(client.channelName, sender.username).then((avatarUrl) => {
+      if (!avatarUrl) return;
+      globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.({
+        platform: "kick",
+        username: sender.username,
+        uniqueId: sender.uniqueId,
+        avatar: avatarUrl,
+        displayName: sender.displayName,
+      });
+      emitScoped(client.io, client.ownerId, "kickAvatarUpdate", {
+        platform: "kick",
+        username: sender.username,
+        uniqueId: sender.uniqueId,
+        avatar: avatarUrl,
+        avatarUrl,
+        profilePictureUrl: avatarUrl,
+        messageId: enrichedPayload?.id || undefined,
+      });
+    }).catch(() => {});
+  }
 }
 
 function hasConcreteFollowPayload(data) {
@@ -663,9 +768,9 @@ function eventFingerprint(eventName, payload) {
   const ts = Number(normalized.timestamp || 0);
   const bucket = ts ? Math.floor(ts / 1500) : 0;
   const id = String(normalized.eventId || item?.id || item?.event_id || item?.message_id || item?.gift_transaction_id || item?.correlation_id || "").trim();
-  if (id) return `id|${String(eventName).toLowerCase()}|${id}`;
+  if (id) return `id|${normalized.type}|${id}`;
   return [
-    "fp", String(eventName).toLowerCase(), normalized.type, normalized.uniqueId || normalized.username,
+    "fp", normalized.type, normalized.uniqueId || normalized.username,
     normalized.action, normalized.giftId || normalized.giftName || "", normalized.quantity || "", normalized.amount || "", bucket,
   ].join("|");
 }
@@ -683,9 +788,16 @@ function emitEvent(client, eventName, payload) {
   globalThis.__STREAMFUSION_KICK_AVATAR_REMEMBER__?.(normalized);
   const enrichedPayload = awardPoints(client.ownerId, normalized) || normalized;
   emitScoped(client.io, client.ownerId, "event", enrichedPayload);
+  // Keep the generic event stream for Dashboard/TikTok/Twitch compatibility,
+  // but also expose a dedicated gift stream so the gifts overlay never has to
+  // guess whether an event should be rendered as a gift.
+  if (String(enrichedPayload?.activityKind || "").toLowerCase() === "gift" &&
+      String(enrichedPayload?.type || "").toLowerCase() === "gift") {
+    emitScoped(client.io, client.ownerId, "gift", enrichedPayload);
+  }
   recordEvent(client.ownerId, enrichedPayload);
 
-  if (enrichedPayload.type === "gift" || enrichedPayload.type === "subscription-gift") {
+  if (enrichedPayload.type === "gift" && Number(enrichedPayload.amount || enrichedPayload.giftCoins || 0) > 0) {
     musicHook(client.ownerId, enrichedPayload);
   }
 
@@ -710,7 +822,7 @@ async function handleFrame(client, raw) {
     const data = decodeMaybeJson(payload?.data);
     if (!eventName || !channel) return;
     const lower = eventName.toLowerCase();
-    if (lower.includes('chatmessage')) {
+    if (lower.includes('chatmessage') || lower === 'chat.message.sent' || lower.endsWith('chat.message.sent')) {
       await emitChat(client, data);
       return;
     }
@@ -732,7 +844,7 @@ async function handleFrame(client, raw) {
   }
 
   const normalizedEvent = eventName.toLowerCase();
-  if (normalizedEvent.includes('chatmessage')) {
+  if (normalizedEvent.includes('chatmessage') || normalizedEvent === 'chat.message.sent' || normalizedEvent.endsWith('chat.message.sent')) {
     await emitChat(client, data);
     return;
   }

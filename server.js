@@ -249,6 +249,7 @@ const DEFAULT_SETTINGS = {
         tiktokNameColor: "white",
         twitchNameColor: "real",
         kickNameColor: "real",
+        kickNameCustomColor: "",
         nameSize: "md",
         nameWeight: "800",
         chatHorizontalMode: "normal",
@@ -703,18 +704,39 @@ async function lookupPublicProfile(platform, username) {
     }
 
     if (p === "kick") {
-        try {
-            const data = await kick.getChannelInfo(login);
-            const user = data?.user || {};
-            const resolvedUsername = cleanUser(user.username || user.slug || data?.slug || login) || login;
-            const displayName = String(user.name || user.username || resolvedUsername).trim() || resolvedUsername;
-            const avatarUrl = String(
-                user.profile_pic || user.profile_picture || user.avatar || data?.profile_pic || ""
-            ).trim();
-            return { platform: p, username: resolvedUsername, displayName, avatarUrl };
-        } catch (error) {
-            throw new Error(error?.message || "No se pudo consultar ese canal de Kick.");
+        // A Kick chatter/moderator is a USER, not a channel. Do not reuse the
+        // channel resolver here because it can hit Kick's Cloudflare-protected
+        // /api/v2/channels/{slug} endpoint. Use the public user resource first.
+        const urls = [
+            `https://kick.com/api/v1/users/${encodeURIComponent(login)}`,
+            `https://kick.com/api/v2/channels/users/${encodeURIComponent(login)}`,
+        ];
+        let lastError = null;
+        for (const url of urls) {
+            try {
+                const data = await curlJson(url, { timeoutSeconds: 6 });
+                const candidates = [
+                    data?.user, data?.data?.user, data?.data, data,
+                    data?.profile, data?.result?.user,
+                ].filter(Boolean);
+                for (const user of candidates) {
+                    const resolvedUsername = cleanUser(user?.username || user?.slug || user?.unique_username || login) || login;
+                    const displayName = String(user?.name || user?.display_name || user?.displayName || user?.username || resolvedUsername).trim() || resolvedUsername;
+                    const avatarUrl = String(
+                        user?.profile_picture || user?.profilepic || user?.profile_pic || user?.profilePicture ||
+                        user?.avatar || user?.avatar_url || user?.picture || user?.picture_url ||
+                        data?.profile_picture || data?.profilepic || data?.profile_pic || data?.avatar || ""
+                    ).trim();
+                    if (resolvedUsername || avatarUrl) return { platform: p, username: resolvedUsername, displayName, avatarUrl };
+                }
+            } catch (error) {
+                lastError = error;
+            }
         }
+        // A user lookup is also used by the points/moderator UI. Returning the
+        // requested login as a profile is preferable to misclassifying it as a
+        // channel and reintroducing the /api/v2/channels 403.
+        return { platform: p, username: login, displayName: login, avatarUrl: await resolveKickUserAvatarViaCurl(login).catch(() => "") };
     }
 
     // Twitch: obtener avatar y página de perfil en paralelo; el avatar sigue estando
@@ -1653,13 +1675,18 @@ app.get("/api/moderators/lookup", requireUser, async (req, res) => {
 });
 
 
-async function resolveKickUserAvatarViaCurl(username) {
+async function resolveKickUserAvatarViaCurl(username, channelName = "") {
     const clean = cleanUser(username);
+    const channel = cleanUser(channelName);
     if (!clean) return '';
-    const urls = [
+    const urls = [];
+    if (channel) {
+        urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(channel)}/${encodeURIComponent(clean)}`);
+    }
+    urls.push(
         `https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,
         `https://kick.com/api/v2/channels/users/${encodeURIComponent(clean)}`,
-    ];
+    );
     for (const url of urls) {
         try {
             const data = await new Promise((resolve, reject) => {
@@ -1682,9 +1709,14 @@ async function resolveKickUserAvatarViaCurl(username) {
                     try{resolve(JSON.parse(out));}catch(e){reject(e);}
                 });
             });
-            const profile=data?.user||data?.data?.user||data?.data||data||{};
-            const avatar=String(profile?.profile_picture||profile?.profile_pic||profile?.profilePicture||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profile_pic||data?.avatar||data?.profilepic||'').trim();
-            if(/^https?:\/\//i.test(avatar)) return avatar;
+            const candidates = [
+                data?.user, data?.data?.user, data?.data, data,
+                data?.channel?.user, data?.profile, data?.result?.user,
+            ].filter(Boolean);
+            for (const profile of candidates) {
+                const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||profile?.profile_thumb||profile?.profile_thumb_url||data?.profile_picture||data?.profilepic||data?.profile_pic||data?.avatar||'').trim();
+                if(/^https?:\/\//i.test(avatar)) return avatar;
+            }
         } catch {}
     }
     return '';
@@ -1714,6 +1746,7 @@ app.get("/api/avatar", async (req, res) => {
         avatarUrl = await resolveTiktokAvatar(username);
         source = avatarUrl ? "tiktok" : "fallback";
     } else if (platform === "kick") {
+        const channel = cleanUser(req.query.channel);
         const cached = kickAvatarCache.get(username.toLowerCase());
         if (cached?.avatarUrl && Date.now() - Number(cached.updatedAt || 0) < 24 * 60 * 60 * 1000) {
             avatarUrl = cached.avatarUrl;
@@ -1722,7 +1755,7 @@ app.get("/api/avatar", async (req, res) => {
             // A chatter's avatar is a USER resource, not the channel resource.
             // Never call getChannelInfo(username) here: that resolves a channel
             // named after the chatter (or hits Kick's protected channel endpoint).
-            avatarUrl = await resolveKickUserAvatarViaCurl(username);
+            avatarUrl = await resolveKickUserAvatarViaCurl(username, channel);
             source = avatarUrl ? "kick-user" : "fallback";
             if (avatarUrl) kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
         }
