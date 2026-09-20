@@ -306,21 +306,29 @@
     if (state.avatarPending.has(key)) return state.avatarPending.get(key);
     const promise=(async()=>{
       if(String(platform).toLowerCase()==='kick'){
-        try{
-          const response=await fetch(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
-          if(response.ok){
-            const data=await response.json();
-            const profile=data?.user||data?.data?.user||data?.data||data||{};
-            const avatar=String(profile?.profile_picture||profile?.profile_pic||profile?.avatar||profile?.avatar_url||profile?.picture||data?.profile_picture||data?.profile_pic||'').trim();
+        const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
+        const kickUrls = [];
+        if(kickChannel){
+          kickUrls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
+          kickUrls.push(`https://kick.com/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
+        }
+        kickUrls.push(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`);
+        for(const kickUrl of kickUrls){
+          try{
+            const response=await fetch(kickUrl,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
+            if(!response.ok) continue;
+            const data=await response.json().catch(()=>null);
+            const profile=data?.user||data?.data?.user||data?.data||data?.profile||data||{};
+            const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
             if(isUsableViewerAvatar(avatar)) return avatar;
-          }
-        }catch{}
+          }catch{}
+        }
       }
       const kickChannel = String(state.accounts?.kick?.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
       const channelParam = String(platform).toLowerCase()==='kick' && kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
       const d=await api(`/api/avatar?platform=${encodeURIComponent(platform)}&username=${encodeURIComponent(clean)}${channelParam}`).catch(()=>null);
       return isUsableViewerAvatar(d?.avatarUrl) ? d.avatarUrl : '';
-    })().then(url=>{state.avatarCache.set(key,url);return url;}).finally(()=>state.avatarPending.delete(key));
+    })().then(url=>{if(url) state.avatarCache.set(key,url); else state.avatarCache.delete(key); return url;}).finally(()=>state.avatarPending.delete(key));
     state.avatarPending.set(key,promise);
     return promise;
   }

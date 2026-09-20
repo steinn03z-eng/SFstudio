@@ -2834,7 +2834,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     const overlayParams = new URLSearchParams(location.search);
     const overlayKey = overlayParams.get("overlayKey") || "";
     const overlayOwner = overlayParams.get("owner") || "";
-    const socket = io({ auth: { overlayKey }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
+    const socket = io({ auth: { overlayKey, owner: overlayOwner }, transports: ["websocket", "polling"], reconnection: true, reconnectionAttempts: Infinity });
     const list = document.getElementById('list');
     const SETTINGS_KEY = "streamfusion.ui.overlay-settings.v1";
     const LEGACY_SETTINGS_KEY = "streamfusion.ui.settings.v1";
@@ -6722,7 +6722,7 @@ function currentViewSettingsKey(){
       if (explicitStickerType && hasStickerPayload && !rawMessage) {
         const sticker = stickerLabel || item?.sticker?.name || item?.sticker?.title || item?.stickerAlt || "Sticker";
         return stickerImage
-          ? `<span class="stickerInline"><img class="chatSticker" src="${esc(stickerImage)}" alt="${esc(sticker)}" loading="lazy"><span class="stickerFallback">${esc(sticker)}</span></span>`
+          ? `<span class="stickerInline"><img class="chatSticker" src="${esc(stickerImage)}" alt="${esc(sticker)}" loading="lazy" referrerpolicy="no-referrer"><span class="stickerFallback">${esc(sticker)}</span></span>`
           : `🧩 ${esc(sticker)}`;
       }
       const fallback = item?.action ? String(item.action) : "Mensaje";
@@ -6839,7 +6839,7 @@ function currentViewSettingsKey(){
       const badges = [];
       if (entry.lastGift?.image) {
         const giftLabel = entry.lastGift.name || "Regalo";
-        badges.push(`<span class="badge activityBadge activityGiftBadge" title="${esc(giftLabel)}"><img class="activityGiftBadgeImg" src="${esc(entry.lastGift.image)}" alt="${esc(giftLabel)}" loading="lazy"><span>${esc(giftLabel)}</span></span>`);
+        badges.push(`<span class="badge activityBadge activityGiftBadge" title="${esc(giftLabel)}"><img class="activityGiftBadgeImg" src="${esc(entry.lastGift.image)}" alt="${esc(giftLabel)}" loading="lazy" referrerpolicy="no-referrer"><span>${esc(giftLabel)}</span></span>`);
       }
       for (const rule of ACTIVITY_BADGE_RULES) {
         if (entry.badges?.[rule.emoji]) badges.push(`<span class="badge activityBadge ${rule.emoji==='🎁' ? 'activityDonorBadge' : ''}" title="${esc(rule.label)}">${esc(rule.emoji)}</span>`);
@@ -6927,23 +6927,30 @@ function currentViewSettingsKey(){
       if(overlayKickAvatarCache.has(clean)) return overlayKickAvatarCache.get(clean)||'';
       if(overlayKickAvatarPending.has(clean)) return overlayKickAvatarPending.get(clean);
       const promise=(async()=>{
-        try{
-          const r=await fetch(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
-          if(r.ok){
-            const data=await r.json();
-            const profile=data?.user||data?.data?.user||data?.data||data||{};
-            const avatar=String(profile?.profile_picture||profile?.profile_pic||profile?.profilePicture||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profile_pic||data?.avatar||'').trim();
+        const kickSession = loadOverlaySession()?.kick || {};
+        const kickChannel = String(kickSession.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
+        const urls=[];
+        if(kickChannel){
+          urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
+          urls.push(`https://kick.com/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
+        }
+        urls.push(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`);
+        for(const url of urls){
+          try{
+            const r=await fetch(url,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
+            if(!r.ok) continue;
+            const data=await r.json().catch(()=>null);
+            const profile=data?.user||data?.data?.user||data?.data||data?.profile||data||{};
+            const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
             if(/^https?:\/\//i.test(avatar)){ overlayKickAvatarCache.set(clean,avatar); return avatar; }
-          }
-        }catch{}
+          }catch{}
+        }
         try{
-          const kickSession = loadOverlaySession()?.kick || {};
-          const kickChannel = String(kickSession.username || '').trim().replace(/^@+/, '');
           const channelParam = kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
           const r=await fetch(`/api/avatar?platform=kick&username=${encodeURIComponent(clean)}${channelParam}`,{credentials:'same-origin',cache:'no-store'});
           if(r.ok){ const data=await r.json(); const avatar=String(data?.avatarUrl||'').trim(); if(/^https?:\/\//i.test(avatar)){ overlayKickAvatarCache.set(clean,avatar); return avatar; } }
         }catch{}
-        overlayKickAvatarCache.set(clean,''); return '';
+        return '';
       })().finally(()=>overlayKickAvatarPending.delete(clean));
       overlayKickAvatarPending.set(clean,promise);
       return promise;
@@ -7141,7 +7148,7 @@ function currentViewSettingsKey(){
       const rowClasses = `stream-row overlayItem activity-chat-row ${kind} ${platform} chat-theme-${pp.chatTheme || 'cloud'} chat-anim-${animation} ${kind}-size-${size} ${kind}-shape-${shape} ${kind}-side-${side} ${frame ? '' : 'no-frame'} ${adjustClass} ${isSupporterProfile(item) ? 'supporter-gold' : ''}`;
       const feedKey = overlayFeedItemKey(item, kind);
       return `<article class="${rowClasses}" data-feed-key="${esc(feedKey)}" style="${styleVars};--entry-text-scale:${textScale};--entry-text-shadow:${messageShadow};--name-text-shadow:${nameShadow};--name-stroke:${nameStroke};">
-        <div class="chat-avatar ${avatarClass} size-${pp.avatarSize || 'md'}">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}" loading="lazy">` : avatarFallbackMarkup(item, name)}</div>
+        <div class="chat-avatar ${avatarClass} size-${pp.avatarSize || 'md'}">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer">` : avatarFallbackMarkup(item, name)}</div>
         <div class="row-body">
           <div class="row-top"><strong class="name-size-${pp.nameSize || 'md'} weight-${pp.nameWeight || '800'}">${esc(name)}</strong>${extraBadges}${platformPill}${time}</div>
           ${renderedText ? `<div class="row-message ${bubbleClass} ${kind === 'gift' ? 'gift-message-bubble' : ''}">${renderedText}</div>` : ''}
@@ -7155,7 +7162,7 @@ function currentViewSettingsKey(){
       const userName = displayNameForActivity(item);
       const avatar = avatarForItem(item);
       const avatarHtml = avatar
-        ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy">`
+        ? `<img src="${esc(avatar)}" alt="${esc(userName)}" loading="lazy" referrerpolicy="no-referrer">`
         : avatarFallbackMarkup(item, userName);
       const typeLabel = String(item?.action || item?.type || (kind === 'gift' ? 'Regalo' : 'Evento')).toUpperCase();
       const rawText = item?.message || item?.action || '';
@@ -7245,7 +7252,7 @@ function currentViewSettingsKey(){
         const rowClasses = `stream-row overlayItem ${platform} chat-theme-${pp.chatTheme || 'cloud'} ${animationClass} ${adjustClass}${isSupporterProfile(item) || isVipRgbProfile(item) ? ' supporter-gold' : ''}`;
         const messageClass = `row-message ${bubbleClass}`;
         return `<article class="${rowClasses}" data-chat-key="${esc(chatItemKey(item))}" style="${styleVars}">
-          <div class="chat-avatar ${avatarClass} size-${pp.avatarSize || 'md'}">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}" loading="lazy">` : avatarFallbackMarkup(item, name)}</div>
+          <div class="chat-avatar ${avatarClass} size-${pp.avatarSize || 'md'}">${avatar ? `<img src="${esc(avatar)}" alt="${esc(name)}" loading="lazy" referrerpolicy="no-referrer">` : avatarFallbackMarkup(item, name)}</div>
           <div class="row-body">
             <div class="row-top"><strong class="name-size-${pp.nameSize || 'md'} weight-${pp.nameWeight || '800'}">${esc(name)}</strong>${extraBadges}${platformPill}${time}</div>
             ${renderedText ? `<div class="${messageClass}">${renderedText}</div>` : ''}
@@ -7715,32 +7722,61 @@ function currentViewSettingsKey(){
       state.gifts.forEach(item => { if (patch(item)) changed = true; });
       if (changed) render();
     });
-    function normalizeOverlaySocketEvent(data){ const raw = data || {}; const type = String(raw?.type || raw?.eventType || raw?.kind || '').toLowerCase(); const monetaryGift = type==='gift' || type==='bits' || raw?.activityKind==='gift' || Number(raw?.amount||raw?.giftCoins||0)>0 || Boolean(raw?.currency); const activityKind = raw?.activityKind || (['sub','subscription','resub','subscription-gift'].includes(type) ? 'event' : monetaryGift ? 'gift' : 'event'); const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : 'Actividad'); return { ...raw, platform: String(raw?.platform || 'tiktok').toLowerCase(), type, activityKind, group:activityKind, displayName: raw?.displayName || raw?.nickname || raw?.user || raw?.username || raw?.uniqueId || 'Usuario', action }; }
-    function isOverlayGiftType(item){ const t = String(item?.type || '').toLowerCase(); const group=String(item?.activityKind||item?.group||'').toLowerCase(); if(['sub','subscription','resub','subscription-gift'].includes(t)) return false; if(t==='bits') return true; if(t==='gift' && (group==='gift' || Number(item?.amount||item?.giftCoins||0)>0 || item?.currency)) return true; return false; }
-    socket.on('event', (data) => { const normalizedEvent = normalizeOverlaySocketEvent(data); if(view === 'events') pushEvent(normalizedEvent); else if(view === 'gifts' && isOverlayGiftType(normalizedEvent)) pushGift(normalizedEvent); updateOverlayStatus(); });
-    socket.on('gift', (data) => { const normalizedGift = normalizeOverlaySocketEvent(data); if(view === 'gifts') pushGift(normalizedGift); updateOverlayStatus(); });
-    socket.on('liveHistory', (history) => {
+    function normalizeOverlaySocketEvent(data){
+      const raw = data || {};
+      const type = String(raw?.type || raw?.eventType || raw?.kind || '').toLowerCase();
+      const monetaryGift = type === 'gift' || type === 'bits' || raw?.activityKind === 'gift' || Number(raw?.amount || raw?.giftCoins || 0) > 0 || Boolean(raw?.currency);
+      const activityKind = raw?.activityKind || (['sub','subscription','resub','subscription-gift'].includes(type) ? 'event' : monetaryGift ? 'gift' : 'event');
+      const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : type === 'reward' ? 'Recompensa canjeada' : 'Actividad');
+      return { ...raw, platform: String(raw?.platform || 'tiktok').toLowerCase(), type, activityKind, group:activityKind, displayName: raw?.displayName || raw?.nickname || raw?.user || raw?.username || raw?.uniqueId || 'Usuario', action };
+    }
+    function isOverlayGiftType(item){
+      const t = String(item?.type || '').toLowerCase();
+      const group = String(item?.activityKind || item?.group || '').toLowerCase();
+      if (['sub','subscription','resub','subscription-gift','follow','raid','host','reward'].includes(t)) return false;
+      if (t === 'bits') return true;
+      if (t === 'gift') return group === 'gift' || Number(item?.amount || item?.giftCoins || 0) > 0 || Boolean(item?.currency);
+      return false;
+    }
+    function mergeOverlayHistory(history){
       const h = history && typeof history === 'object' ? history : {};
       const chats = Array.isArray(h.chat) ? h.chat : [];
       const events = Array.isArray(h.events) ? h.events : [];
-      state.chat = []; state.events = []; state.gifts = [];
       for (const item of chats) {
         const normalized = { ...item, platform: String(item?.platform || 'tiktok').toLowerCase() };
-        if (!shouldSkipOverlayDuplicate('history-chat', normalized)) state.chat.push(normalized);
+        const exists = state.chat.some(existing => buildOverlayDedupKey('chat', existing) === buildOverlayDedupKey('chat', normalized));
+        if (!exists) { state.chat.push(normalized); enrichOverlayAvatar(normalized); }
       }
       for (const item of events) {
         const normalized = normalizeOverlaySocketEvent(item);
-        if (isOverlayGiftType(normalized)) state.gifts.push(normalized);
-        state.events.push(normalized);
+        const gift = isOverlayGiftType(normalized);
+        const target = gift ? state.gifts : state.events;
+        const exists = target.some(existing => buildOverlayDedupKey(gift ? 'gift' : 'event', existing) === buildOverlayDedupKey(gift ? 'gift' : 'event', normalized));
+        if (!exists) { target.push(normalized); enrichOverlayAvatar(normalized); }
       }
-      state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds);
-      state.events = clearByAge(state.events, settings.personal.eventsAutoClear, settings.personal.eventsClearSeconds);
-      state.gifts = clearByAge(state.gifts, settings.personal.giftsAutoClear, settings.personal.giftsClearSeconds);
-      for (const item of state.chat) enrichOverlayAvatar(item);
-      for (const item of state.events) enrichOverlayAvatar(item);
-      for (const item of state.gifts) enrichOverlayAvatar(item);
+      state.chat = clearByAge(state.chat, settings.personal.autoClearChat, settings.personal.clearChatSeconds).slice(-240);
+      state.events = clearByAge(state.events, settings.personal.eventsAutoClear, settings.personal.eventsClearSeconds).slice(-240);
+      state.gifts = clearByAge(state.gifts, settings.personal.giftsAutoClear, settings.personal.giftsClearSeconds).slice(-240);
       render();
+    }
+    async function refreshOverlayHistory(){
+      if (!overlayKey || !overlayOwner) return;
+      try {
+        const query = `?owner=${encodeURIComponent(overlayOwner)}&overlayKey=${encodeURIComponent(overlayKey)}`;
+        const response = await fetch(`/api/live-history${query}`, { credentials:'omit', cache:'no-store', headers:{Accept:'application/json'} });
+        if (response.ok) mergeOverlayHistory(await response.json());
+      } catch {}
+    }
+    socket.on('connect', () => { updateOverlayStatus(); void refreshOverlayHistory(); });
+    socket.on('event', (data) => {
+      const normalizedEvent = normalizeOverlaySocketEvent(data);
+      if (isOverlayGiftType(normalizedEvent)) { if (view === 'gifts') pushGift(normalizedEvent); }
+      else if (view === 'events') pushEvent(normalizedEvent);
+      updateOverlayStatus();
     });
+    socket.on('gift', (data) => { const normalizedGift = normalizeOverlaySocketEvent(data); if (view === 'gifts') pushGift(normalizedGift); updateOverlayStatus(); });
+    socket.on('liveHistory', (history) => { mergeOverlayHistory(history); });
+    setInterval(() => { void refreshOverlayHistory(); }, 3000);
     setInterval(() => {
       if (view !== 'chat') return;
       const p = settings.personal || {};

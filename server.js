@@ -59,7 +59,7 @@ globalThis.__STREAMFUSION_KICK_AVATAR_CACHE__ = kickAvatarCache;
 function rememberKickAvatar(payload = {}) {
     if (String(payload?.platform || '').toLowerCase() !== 'kick') return;
     const username = cleanUser(payload?.username || payload?.uniqueId || '');
-    const avatarUrl = String(payload?.avatar || payload?.avatarUrl || payload?.profilePictureUrl || '').trim();
+    const avatarUrl = String(payload?.avatar || payload?.avatarUrl || payload?.profilePictureUrl || payload?.profile_picture || payload?.profilepic || '').trim();
     if (!username || !/^https?:\/\//i.test(avatarUrl)) return;
     kickAvatarCache.set(username.toLowerCase(), { avatarUrl, updatedAt: Date.now() });
     if (kickAvatarCache.size > 5000) {
@@ -1171,11 +1171,27 @@ app.post("/api/auth/logout", requireUser, (req, res) => { database.deleteSession
 
 app.get("/api/me", requireUser, (req, res) => res.json({ user: req.user }));
 
-app.get("/api/live-history", requireUser, (req, res) => res.json(
-    SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(req.user.id, platform))
-        ? liveHistorySnapshot(req.user.id)
-        : { chat: [], events: [] }
-));
+function resolveOverlayHistoryOwner(req) {
+    if (req.user?.id) return String(req.user.id);
+    const ownerId = String(req.query?.owner || req.body?.owner || "").trim();
+    const overlayKey = String(req.query?.overlayKey || req.body?.overlayKey || "").trim();
+    if (!ownerId || !overlayKey) return "";
+    const owner = database.getUserByOverlayKey(overlayKey);
+    return owner?.id && String(owner.id) === ownerId ? String(owner.id) : "";
+}
+
+app.get("/api/live-history", (req, res, next) => {
+    const ownerId = resolveOverlayHistoryOwner(req);
+    if (ownerId) {
+        const active = SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(ownerId, platform));
+        return res.json(active ? liveHistorySnapshot(ownerId) : { chat: [], events: [] });
+    }
+    return requireUser(req, res, () => {
+        const id = String(req.user.id);
+        const active = SUPPORTED_PLATFORMS.some((platform) => liveSession.isActive(id, platform));
+        return res.json(active ? liveHistorySnapshot(id) : { chat: [], events: [] });
+    });
+});
 
 
 app.get("/api/profile-photo", requireUser, (req, res) => {
@@ -1714,7 +1730,7 @@ async function resolveKickUserAvatarViaCurl(username, channelName = "") {
                 data?.channel?.user, data?.profile, data?.result?.user,
             ].filter(Boolean);
             for (const profile of candidates) {
-                const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||profile?.profile_thumb||profile?.profile_thumb_url||data?.profile_picture||data?.profilepic||data?.profile_pic||data?.avatar||'').trim();
+                const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||profile?.profile_thumb||profile?.profile_thumb_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
                 if(/^https?:\/\//i.test(avatar)) return avatar;
             }
         } catch {}
@@ -3198,34 +3214,51 @@ app.get("/api/status", (req, res) => {
 io.use((socket, next) => {
     const token = String(socket.handshake.auth?.token || "").trim();
     const overlayKey = String(socket.handshake.auth?.overlayKey || "").trim();
+    const requestedOwner = String(socket.handshake.auth?.owner || "").trim();
     const widget = String(socket.handshake.auth?.widget || "").trim().toLowerCase();
     socket.user = database.getSession(token);
     socket.isOverlay = false;
     socket.isVoiceList = false;
+    socket.isAnnouncement = false;
+    socket.isMusic = false;
+    socket.isOverlayKeyValid = false;
+
     if (!socket.user && overlayKey) {
-        socket.user = database.getUserByOverlayKey(overlayKey);
-        socket.isOverlay = Boolean(socket.user);
-        socket.isVoiceList = socket.isOverlay && widget === "voicelist";
-    socket.isAnnouncement = socket.isOverlay && widget === "announcement";
-    socket.isMusic = socket.isOverlay && widget === "music";
+        const owner = database.getUserByOverlayKey(overlayKey);
+        const ownerMatches = !requestedOwner || (owner && String(owner.id) === requestedOwner);
+        if (owner && ownerMatches) {
+            socket.user = owner;
+            socket.isOverlay = true;
+            socket.isOverlayKeyValid = true;
+            socket.overlayOwnerId = String(owner.id);
+            socket.isVoiceList = widget === "voicelist";
+            socket.isAnnouncement = widget === "announcement";
+            socket.isMusic = widget === "music";
+        }
     }
     next();
 });
 
 function scopedEventEmitter(userId) {
-    const room = `user:${String(userId || '').trim()}`;
+    const ownerId = String(userId || '').trim();
+    const room = `user:${ownerId}`;
+    const overlayRoom = `overlay:${ownerId}`;
+    const emitToOwner = (event, payload) => {
+        io.to(room).emit(event, payload);
+        io.to(overlayRoom).emit(event, payload);
+    };
 
     // Los servicios TikTok/Twitch usan tanto io.emit(...) como io.to(...).emit(...).
-    // El emisor sigue completamente aislado al room del propietario, pero conserva
-    // una interfaz compatible con esos servicios para no perder eventos.
+    // El emisor sigue completamente aislado al propietario. Los overlays reciben
+    // los mismos eventos a través de su room dedicado para no depender de que un
+    // overlay comparta accidentalmente el room del dashboard.
     return {
-        emit: (event, payload) => io.to(room).emit(event, payload),
+        emit: (event, payload) => emitToOwner(event, payload),
         to: (targetRoom) => ({
             emit: (event, payload) => {
-                // Nunca permitir que un servicio salga del room de su propietario.
                 const requested = String(targetRoom || '');
-                if (requested !== room) return;
-                io.to(room).emit(event, payload);
+                if (requested !== room && requested !== overlayRoom) return;
+                emitToOwner(event, payload);
             }
         })
     };
@@ -3235,7 +3268,8 @@ io.on("connection", (socket) => {
     console.log("Cliente conectado");
 
     if (socket.user) {
-        socket.join(`user:${socket.user.id}`);
+        if (socket.isOverlay) socket.join(`overlay:${socket.user.id}`);
+        else socket.join(`user:${socket.user.id}`);
         setCustomVoiceRules(socket.user.id, database.listUserVoices(socket.user.id));
         if (socket.isVoiceList) addVoiceListPresence(socket.user.id);
     }
