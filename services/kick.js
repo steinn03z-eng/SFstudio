@@ -13,6 +13,9 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
+import os from "node:os";
+import path from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
 import { recordChat, recordEvent } from "./live-history.js";
 
 const execFileAsync = promisify(execFile);
@@ -23,8 +26,12 @@ const USER_AGENT =
   "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 const KICK_BASE = "https://kick.com";
-const KICK_PUSHER_URL =
-  "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false";
+const KICK_REALTIME_WS_URL =
+  String(process.env.KICK_REALTIME_WS_URL || "wss://websockets.kick.com/viewer/v1/connect").trim();
+const KICK_CLIENT_TOKEN = String(
+  process.env.KICK_CLIENT_TOKEN ||
+  "e1393935a959b4020a4491574f6490129f678acdaa92760471263db43487f823",
+).trim();
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
 const KICK_API_BASE = "https://api.kick.com/public/v1";
 const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -37,7 +44,6 @@ const kickUserApiCache = new Map();
 const kickUserApiInflight = new Map();
 const globalSeenChatIds = new Map();
 const globalSeenEventIds = new Map();
-const webhookOwners = new Map();
 const webhookSeenIds = new Map();
 
 function cleanChannel(value) {
@@ -162,6 +168,20 @@ function normalizeBadges(badges) {
     .filter(Boolean);
 }
 
+function scalarText(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") return "";
+  return String(value).trim();
+}
+
+function firstScalarText(...values) {
+  for (const value of values) {
+    const text = scalarText(value);
+    if (text) return text;
+  }
+  return "";
+}
+
 function resolveSender(data, preferred = []) {
   const candidates = [
     ...preferred.map((key) => data?.[key]),
@@ -185,34 +205,46 @@ function resolveSender(data, preferred = []) {
     data?.redeemer?.user,
   ].filter((value) => value && typeof value === "object");
 
-  const selected = candidates.find((candidate) =>
+  const preferredCandidates = preferred
+    .map((key) => data?.[key])
+    .filter((value) => value && typeof value === "object");
+  // Preserve the semantic actor selected by the event type even when Kick marks
+  // that actor anonymous and therefore supplies no username/user_id (for example
+  // an anonymous subscription gifter). Falling back to the broadcaster in that
+  // case would make the gift look like it was sent by the streamer.
+  const selected = preferredCandidates.find((candidate) =>
     Boolean(candidate?.username || candidate?.slug || candidate?.display_name || candidate?.displayName),
-  ) || candidates.find((candidate) => Boolean(candidate?.id || candidate?.user_id)) || {};
+  ) || preferredCandidates.find((candidate) => candidate?.is_anonymous === true) ||
+    candidates.find((candidate) =>
+      Boolean(candidate?.username || candidate?.slug || candidate?.display_name || candidate?.displayName),
+    ) || candidates.find((candidate) => Boolean(candidate?.id || candidate?.user_id)) || {};
   const nestedUser = selected?.user && typeof selected.user === "object" ? selected.user : null;
   const sender = nestedUser ? { ...selected, ...nestedUser } : selected;
   const identity = sender?.identity || nestedUser?.identity || data?.identity || {};
 
-  const username = String(
-    sender.username ||
-      sender.slug ||
-      sender.display_name ||
-      data?.username ||
-      data?.gifter_username ||
-      data?.gifter?.username ||
-      data?.gifter ||
-      data?.subscriber?.username ||
-      data?.follower?.username ||
-      data?.gifted_by ||
-      data?.host_username ||
-      data?.hoster ||
-      data?.raider ||
-      data?.hosted_by ||
-      "Usuario",
-  ).trim();
+  const username = firstScalarText(
+    sender.username,
+    sender.slug,
+    sender.display_name,
+    data?.username,
+    data?.gifter_username,
+    data?.gifter?.username,
+    data?.subscriber?.username,
+    data?.follower?.username,
+    data?.gifted_by,
+    data?.host_username,
+    data?.hoster,
+    data?.raider,
+    data?.hosted_by,
+    "Usuario",
+  );
 
-  const displayName = String(
-    sender.display_name || sender.displayName || sender.name || username,
-  ).trim();
+  const displayName = firstScalarText(
+    sender.display_name,
+    sender.displayName,
+    sender.name,
+    username,
+  );
 
   const userId = String(
     sender.user_id || sender.userId || sender.id || data?.user_id || data?.gifter_id || data?.follower?.user_id || data?.subscriber?.user_id || data?.gifter?.user_id || data?.redeemer?.user_id || data?.banned_user?.user_id || data?.moderator?.user_id || data?.hoster?.user_id || data?.raider?.user_id || "",
@@ -279,8 +311,11 @@ function rememberKickAvatarLocal(channel, username, userId, avatarUrl) {
 function timestampOf(data) {
   const candidate =
     data?.created_at ??
+    data?.updated_at ??
     data?.timestamp ??
     data?.createdAt ??
+    data?.ended_at ??
+    data?.started_at ??
     data?.time ??
     Date.now();
   const numeric = typeof candidate === "number" ? candidate : Number(candidate);
@@ -294,6 +329,11 @@ function normalizeEventType(name, data) {
   const eventName = String(name || "").toLowerCase().trim();
   const raw = data && typeof data === "object" ? data : {};
   const hasUser = (value) => Boolean(value && typeof value === "object" && (value.username || value.slug || value.id || value.user_id));
+
+  // Chat is its own stream. Keep it out of the generic event bucket so that
+  // any future/legacy path that hands chat.message.sent to normalizeEvent()
+  // still follows the exact same chat routing contract as emitChat().
+  if (eventName === "chat.message.sent" || eventName.includes("chatmessage")) return "chat";
 
   // Explicit event names: current official webhook names + historical realtime names.
   if (eventName === "channel.followed" || eventName.endsWith("\\events\\channelfollowedevent") || eventName.endsWith("followedevent")) return "follow";
@@ -405,6 +445,12 @@ function normalizeIncomingKickEvent(data, eventName) {
   let currency = "";
 
   switch (type) {
+    case "chat":
+      action = "Mensaje";
+      message = firstNonEmpty(payload?.content, payload?.message, eventText, "");
+      icon = "💬";
+      group = "chat";
+      break;
     case "follow":
       action = "Nuevo seguidor";
       message = `${sender.username || "Alguien"} comenzó a seguir el canal.`;
@@ -575,7 +621,7 @@ function normalizeIncomingKickEvent(data, eventName) {
   return {
     type,
     group,
-    activityKind: group === "gift" ? "gift" : "event",
+    activityKind: group === "gift" ? "gift" : group === "chat" ? "chat" : "event",
     action,
     message,
     emoji: icon,
@@ -884,6 +930,71 @@ async function getRealtimeDescriptor(channelId) {
   return { provider: String(preferred?.provider || '').toLowerCase(), url };
 }
 
+async function fetchRealtimeViewerToken() {
+  if (!KICK_CLIENT_TOKEN) throw new Error("Falta KICK_CLIENT_TOKEN para el gateway realtime de Kick.");
+
+  const curl = process.platform === "win32" ? "curl.exe" : "curl";
+  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "streamfusion-kick-"));
+  const cookieJar = path.join(tmpDir, "cookies.txt");
+  const baseArgs = [
+    "--silent",
+    "--show-error",
+    "--location",
+    "--compressed",
+    "--http1.1",
+    "--max-time",
+    "15",
+    "--user-agent",
+    USER_AGENT,
+    "--header",
+    "accept: application/json, text/plain, */*",
+    "--header",
+    "accept-language: en-US,en;q=0.9",
+    "--header",
+    "referer: https://kick.com/",
+    "--header",
+    "origin: https://kick.com",
+  ];
+
+  try {
+    // Kick's current viewer token endpoint expects the same lightweight web
+    // session context as kick.com. Keep the cookie jar only for the two
+    // requests below; it is deleted immediately afterwards.
+    try {
+      await execFileAsync(curl, [
+        ...baseArgs,
+        "--cookie-jar", cookieJar,
+        "--output", process.platform === "win32" ? "NUL" : "/dev/null",
+        `${KICK_BASE}/`,
+      ], { maxBuffer: 2 * 1024 * 1024, windowsHide: true });
+    } catch {
+      // Some deployments block the landing page but still allow the token call.
+      // The token request below remains authoritative.
+    }
+
+    const result = await execFileAsync(curl, [
+      ...baseArgs,
+      "--cookie", cookieJar,
+      "--cookie-jar", cookieJar,
+      "--header", `X-CLIENT-TOKEN: ${KICK_CLIENT_TOKEN}`,
+      "https://websockets.kick.com/viewer/v1/token",
+    ], { maxBuffer: 2 * 1024 * 1024, windowsHide: true });
+    const text = String(result?.stdout || "").trim();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch {}
+    const token = String(data?.data?.token || data?.token || "").trim();
+    if (!token) {
+      const detail = String(data?.message || data?.error || result?.stderr || text || "respuesta vacía").trim();
+      throw new Error(`Kick no devolvió token realtime (${detail.slice(0, 240)}).`);
+    }
+    return token;
+  } catch (error) {
+    throw new Error(String(error?.message || error || "No se pudo obtener el token realtime de Kick."));
+  } finally {
+    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
 function clearReconnectTimer(client) {
   if (client.reconnectTimer) {
     clearTimeout(client.reconnectTimer);
@@ -923,7 +1034,12 @@ function sendPusherPong(client) {
 
 function startPing(client) {
   if (client.pingTimer) clearInterval(client.pingTimer);
-  client.pingTimer = null;
+  client.pingTimer = setInterval(() => {
+    if (!client.ws || client.ws.readyState !== 1) return;
+    if (!send(client, { event: "pusher:ping", data: {} })) {
+      try { client.ws.close(); } catch {}
+    }
+  }, 20_000);
 }
 
 function stopPing(client) {
@@ -1139,6 +1255,14 @@ function emitEvent(client, eventName, payload) {
       });
     }).catch(()=>{});
   }
+  if (normalized?.type === "stream-status") {
+    try {
+      globalThis.__STREAMFUSION_KICK_STATE_HOOK__?.(client.ownerId, normalized);
+    } catch (error) {
+      console.error("[Kick] stream state hook failed:", error);
+    }
+  }
+
   if (normalized?.activityEligible === false) {
     // Aggregate channel counters are handled as stats, never as fake user activity.
     emitStats(client);
@@ -1193,7 +1317,14 @@ async function handleFrame(client, raw) {
   const data = decodeMaybeJson(frame.data);
   if (!eventName) return;
 
+  // Heartbeats must be handled before the generic control-frame filter.
+  // Otherwise a pusher:ping would be discarded without a pusher:pong response,
+  // eventually causing Kick to close an otherwise healthy realtime connection.
   if (eventName === 'pusher:ping') { sendPusherPong(client); return; }
+  if (eventName.toLowerCase() === 'ping') { send(client, { type: 'pong' }); return; }
+
+  const controlType = eventName.toLowerCase();
+  if (["ack", "pong", "subscribe", "unsubscribe", "channel_handshake", "connection_established"].includes(controlType)) return;
   if (
     eventName === 'pusher:pong' ||
     eventName === 'pusher:connection_established' ||
@@ -1224,6 +1355,7 @@ function scheduleReconnect(client) {
   client.reconnectDelay = Math.min(30_000, delay * 2);
   client.reconnectTimer = setTimeout(() => {
     client.reconnectTimer = null;
+    if (!isCurrentClient(client)) return;
     openSocket(client).catch((error) => {
       console.error(`[Kick] reconnect failed for ${client.ownerId}:`, error);
       emitSystem(client, "No se pudo reconectar a Kick.", {
@@ -1236,18 +1368,16 @@ function scheduleReconnect(client) {
 
 function webhookClient(ownerId, io, channelName = "", broadcasterUserId = 0) {
   const key = ownerKey(ownerId);
-  let client = webhookOwners.get(key);
-  if (!client) {
-    client = {
-      ownerId: key, io, channelName: cleanChannel(channelName), channelId: Number(broadcasterUserId) || 0, broadcasterUserId: Number(broadcasterUserId) || 0,
-      chatroomId: 0, ws: null, reconnectDelay: 5000, manualDisconnect: false,
-      seenMessageIds: new Set(), seenMessageFingerprints: new Map(), seenEventKeys: new Map(),
-    };
-    webhookOwners.set(key, client);
-  } else {
-    client.io = io || client.io;
-    if (channelName) client.channelName = cleanChannel(channelName);
-    if (broadcasterUserId) { client.channelId = Number(broadcasterUserId); client.broadcasterUserId = Number(broadcasterUserId); }
+  const client = clients.get(key);
+  if (!client || client.manualDisconnect) return null;
+
+  client.io = io || client.io;
+  if (channelName) client.channelName = cleanChannel(channelName);
+  // A Kick channel ID and broadcaster user ID are different identifiers. Keep
+  // them separate: the channel ID is still required by the realtime descriptor
+  // fallback, while broadcasterUserId is the stable webhook routing key.
+  if (broadcasterUserId) {
+    client.broadcasterUserId = Number(broadcasterUserId);
   }
   return client;
 }
@@ -1258,6 +1388,7 @@ export async function handleWebhookEvent(ownerId, io, eventName, payload, meta =
   const channel = cleanChannel(meta.channelSlug || broadcaster?.channel_slug || data?.channel_slug || "");
   const broadcasterUserId = Number(meta.broadcasterUserId || broadcaster?.user_id || 0);
   const client = webhookClient(ownerId, io, channel, broadcasterUserId);
+  if (!client) return { ok: true, ignored: true, reason: "Kick session is not active." };
   const messageId = String(meta.messageId || "").trim();
   if (messageId) {
     trimSeenMap(webhookSeenIds, 86_400_000, 10_000);
@@ -1273,25 +1404,30 @@ export async function handleWebhookEvent(ownerId, io, eventName, payload, meta =
   return { ok: true, type: "event" };
 }
 
-async function openSocket(client) {
-  closeSocket(client);
-  stopPing(client);
+function notifyTransportState(client, realtimeConnected, reason = "") {
+  try {
+    globalThis.__STREAMFUSION_KICK_TRANSPORT_HOOK__?.(client.ownerId, {
+      realtimeConnected: Boolean(realtimeConnected),
+      sessionActive: clients.has(client.ownerId) && !client.manualDisconnect,
+      provider: client.provider || "",
+      reason,
+      broadcasterUserId: Number(client.broadcasterUserId || 0) || 0,
+      channelName: client.channelName || "",
+    });
+  } catch (error) {
+    console.error("[Kick] transport state hook failed:", error);
+  }
+}
 
-  // Keep the previously working anonymous Kick transport as the primary path.
-  // The browser supplies the chatroom ID, so the server does not need to call
-  // Kick's Cloudflare-protected channel endpoint.
-  const descriptor = {
-    provider: "pusher",
-    url: KICK_PUSHER_URL,
-  };
+async function openWebSocketTransport(client, url, provider = "kick-viewer-gateway") {
   const WS = globalThis.WebSocket;
   if (typeof WS !== "function") {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
   }
 
-  const ws = new WS(descriptor.url);
+  const ws = new WS(url);
   client.ws = ws;
-  client.provider = "pusher";
+  client.provider = provider;
 
   await new Promise((resolve, reject) => {
     let settled = false;
@@ -1302,25 +1438,36 @@ async function openSocket(client) {
     };
 
     ws.onopen = () => {
-      client.reconnectDelay = 5_000;
-      const channels = new Set([
-        `chatrooms.${client.chatroomId}.v2`,
-        `chatrooms.${client.chatroomId}`,
-        `chatroom_${client.chatroomId}`,
-        `chatroom.${client.chatroomId}`,
-      ].filter(Boolean));
-      if (client.channelId) {
-        channels.add(`channel.${client.channelId}`);
-        channels.add(`channel_${client.channelId}`);
-        channels.add(`channel_${client.channelId}_v2`);
-        channels.add(`predictions-channel-${client.channelId}`);
+      if (!isCurrentClient(client)) {
+        try { ws.close(); } catch {}
+        settle(reject, new Error("La sesión de Kick fue reemplazada o desconectada."));
+        return;
       }
+      client.reconnectDelay = 5_000;
+
+      // The canonical Kick chat channel is chatrooms.<chatroomId>.v2. Keep the
+      // broadcaster channel as a companion subscription for activity frames.
+      const channels = new Set([
+        client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : "",
+        client.channelId ? `channel.${client.channelId}` : "",
+      ].filter(Boolean));
       for (const channel of channels) {
         send(client, {
           event: "pusher:subscribe",
           data: { auth: "", channel },
         });
       }
+
+      // Kick's current viewer gateway accepts the same Pusher subscribe frame
+      // and uses this handshake to bind the realtime session to the channel.
+      if (client.channelId) {
+        send(client, {
+          type: "channel_handshake",
+          data: { message: { channelId: client.channelId } },
+        });
+      }
+      startPing(client);
+      notifyTransportState(client, true, "realtime-connected");
       settle(resolve);
     };
 
@@ -1343,13 +1490,59 @@ async function openSocket(client) {
         settle(reject, new Error(`Kick WebSocket cerrado durante la conexión (${event?.code || 0})`));
         return;
       }
-      emitSystem(client, "La conexión de Kick se cerró; intentando reconectar.", {
+      notifyTransportState(client, false, "realtime-closed");
+      emitSystem(client, "La conexión realtime de Kick se cerró; intentando reconectar.", {
         code: event?.code || 0,
         reason: event?.reason || "",
       });
       scheduleReconnect(client);
     };
   });
+}
+
+function isCurrentClient(client) {
+  return Boolean(client && !client.manualDisconnect && clients.get(client.ownerId) === client);
+}
+
+async function openSocket(client) {
+  if (!isCurrentClient(client)) throw new Error("La sesión de Kick ya no está activa.");
+  closeSocket(client);
+  stopPing(client);
+
+  let gatewayError = null;
+  try {
+    // The viewer token is short-lived/single-use. It is intentionally fetched on
+    // every connection attempt so automatic reconnects never recycle an old token.
+    const token = await fetchRealtimeViewerToken();
+    if (!isCurrentClient(client)) throw new Error("La sesión de Kick fue reemplazada o desconectada.");
+    const url = `${KICK_REALTIME_WS_URL}?token=${encodeURIComponent(token)}`;
+    await openWebSocketTransport(client, url, "kick-viewer-gateway");
+    return;
+  } catch (error) {
+    gatewayError = error;
+    closeSocket(client);
+    stopPing(client);
+  }
+
+  // Some deployments still expose Kick's realtime descriptor endpoint. It is a
+  // compatibility fallback only; the current viewer gateway remains primary.
+  if (client.channelId > 0 && isCurrentClient(client)) {
+    try {
+      const descriptor = await getRealtimeDescriptor(client.channelId);
+      if (!isCurrentClient(client)) throw new Error("La sesión de Kick fue reemplazada o desconectada.");
+      const url = String(descriptor?.url || "").trim();
+      if (url) {
+        await openWebSocketTransport(client, url, descriptor.provider || "realtime-descriptor");
+        return;
+      }
+    } catch (fallbackError) {
+      const primary = String(gatewayError?.message || gatewayError || "gateway realtime error").slice(0, 220);
+      const fallback = String(fallbackError?.message || fallbackError || "descriptor realtime error").slice(0, 220);
+      throw new Error(`Kick realtime no disponible. Gateway: ${primary}. Fallback: ${fallback}.`);
+    }
+  }
+
+  throw new Error(String(gatewayError?.message || gatewayError || "No se pudo abrir el realtime de Kick."));
 }
 
 export async function connect(channelName, io, ownerId, resolvedInfo = null) {
@@ -1403,24 +1596,51 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
   };
 
   clients.set(id, client);
-  if (client.broadcasterUserId) webhookOwners.set(id, client);
 
+  let realtimeConnected = false;
   try {
     await openSocket(client);
+    realtimeConnected = isConnected(id);
   } catch (error) {
-    clients.delete(id);
-    stopPing(client);
-    clearReconnectTimer(client);
-    closeSocket(client);
-    throw new Error(
-      `Kick no pudo conectarse a @${slug}: ${String(error?.message || error)}`,
-    );
+    realtimeConnected = false;
+    // Keep the owner session alive while the realtime gateway retries. This is
+    // important because the same session may also be receiving official Kick
+    // webhook events; a transient websocket/token failure must not tear down the
+    // Socket.IO feed, points processing, TTS, or the generated overlay.
+    client.provider = 'webhook-or-reconnecting';
+    emitSystem(client, `Kick está conectado, pero el realtime está reintentando.`, {
+      code: 'REALTIME_RETRY',
+      detail: String(error?.message || error).slice(0, 400),
+    });
+    scheduleReconnect(client);
   }
 
   emitStats(client);
-  emitSystem(client, `Kick conectado: @${slug}`);
 
   const user = channelInfo?.user || {};
+  if (!isCurrentClient(client)) {
+    return {
+      username: String(user.username || user.slug || slug),
+      displayName: String(user.name || user.username || slug),
+      avatarUrl: String(
+        user.profile_pic ||
+          user.profile_picture ||
+          user.avatar ||
+          channelInfo?.profile_pic ||
+          "",
+      ),
+      slug,
+      channelId,
+      chatroomId,
+      isLive: Boolean(channelInfo?.livestream?.is_live || channelInfo?.livestream),
+      channelInfo,
+      sessionActive: false,
+      realtimeConnected: false,
+      provider: client.provider || "",
+      stale: true,
+    };
+  }
+
   return {
     username: String(user.username || user.slug || slug),
     displayName: String(user.name || user.username || slug),
@@ -1436,6 +1656,9 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
     chatroomId,
     isLive: Boolean(channelInfo?.livestream?.is_live || channelInfo?.livestream),
     channelInfo,
+    sessionActive: true,
+    realtimeConnected: Boolean(realtimeConnected),
+    provider: client.provider || "",
   };
 }
 
@@ -1461,17 +1684,28 @@ export function getState(ownerId) {
   if (!client) {
     return {
       connected: false,
+      sessionActive: false,
       channel: "",
       channelId: 0,
+      broadcasterUserId: 0,
       chatroomId: 0,
+      provider: '',
     };
   }
   return {
     connected: isConnected(ownerId),
+    sessionActive: !client.manualDisconnect && clients.has(ownerKey(ownerId)),
     channel: client.channelName,
     channelId: client.channelId,
+    broadcasterUserId: client.broadcasterUserId,
     chatroomId: client.chatroomId,
+    provider: client.provider || '',
   };
+}
+
+export function isSessionActive(ownerId) {
+  const client = clients.get(ownerKey(ownerId));
+  return Boolean(client && !client.manualDisconnect);
 }
 
 export { cleanChannel, getChannelInfo, lookupKickUserAvatar, getKickAppAccessToken, getKickUserById, normalizeEvent, normalizeIncomingKickEvent };
