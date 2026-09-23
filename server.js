@@ -11,7 +11,7 @@ import cors from "cors";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import ffmpegStatic from "ffmpeg-static";
-import { randomBytes, randomUUID, createPublicKey, createVerify } from "node:crypto";
+import { randomBytes, randomUUID, createHash, createPublicKey, createVerify } from "node:crypto";
 
 import * as database from "./services/database.js";
 import * as liveSession from "./services/live-session.js";
@@ -43,6 +43,15 @@ const FISH_AUDIO_VOICE_CHANGER_WS = process.env.FISH_AUDIO_VOICE_CHANGER_WS || "
 const KICK_CLIENT_ID = String(process.env.KICK_CLIENT_ID || "").trim();
 const KICK_CLIENT_SECRET = String(process.env.KICK_CLIENT_SECRET || "").trim();
 const KICK_WEBHOOK_ENABLED = String(process.env.KICK_WEBHOOK_ENABLED || "true").toLowerCase() !== "false";
+const KICK_PUBLIC_BASE_URL = String(
+    process.env.KICK_PUBLIC_BASE_URL ||
+    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, '').replace(/\/$/, '')}` : '')
+).trim().replace(/\/$/, '');
+const KICK_OAUTH_REDIRECT_URI = String(
+    process.env.KICK_OAUTH_REDIRECT_URI ||
+    (KICK_PUBLIC_BASE_URL ? `${KICK_PUBLIC_BASE_URL}/api/kick/oauth/callback` : '')
+).trim();
+const KICK_OAUTH_SCOPES = ['user:read', 'channel:read', 'events:subscribe'];
 const KICK_WEBHOOK_URL = String(
     process.env.KICK_WEBHOOK_URL ||
     (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, '').replace(/\/$/, '')}/api/kick/webhook` : '')
@@ -1355,6 +1364,120 @@ function resolveOverlayHistoryOwner(req) {
     return owner?.id && String(owner.id) === ownerId ? String(owner.id) : "";
 }
 
+app.post("/api/kick/oauth/start", requireUser, async (req, res) => {
+    try {
+        if (!KICK_CLIENT_ID || !KICK_CLIENT_SECRET) return res.status(503).json({ ok: false, error: "Kick OAuth no está configurado en el servidor." });
+        if (!KICK_OAUTH_REDIRECT_URI) return res.status(503).json({ ok: false, error: "Configura KICK_OAUTH_REDIRECT_URI con la URL pública registrada en Kick Developer." });
+        const payload = req.body && typeof req.body === 'object' ? req.body : {};
+        const channel = kick.cleanChannel(payload.channel || payload.slug || '');
+        if (!channel) return res.status(400).json({ ok: false, error: "Canal de Kick inválido." });
+        const state = randomBytes(24).toString('base64url');
+        const codeVerifier = randomBytes(48).toString('base64url');
+        const challenge = createHash('sha256').update(codeVerifier).digest('base64url');
+        database.pruneOAuthTransactions();
+        database.createOAuthTransaction({ state, userId: req.user.id, platform: 'kick', codeVerifier, redirectUri: KICK_OAUTH_REDIRECT_URI, payload: {
+            channel,
+            channelId: Number(payload.channelId || 0) || 0,
+            broadcasterUserId: Number(payload.broadcasterUserId || 0) || 0,
+            chatroomId: Number(payload.chatroomId || 0) || 0,
+            profile: payload.profile && typeof payload.profile === 'object' ? payload.profile : null,
+        }});
+        const authorize = new URL('https://id.kick.com/oauth/authorize');
+        authorize.searchParams.set('client_id', KICK_CLIENT_ID);
+        authorize.searchParams.set('response_type', 'code');
+        authorize.searchParams.set('redirect_uri', KICK_OAUTH_REDIRECT_URI);
+        authorize.searchParams.set('state', state);
+        authorize.searchParams.set('scope', KICK_OAUTH_SCOPES.join(' '));
+        authorize.searchParams.set('code_challenge', challenge);
+        authorize.searchParams.set('code_challenge_method', 'S256');
+        res.json({ ok: true, authorizationUrl: authorize.toString(), redirectUri: KICK_OAUTH_REDIRECT_URI, scopes: KICK_OAUTH_SCOPES });
+    } catch (error) {
+        res.status(400).json({ ok: false, error: error?.message || 'No se pudo iniciar la autorización de Kick.' });
+    }
+});
+
+app.get("/api/kick/oauth/status", requireUser, async (req, res) => {
+    const oauth = kick.getKickOAuthTokenInfo(req.user.id);
+    let refreshed = oauth;
+    if (oauth.connected && oauth.expiresAt && oauth.expiresAt <= Date.now() + 60_000) {
+        await kick.getKickUserAccessToken(req.user.id, 'events:subscribe').catch(() => '');
+        refreshed = kick.getKickOAuthTokenInfo(req.user.id);
+    }
+    const scopes = String(refreshed.scope || '').split(/\s+/).filter(Boolean);
+    const eventsScopeKnown = scopes.length > 0;
+    const readyForEvents = Boolean(refreshed.connected && (!eventsScopeKnown || scopes.includes('events:subscribe')));
+    res.json({ ok: true, connected: refreshed.connected, readyForEvents, scope: refreshed.scope, scopes, expiresAt: refreshed.expiresAt, redirectConfigured: Boolean(KICK_OAUTH_REDIRECT_URI) });
+});
+
+app.get("/api/kick/oauth/callback", async (req, res) => {
+    const state = String(req.query?.state || '').trim();
+    const error = String(req.query?.error || '').trim();
+    const transaction = database.getOAuthTransaction(state);
+    const transactionAge = transaction ? (Date.now() - Number(transaction.createdAt || 0)) : Infinity;
+    if (!transaction || transaction.platform !== 'kick' || !Number.isFinite(transactionAge) || transactionAge > 15 * 60 * 1000) {
+        if (transaction) database.deleteOAuthTransaction(state);
+        return res.status(400).send('Autorización de Kick inválida o expirada.');
+    }
+    database.deleteOAuthTransaction(state);
+    if (error) {
+        const target = `/app.html?kick=denied&reason=${encodeURIComponent(String(req.query?.error_description || error))}`;
+        return res.redirect(target);
+    }
+    const code = String(req.query?.code || '').trim();
+    if (!code) return res.status(400).send('Kick no devolvió un código de autorización.');
+    try {
+        const body = new URLSearchParams({
+            grant_type: 'authorization_code',
+            client_id: KICK_CLIENT_ID,
+            client_secret: KICK_CLIENT_SECRET,
+            redirect_uri: transaction.redirectUri,
+            code,
+            code_verifier: transaction.codeVerifier,
+        });
+        const response = await fetch('https://id.kick.com/oauth/token', {
+            method: 'POST',
+            headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
+            body,
+        });
+        const text = await response.text();
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch {}
+        if (!response.ok || !data?.access_token) throw new Error(`Kick OAuth HTTP ${response.status}: ${data?.error || data?.message || text.slice(0, 300)}`);
+        const saved = kick.saveKickUserToken(transaction.userId, {
+            accessToken: data.access_token,
+            refreshToken: data.refresh_token || '',
+            expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000,
+            scope: data.scope || KICK_OAUTH_SCOPES.join(' '),
+        });
+        const pending = transaction.payload || {};
+        if (pending.channel) saveConnectionProfile(transaction.userId, 'kick', {
+            username: pending.profile?.username || pending.channel,
+            avatarUrl: pending.profile?.avatarUrl || pending.profile?.profile_picture || '',
+            channelId: pending.channelId,
+            broadcasterUserId: pending.broadcasterUserId || pending.profile?.broadcasterUserId,
+            chatroomId: pending.chatroomId,
+        });
+        const broadcasterId = Number(pending.broadcasterUserId || pending.profile?.broadcasterUserId || 0) || 0;
+        if (broadcasterId > 0) {
+            removeKickWebhookMappings(transaction.userId);
+            kickWebhookOwnerByBroadcaster.set(String(broadcasterId), String(transaction.userId));
+            await ensureKickWebhookSubscriptions(broadcasterId, transaction.userId);
+        }
+        const target = `/app.html?kick=authorized&channel=${encodeURIComponent(String(pending.channel || ''))}`;
+        return res.redirect(target);
+    } catch (e) {
+        console.error('[Kick OAuth callback]', e);
+        return res.redirect(`/app.html?kick=error&reason=${encodeURIComponent(String(e?.message || 'No se pudo autorizar Kick.').slice(0, 300))}`);
+    }
+});
+
+app.post("/api/kick/oauth/revoke", requireUser, async (req, res) => {
+    // Kick may revoke credentials from the user's account; local removal is enough
+    // to force a fresh consent flow without exposing the refresh token to clients.
+    const removed = database.deletePlatformOAuthToken(req.user.id, 'kick');
+    res.json({ ok: true, removed });
+});
+
 app.post("/api/kick/webhook", async (req, res) => {
     const raw = Buffer.isBuffer(req.body) ? req.body : (Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {})));
     if (KICK_WEBHOOK_ENABLED && !verifyKickWebhook({ ...req, rawBody: raw })) return res.status(401).json({ ok: false, error: "Firma de webhook de Kick inválida." });
@@ -1368,15 +1491,11 @@ app.post("/api/kick/webhook", async (req, res) => {
     if (!ownerId && broadcasterId) {
         try { ownerId = database.findUserIdByKickBroadcasterUserId?.(broadcasterId) || ""; } catch {}
     }
-    if (ownerId) {
-        const sessionState = kick.getState(ownerId);
-        const sessionBroadcasterId = Number(sessionState?.broadcasterUserId || 0) || 0;
-        if (!sessionState?.sessionActive || (broadcasterId > 0 && sessionBroadcasterId > 0 && sessionBroadcasterId !== broadcasterId)) {
-            ownerId = "";
-        }
+    if (ownerId && broadcasterId > 0 && !isKickWebhookMappingCurrent(broadcasterId, ownerId)) {
+        ownerId = "";
     }
     if (!ownerId) {
-        return res.status(202).json({ ok: true, ignored: true, reason: "Broadcaster no está asociado a una sesión StreamFusion activa." });
+        return res.status(202).json({ ok: true, ignored: true, reason: "Broadcaster de Kick no está asociado a una cuenta StreamFusion." });
     }
     if (messageId) {
         const now = Date.now();
@@ -2044,8 +2163,8 @@ async function ensureKickWebhookSubscriptions(broadcasterUserId, ownerId = "") {
     }
 
     const task = (async () => {
-        const token = await kick.getKickAppAccessToken();
-        if (!token) return { enabled: false, reason: 'no-app-token' };
+        const token = await kick.getKickUserAccessToken(boundOwnerId, 'events:subscribe');
+        if (!token) return { enabled: false, reason: 'kick-oauth-required' };
         const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
         let existing = [];
         try {
@@ -3670,24 +3789,38 @@ app.get("/api/realtime-voice/config", (req, res) => {
 app.get("/api/kick/official-status", requireUser, async (req, res) => {
     const hasAppCredentials = Boolean(KICK_CLIENT_ID && KICK_CLIENT_SECRET);
     const kickProfile = getSavedConnectionProfile(req.user.id, "kick");
-    let appToken = false;
+    const oauth = kick.getKickOAuthTokenInfo(req.user.id);
     let subscriptions = null;
     let error = "";
-    if (hasAppCredentials) {
+    const broadcasterId = Number(kickProfile?.broadcasterUserId || 0) || 0;
+    if (oauth.connected && broadcasterId > 0) {
         try {
-            appToken = Boolean(await kick.getKickAppAccessToken());
-            const broadcasterId = Number(kickProfile?.broadcasterUserId || 0);
-            if (appToken && broadcasterId > 0) {
-                const token = await kick.getKickAppAccessToken();
-                const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
-                const body = await response.json().catch(() => ({}));
-                subscriptions = response.ok ? (Array.isArray(body?.data) ? body.data : []) : null;
-                if (!response.ok) error = `HTTP ${response.status}`;
-            }
+            const token = await kick.getKickUserAccessToken(req.user.id, 'events:subscribe');
+            if (!token) throw new Error('OAuth de Kick no disponible o vencido.');
+            const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
+            const body = await response.json().catch(() => ({}));
+            subscriptions = response.ok ? (Array.isArray(body?.data) ? body.data : []) : null;
+            if (!response.ok) error = `HTTP ${response.status}`;
         } catch (e) { error = String(e?.message || e); }
+    } else if (hasAppCredentials && !oauth.connected) {
+        error = 'Kick requiere autorización OAuth del usuario para events:subscribe.';
     }
-    res.json({ ok:true, officialApi:{ configured:hasAppCredentials, token:appToken, broadcasterUserId:Number(kickProfile?.broadcasterUserId||0)||0, subscriptions, webhookUrlConfigured:Boolean(KICK_WEBHOOK_URL), error } });
+    res.json({
+        ok: true,
+        officialApi: {
+            configured: hasAppCredentials,
+            oauthConnected: oauth.connected,
+            scopes: oauth.scope,
+            expiresAt: oauth.expiresAt,
+            broadcasterUserId: broadcasterId,
+            subscriptions,
+            webhookUrlConfigured: Boolean(KICK_WEBHOOK_URL),
+            oauthRedirectConfigured: Boolean(KICK_OAUTH_REDIRECT_URI),
+            error,
+        },
+    });
 });
+
 
 app.get("/api/status", (req, res) => {
     res.json({

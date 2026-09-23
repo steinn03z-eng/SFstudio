@@ -1306,6 +1306,19 @@
         if(button) button.textContent='Resolviendo Kick…';
         const resolved=await resolveKickChannelInBrowser(value);
         payload={channel:resolved.slug, channelId:resolved.channelId, broadcasterUserId:resolved.broadcasterUserId, chatroomId:resolved.chatroomId, profile:resolved};
+        // Kick chat realtime can be opened anonymously, but official channel events
+        // (chat webhooks, follows, subs, KICKS gifts, rewards, etc.) require the
+        // channel owner's OAuth grant with events:subscribe. Authenticate first so
+        // the same connection powers dashboard, overlays and voice rules.
+        const oauth=await api('/api/kick/oauth/status');
+        if(!oauth?.connected || oauth?.readyForEvents===false){
+          localStorage.setItem('streamfusion.kick.pendingConnect.v1',JSON.stringify(payload));
+          if(button) button.textContent='Autorizando Kick…';
+          const auth=await api('/api/kick/oauth/start',{method:'POST',body:JSON.stringify(payload)});
+          if(!auth?.authorizationUrl) throw new Error(auth?.error||'No se pudo iniciar la autorización de Kick.');
+          window.location.href=auth.authorizationUrl;
+          return;
+        }
       }
       ready.emit(emitEvent, payload, (ack) => {
         if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }
@@ -4174,9 +4187,32 @@
     setTimeout(close,10000);
   }
 
+  async function resumeKickOAuthFlow(){
+    const params=new URLSearchParams(window.location.search);
+    const result=params.get('kick');
+    if(!result) return;
+    let pending=null;
+    try { pending=JSON.parse(localStorage.getItem('streamfusion.kick.pendingConnect.v1')||'null'); } catch {}
+    localStorage.removeItem('streamfusion.kick.pendingConnect.v1');
+    try { window.history.replaceState({},document.title,window.location.pathname+window.location.hash); } catch {}
+    if(result==='authorized'){
+      if(!pending?.channel){ toast('Kick','Kick fue autorizado. Vuelve a Conexiones para iniciar el canal.'); return; }
+      try{
+        const ready=await waitForSocketReady();
+        ready.emit('connectKick',pending,(ack)=>{
+          if(ack?.ok) toast('Kick',ack.message||'Kick conectado correctamente.');
+          else if(ack?.error) toast('Kick',ack.error,'err');
+        });
+      }catch(error){ toast('Kick',error?.message||'No se pudo reanudar la conexión.','err'); }
+      return;
+    }
+    if(result==='denied') toast('Kick','La autorización fue cancelada. El chat realtime no se conectó porque no se concedieron los eventos oficiales.','err');
+    else if(result==='error') toast('Kick',params.get('reason')||'No se pudo completar la autorización.','err');
+  }
+
   async function startApp(){
     if(!token()){showAuth();return;}
-    try{ const me=await api('/api/me'); user=me.user; $('authScreen').classList.add('hidden');$('app').classList.remove('hidden');settings=merge(defaultSettings,await api('/api/user/settings')); rehydrateCustomizationFromStorage(); loadTikTokGiftCatalog().catch(()=>{}); saveCustomizationSnapshot(); try { const saved=JSON.parse(localStorage.getItem('sf.customize.modes.v1')||'null'); if(saved){ settings.personalization.eventStyle=saved.eventStyle||settings.personalization.eventStyle; settings.personalization.giftStyle=saved.giftStyle||settings.personalization.giftStyle; settings.personalization.eventSimulationMode=saved.eventSimulationMode||settings.personalization.eventSimulationMode||'single'; settings.personalization.giftSimulationMode=saved.giftSimulationMode||settings.personalization.giftSimulationMode||'single'; } } catch {} render();setupSocket(); }
+    try{ const me=await api('/api/me'); user=me.user; $('authScreen').classList.add('hidden');$('app').classList.remove('hidden');settings=merge(defaultSettings,await api('/api/user/settings')); rehydrateCustomizationFromStorage(); loadTikTokGiftCatalog().catch(()=>{}); saveCustomizationSnapshot(); try { const saved=JSON.parse(localStorage.getItem('sf.customize.modes.v1')||'null'); if(saved){ settings.personalization.eventStyle=saved.eventStyle||settings.personalization.eventStyle; settings.personalization.giftStyle=saved.giftStyle||settings.personalization.giftStyle; settings.personalization.eventSimulationMode=saved.eventSimulationMode||settings.personalization.eventSimulationMode||'single'; settings.personalization.giftSimulationMode=saved.giftSimulationMode||settings.personalization.giftSimulationMode||'single'; } } catch {} render();setupSocket(); void resumeKickOAuthFlow(); }
     catch(e){localStorage.removeItem(TOKEN_KEY);localStorage.removeItem(SESSION_KEY);showAuth();}
   }
   function showAuth(){ $('authScreen').classList.remove('hidden');$('app').classList.add('hidden');$('authTitle').textContent=authMode==='login'?'Bienvenido de vuelta':'Crear cuenta';$('authText').textContent=authMode==='login'?'Inicia sesión para abrir tu estudio.':'Crea tu cuenta para guardar voces y configuraciones.';$('authNameWrap').classList.toggle('hidden',authMode==='login');$('authSubmit').innerHTML=authMode==='login'?'Entrar al estudio <span>→</span>':'Crear cuenta <span>→</span>';$('authToggle').textContent=authMode==='login'?'¿No tienes cuenta? Crear cuenta':'¿Ya tienes cuenta? Iniciar sesión';}

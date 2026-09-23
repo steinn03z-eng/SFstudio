@@ -2877,18 +2877,32 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
         { value: "role", label: "Rol" },
       ],
     };
+    const voiceRuleEventPresetsByPlatform = {
+      tiktok: ["follow", "like", "share", "join", "sub", "system"],
+      twitch: ["follow", "sub", "resub", "raid", "host", "system"],
+      kick: ["follow", "sub", "resub", "subscription-gift", "raid", "host", "reward", "system"],
+    };
     const voiceRulePresetMap = {
-      event: ["follow", "like", "share", "join", "raid", "sub", "system"],
       role: ["broadcaster", "moderator", "vip", "subscriber", "founder", "verified", "staff", "premium"],
       bits: ["1", "10", "50", "100", "500", "1000"],
     };
+    function voiceRulePresetOptions(platform, kind){
+      const p=normalizeVoicePlatform(platform);
+      if(kind === "event") return voiceRuleEventPresetsByPlatform[p] || voiceRuleEventPresetsByPlatform.tiktok;
+      return voiceRulePresetMap[kind] || [];
+    }
     const voiceRuleLabels = {
       follow: "Siguió",
       like: "Like",
       share: "Compartió",
       join: "Primera unión",
       raid: "Raid",
+      host: "Host",
       sub: "Suscripción",
+      resub: "Renovación",
+      "subscription-gift": "Suscripciones regaladas",
+      reward: "Recompensa",
+      gift: "Regalo",
       system: "Sistema",
       broadcaster: "Streamer",
       moderator: "Moderador",
@@ -3312,6 +3326,11 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     function loadJSON(key,fallback){ try{ const raw=localStorage.getItem(key); if(!raw) return structuredClone(fallback); return mergeDeep(structuredClone(fallback), JSON.parse(raw)); } catch { return structuredClone(fallback); } }
     function normalizeImageSource(value){ const src = String(value ?? "").trim(); if(!src) return ""; if(/^https?:\/\//i.test(src)) return src; if(/^data:image\/(?:png|jpe?g|gif|webp|svg\+xml);/i.test(src)) return src; return ""; }
     function normalizeUsername(value){ return String(value||'').trim().replace(/^https?:\/\/(www\.)?tiktok\.com\/@/i,'').replace(/^https?:\/\/(www\.)?twitch\.tv\//i,'').replace(/^https?:\/\/(www\.)?kick\.com\//i,'').replace(/^@+/, '').replace(/^#+/, '').split(/[/?#]/)[0].trim(); }
+    function avatarIdentity(item = {}) {
+      // Kick puede usar uniqueId=userId en algunos frames legacy; para buscar
+      // el avatar primero necesitamos el nombre público del usuario.
+      return normalizeUsername(item?.username || item?.user || item?.displayName || item?.uniqueId || 'user');
+    }
     function normalizeVoicePlatform(value){ const p=String(value||"tiktok").trim().toLowerCase(); return ["tiktok","twitch","kick"].includes(p)?p:"tiktok"; }
     function normalizeTypeName(value){ return String(value || '').trim().toLowerCase(); }
     function isVoiceKeyReference(value){
@@ -4074,7 +4093,12 @@ function voiceBotSummaryHtml(){
         share: "🗣",
         join: "👻",
         raid: "⚡",
+        host: "📣",
         sub: "⭐",
+        resub: "🔄",
+        "subscription-gift": "🎟️",
+        reward: "🎟️",
+        gift: "🎁",
         system: "🛠️",
         broadcaster: "🎙️",
         moderator: "🛡️",
@@ -4095,7 +4119,7 @@ function voiceBotSummaryHtml(){
     }
     function voiceEventBadgeEmoji(item){
       const key = voiceEventKey(item);
-      const map = { follow: "👤", like: "❤️", share: "🗣", join: "👻", raid: "⚡", sub: "⭐", system: "🛠️" };
+      const map = { follow: "👤", like: "❤️", share: "🗣", join: "👻", raid: "⚡", host: "📣", sub: "⭐", resub: "🔄", "subscription-gift": "🎟️", reward: "🎟️", gift: "🎁", system: "🛠️" };
       return map[key] || "";
     }
     function voiceAssignmentPriority(kind){
@@ -5297,14 +5321,20 @@ function resolveVoiceRuleList(){
     }
     function normalizeMatchKey(value){ return normalizeUsername(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
     function voiceEventKey(item){
-      const type = normalizeTypeName(item?.type || item?.action || item?.group || item?.event || "");
+      const raw = normalizeTypeName(item?.type || item?.event || item?.action || item?.group || "");
+      const type = raw.replace(/\s+/g, "-");
       if (!type) return "";
+      if (type.includes("subscription-gift") || type.includes("giftedsubscriptions") || type.includes("subscriptiongift")) return "subscription-gift";
+      if (type.includes("resub") || type.includes("subscription.renewal") || type.includes("subscription-renewal")) return "resub";
+      if (type === "sub" || type.includes("subscription.new") || type.includes("subscription-new") || type === "subscription") return "sub";
       if (type.includes("follow")) return "follow";
       if (type.includes("like")) return "like";
-      if (type.includes("share") || type.includes("share")) return "share";
+      if (type.includes("share")) return "share";
       if (type.includes("join") || type.includes("member")) return "join";
-      if (type.includes("raid") || type.includes("host")) return "raid";
-      if (type.includes("sub") || type.includes("subscription") || type.includes("resub")) return "sub";
+      if (type.includes("raid")) return "raid";
+      if (type.includes("host")) return "host";
+      if (type.includes("reward") || type.includes("redemption")) return "reward";
+      if (type === "gift" || type.includes("kicks.gift")) return "gift";
       if (type.includes("system")) return "system";
       return type;
     }
@@ -5626,13 +5656,13 @@ function findMatchingVoiceRule(item){
       if (kind === "gift") {
         return [kind, query, (giftCatalogItems || []).map((item) => [item?.id,item?.key,item?.name,item?.alt,item?.image,item?.icon,item?.thumb,item?.url,item?.imageUrl].map(v => String(v || "")).join("~")).join("|")].join("::");
       }
-      if (kind === "bits") return [kind, query, voiceRulePresetMap.bits.join("|")].join("::");
+      if (kind === "bits") return [kind, query, voiceRulePresetOptions(voiceRuleDraft.platform, kind).join("|")].join("::");
       return kind;
     }
 
     function getVoiceRulePresetSignature(){
       const kind = String(voiceRuleDraft.kind || "");
-      const options = voiceRulePresetMap[kind] || [];
+      const options = voiceRulePresetOptions(voiceRuleDraft.platform, kind);
       return [kind, ...options.map((key) => `${key}:${voiceRuleLabels[key] || key}:${voiceRuleBadgeForPreset(kind, key) || ""}`)].join("::");
     }
 
@@ -5931,7 +5961,7 @@ function findMatchingVoiceRule(item){
         return;
       }
       if (voiceRuleDraft.kind === "bits") {
-        const presets = voiceRulePresetMap.bits.map((v) => ({ key: String(v), label: `${v} bits`, image: "" }));
+        const presets = voiceRulePresetOptions(voiceRuleDraft.platform, "bits").map((v) => ({ key: String(v), label: `${v} bits`, image: "" }));
         counter.textContent = `${presets.length} opciones`;
         grid.innerHTML = presets.map((item) => {
           const active = String(voiceRuleDraft.targetKey || "") === String(item.key);
@@ -5950,7 +5980,7 @@ function findMatchingVoiceRule(item){
         grid.innerHTML = `<div class="overlayVoiceHelp">Esta sección se usa para regalos o bits. Usa la búsqueda de arriba.</div>`;
         return;
       }
-      const options = voiceRulePresetMap[kind] || [];
+      const options = voiceRulePresetOptions(voiceRuleDraft.platform, kind);
       grid.innerHTML = options.map((key) => {
         const label = voiceRuleLabels[key] || key;
         const badge = voiceRuleBadgeForPreset(kind, key);
@@ -5993,7 +6023,7 @@ function findMatchingVoiceRule(item){
       voiceRuleDraft.voiceKey = snap.voiceKey in voiceCatalog ? snap.voiceKey : "verity";
       voiceRuleDraft.targetLabel = snap.label;
       if (!voiceRuleDraft.targetKey && voiceRuleDraft.kind !== "gift" && voiceRuleDraft.kind !== "bits") {
-        const preset = (voiceRulePresetMap[voiceRuleDraft.kind] || [])[0];
+        const preset = voiceRulePresetOptions(voiceRuleDraft.platform, voiceRuleDraft.kind)[0];
         if (preset) {
           voiceRuleDraft.targetKey = preset;
           voiceRuleDraft.targetLabel = voiceRuleLabels[preset] || preset;
@@ -6945,21 +6975,10 @@ function currentViewSettingsKey(){
             if(pr.ok){ overlayKickAvatarCache.set(cacheKey,proxy); return proxy; }
           }catch{}
         }
-        if(kickChannel){
-          urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
-          urls.push(`https://kick.com/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
-        }
-        urls.push(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`);
-        for(const url of urls){
-          try{
-            const r=await fetch(url,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
-            if(!r.ok) continue;
-            const data=await r.json().catch(()=>null);
-            const profile=data?.user||data?.data?.user||data?.data||data?.profile||data||{};
-            const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
-            if(/^https?:\/\//i.test(avatar) && !/default-profile-pictures|default-avatar[-_]/i.test(avatar)){ overlayKickAvatarCache.set(cacheKey,avatar); return avatar; }
-          }catch{}
-        }
+        // Do not call Kick's old website/private endpoints from the overlay.
+        // They currently return 404 for chatter/profile lookups and, more
+        // importantly, the overlay must never depend on avatar resolution to
+        // render a chat message. The server-side proxy is the single lookup path.
         try{
           const channelParam = kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
           const userParam = Number(userId)>0 ? `&userId=${encodeURIComponent(String(Math.trunc(Number(userId))))}` : '';
@@ -6978,15 +6997,30 @@ function currentViewSettingsKey(){
       const chatKey = chatItemKey(item);
       const feedKind = String(item?.group || item?.activityKind || '').toLowerCase()==='gift' ? 'gift' : 'event';
       const feedKey = overlayFeedItemKey(item, feedKind);
+      const mountImage = (container, alt='Usuario') => {
+        if(!container) return false;
+        let img = container.querySelector('img');
+        if(!img){
+          img = document.createElement('img');
+          img.loading = 'lazy';
+          img.referrerPolicy = 'no-referrer';
+          img.alt = alt;
+          container.prepend(img);
+        }
+        const same = img.getAttribute('src') === url;
+        if(!same){ img.src=url; changed=true; }
+        img.style.display='';
+        img.classList.remove('broken');
+        const fallback = container.querySelector('.chat-avatar-empty');
+        fallback?.classList.add('hidden');
+        return true;
+      };
       if(view === 'chat' && list){
         const node = list.querySelector(`.overlayItem[data-chat-key="${CSS.escape(chatKey)}"]`);
-        const img = node?.querySelector('.chat-avatar img');
-        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
-        if(img?.parentElement){ img.parentElement.querySelector('.chat-avatar-empty')?.classList.add('hidden'); }
+        if(node) mountImage(node.querySelector('.chat-avatar'), String(item?.displayName || item?.username || 'Usuario'));
       } else if(list){
         const node = list.querySelector(`.overlayItem[data-feed-key="${CSS.escape(feedKey)}"]`);
-        const img = node?.querySelector('img');
-        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
+        if(node) mountImage(node.querySelector('.activity-user-avatar'), String(item?.displayName || item?.username || 'Usuario'));
       }
       return changed;
     }
@@ -7022,9 +7056,9 @@ function currentViewSettingsKey(){
       const letter=String(name||item?.username||item?.user||platform||'U').trim().charAt(0).toUpperCase() || platformShort(platform);
       const identity = avatarIdentity(item);
       const avatarUserId = Number(item?.userId || 0) > 0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId || 0) > 0 ? String(Math.trunc(Number(item.uniqueId))) : '');
-      const probe=kickAvatarProbeUrl(item);
-      const fallback=`<span class="${probe?'hidden ':''}chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserId)}" aria-label="${esc(name)}">${esc(letter)}</span>`;
-      return probe ? `<img src="${esc(probe)}" alt="${esc(name)}" class="kick-avatar-probe" loading="lazy" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden')">${fallback}` : fallback;
+      // Rendering must succeed even when Kick has no avatar yet. The server-side
+      // enrichment path will replace this span asynchronously once available.
+      return `<span class="chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserId)}" aria-label="${esc(name)}">${esc(letter)}</span>`;
     }
     function timeLabel(ts){ return new Date(ts || Date.now()).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }); }
     function platformTag(platform){ return `<span class="platformTag ${platform}">${platformShort(platform)}</span>`; }
