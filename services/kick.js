@@ -24,7 +24,7 @@ const USER_AGENT =
 
 const KICK_BASE = "https://kick.com";
 const KICK_PUSHER_URL =
-  String(process.env.KICK_PUSHER_URL || "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false").trim();
+  String(process.env.KICK_PUSHER_URL || "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false").trim();
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
 const KICK_API_BASE = "https://api.kick.com/public/v1";
 const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -333,7 +333,7 @@ function normalizeEventType(name, data) {
   if (eventName === "channel.subscription.gifts" || eventName.includes("giftedsubscriptions") || eventName.includes("subscriptiongifted")) return "subscription-gift";
   if (eventName === "channel.subscription.renewal" || eventName.includes("subscriptionrenewal")) return "resub";
   if (eventName === "channel.subscription.new" || eventName.includes("subscriptionevent") || eventName.includes("subscription.new")) return "sub";
-  if (eventName === "kicks.gifted" || eventName.includes("kicks.gift")) return "gift";
+  if (eventName === "kicks.gifted" || eventName.includes("kicks.gift") || eventName.includes("kicksgifted")) return "gift";
   if (eventName.includes("streamhost") || eventName.includes("stream.host") || eventName.endsWith("hostevent")) return "host";
   if (eventName === "channel.raid" || eventName.includes("raid")) return "raid";
   if (eventName === "channel.reward.redemption.updated" || eventName.includes("rewardredeem") || eventName.includes("reward.redemption") || eventName.includes("rewardredeemed") || eventName.includes("redemption")) return "reward";
@@ -418,8 +418,8 @@ function normalizeIncomingKickEvent(data, eventName) {
   const giftees = Array.isArray(payload?.giftees) ? payload.giftees
     : Array.isArray(payload?.gifted_users) ? payload.gifted_users
       : Array.isArray(payload?.recipients) ? payload.recipients : [];
-  const duration = Number(payload?.duration ?? payload?.months ?? payload?.months_subscribed ?? payload?.count ?? 0) || 0;
-  const quantity = Math.max(0, Number(payload?.quantity ?? payload?.total ?? payload?.gifted_quantity ?? payload?.gifted_total ?? payload?.count ?? (type === "subscription-gift" ? giftees.length : 0)) || 0);
+  const duration = Number(payload?.duration ?? payload?.months ?? payload?.months_subscribed ?? payload?.count ?? payload?.metadata?.subscription?.months ?? 0) || 0;
+  const quantity = Math.max(0, Number(payload?.quantity ?? payload?.total ?? payload?.gifted_quantity ?? payload?.gifted_total ?? payload?.count ?? payload?.metadata?.gifted_subscriptions?.quantity ?? (type === "subscription-gift" ? giftees.length : 0)) || 0);
   const amount = Number(payload?.amount ?? payload?.value ?? gift?.amount ?? payload?.coins ?? payload?.kicks ?? 0) || 0;
   const giftId = firstNonEmpty(payload?.gift_id, payload?.giftId, gift?.gift_id, gift?.id);
   const giftName = firstNonEmpty(
@@ -656,10 +656,9 @@ function normalizeEvent(data, eventName) {
 
 function emitScoped(io, ownerId, event, payload) {
   if (!io) return;
-  const room = `user:${ownerId}`;
-  const overlayRoom = `overlay:${ownerId}`;
-  io.to(room).emit(event, payload);
-  io.to(overlayRoom).emit(event, payload);
+  // Dashboard and generated overlays both join the canonical user room.
+  // Emitting once here avoids duplicate deliveries when an overlay is open.
+  io.to(`user:${ownerId}`).emit(event, payload);
 }
 
 function awardPoints(ownerId, payload) {
@@ -1002,13 +1001,10 @@ function sendPusherPong(client) {
 }
 
 function startPing(client) {
-  if (client.pingTimer) clearInterval(client.pingTimer);
-  client.pingTimer = setInterval(() => {
-    if (!client.ws || client.ws.readyState !== 1) return;
-    if (!send(client, { event: "pusher:ping", data: {} })) {
-      try { client.ws.close(); } catch {}
-    }
-  }, 20_000);
+  // Kick/Pusher sends the heartbeat to the client. We reply with pusher:pong in
+  // handleFrame; do not inject client-originated pusher:ping frames because they
+  // are unnecessary and can confuse strict Pusher servers.
+  stopPing(client);
 }
 
 function stopPing(client) {
@@ -1290,15 +1286,15 @@ async function handleFrame(client, raw) {
   if (eventName === 'pusher:ping') { sendPusherPong(client); return; }
   if (eventName.toLowerCase() === 'ping') { send(client, { type: 'pong' }); return; }
 
-  if (eventName === 'pusher:subscription_succeeded') {
+  if (eventName === 'pusher:subscription_succeeded' || eventName === 'pusher_internal:subscription_succeeded') {
     const subscribedChannel = String(
       frame?.channel ||
       (data && typeof data === 'object' ? data.channel : '') ||
       ''
     ).trim();
     if (subscribedChannel) client.subscribedChannels?.add(subscribedChannel);
-    const chatPrefix = client.chatroomId ? `chatrooms.${client.chatroomId}` : '';
-    if (subscribedChannel && chatPrefix && subscribedChannel.startsWith(chatPrefix)) {
+    const expected = client.chatroomChannel || (client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : '');
+    if (subscribedChannel && expected && subscribedChannel === expected) {
       markRealtimeReady(client, 'chatroom-subscription-ready');
     }
     return;
@@ -1428,20 +1424,12 @@ async function openWebSocketTransport(client, url, provider = "pusher") {
   client.ws = ws;
   client.provider = provider;
 
-  const chatroomPrefix = client.chatroomId ? `chatrooms.${client.chatroomId}` : "";
-  const channels = new Set([
-    chatroomPrefix ? `${chatroomPrefix}.v2` : "",
-    chatroomPrefix,
-    client.chatroomId ? `chatroom_${client.chatroomId}` : "",
-    client.chatroomId ? `chatroom.${client.chatroomId}` : "",
-  ]);
-  if (client.channelId) {
-    channels.add(`channel.${client.channelId}`);
-    channels.add(`channel_${client.channelId}`);
-    channels.add(`channel_${client.channelId}_v2`);
-    channels.add(`predictions-channel-${client.channelId}`);
-  }
-  const channelList = [...channels].filter(Boolean);
+  // Kick's live chat/activity stream is carried by this public chatroom channel.
+  // Do not mix in legacy channel names: a failed legacy subscription can poison
+  // an otherwise valid Pusher session and leave chat connected but activity dead.
+  const chatroomChannel = client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : "";
+  client.chatroomChannel = chatroomChannel;
+  const channelList = chatroomChannel ? [chatroomChannel] : [];
 
   await new Promise((resolve, reject) => {
     let socketOpen = false;
@@ -1529,6 +1517,39 @@ async function openWebSocketTransport(client, url, provider = "pusher") {
   notifyTransportState(client, true, "realtime-ready");
 }
 
+let discoveredPusherKey = "";
+
+async function discoverPusherUrl() {
+  try {
+    const response = await fetch(`${KICK_BASE}/`, {
+      headers: {
+        "user-agent": USER_AGENT,
+        "accept": "text/html,application/xhtml+xml",
+      },
+    });
+    if (!response.ok) return "";
+    const html = await response.text();
+    const scriptUrls = [...html.matchAll(/<script[^>]+src=["']([^"']+\.js)["'][^>]*>/gi)]
+      .slice(0, 15)
+      .map((m) => m[1])
+      .filter(Boolean);
+    for (const scriptUrl of scriptUrls) {
+      const url = scriptUrl.startsWith("http") ? scriptUrl : `${KICK_BASE}${scriptUrl.startsWith("/") ? "" : "/"}${scriptUrl}`;
+      try {
+        const js = await fetch(url, { headers: { "user-agent": USER_AGENT, "accept": "*/*" } });
+        if (!js.ok) continue;
+        const text = await js.text();
+        const match = text.match(/NEXT_PUBLIC_PUSHER_KEY[^}]*?default\(["']([a-f0-9]+)["']\)/i);
+        if (match?.[1]) {
+          discoveredPusherKey = match[1];
+          return `wss://ws-us2.pusher.com/app/${discoveredPusherKey}?protocol=7&client=js&version=7.6.0&flash=false`;
+        }
+      } catch {}
+    }
+  } catch {}
+  return "";
+}
+
 async function openSocket(client) {
   closeSocket(client);
   stopPing(client);
@@ -1542,6 +1563,22 @@ async function openSocket(client) {
     pusherError = error;
     closeSocket(client);
     stopPing(client);
+  }
+
+  // Kick publishes its anonymous Pusher app key in the public web client. When
+  // the compiled key is stale, refresh it from the public homepage without OAuth.
+  if (isCurrentClient(client)) {
+    try {
+      const discoveredUrl = await discoverPusherUrl();
+      if (discoveredUrl && discoveredUrl !== KICK_PUSHER_URL) {
+        await openWebSocketTransport(client, discoveredUrl, "pusher-discovered");
+        return;
+      }
+    } catch (discoveryError) {
+      if (!pusherError) pusherError = discoveryError;
+      closeSocket(client);
+      stopPing(client);
+    }
   }
 
   // Optional compatibility fallback. It is deliberately secondary: the primary
@@ -1610,6 +1647,7 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
     reconnectDelay: 5_000,
     manualDisconnect: false,
     realtimeReady: false,
+    chatroomChannel: `chatrooms.${chatroomId}.v2`,
     subscribedChannels: new Set(),
     readyTimer: null,
     readyResolver: null,
