@@ -2527,7 +2527,16 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
                 <button type="button" class="overlayVoiceSwitch" data-voice-filter="moderators">Solo moderadores</button>
                 <button type="button" class="overlayVoiceSwitch" data-voice-filter="custom">Personalizado</button>
               </div>
-              <p class="overlayVoiceHelp">Cada opción es estricta. Personalizado solo lee usuarios autorizados por una regla de personalización, Poder de voz 🔥 o una voz fijada por usuario.</p>
+              <p class="overlayVoiceHelp">Cada opción es estricta. Personalizado solo lee usuarios autorizados por una regla de personalización, Poder de voz 🔥 o una voz fijada por usuario. “Solo seguidores” necesita follows individuales: en Kick solo llegan con la vinculación OAuth opcional (sin OAuth Kick entrega chat, subs, regalos, hosts y baneos).</p>
+            </div>
+            <div class="overlayVoiceField">
+              <span>Plataformas que lee el bot</span>
+              <div class="overlayVoiceSwitchRow" id="overlayVoicePlatformOptions">
+                <button type="button" class="overlayVoiceSwitch" data-voice-platform="tiktok">TikTok</button>
+                <button type="button" class="overlayVoiceSwitch" data-voice-platform="twitch">Twitch</button>
+                <button type="button" class="overlayVoiceSwitch" data-voice-platform="kick">Kick</button>
+              </div>
+              <p class="overlayVoiceHelp">Activa o apaga cada plataforma por separado. Kick funciona sin OAuth y aporta sus propios eventos: subs, subs regaladas, regalos KICKS, hosts, baneos, mensajes fijados y estado del directo.</p>
             </div>
             <div class="overlayVoiceSummary" id="overlayVoiceRecipientsSummary"></div>
           </section>
@@ -2847,7 +2856,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     const VOICEBOT_KEY = `streamfusion.voicebot.v2.${overlayOwner || "guest"}.${overlayKey || "default"}`;
     const RANDOM_VOICE_KEY = "__random__";
     const RANDOM_VOICE_LABEL = "Aleatorio";
-    const voiceBotDefaults = { power:{enabled:false,source:"gift",platform:"tiktok",targetKey:"",targetLabel:"",amount:1,pointCost:1000,activity:"follow",commandPrefix:".",consumePoints:true,powerRules:[]}, powerUsers:[], enabled: false, filter: "all", voiceKey: "verity", fixedDraftVoiceKey: "verity", lastRandomVoiceKey: "", sayDice: false, singSlashCommand: true, ignoreEmojis: true, ignoreSpecialChars: true, ignoreStickers: true, ignoreEmotes: true, onlySpanish: true, allowEnye: true, profanityFilter: true, noReadNames: false, antiSpamFilter: true, customFilterWords: [], activeTab: "recipients", volumeSearch: "", voiceVolumes: {}, pendingByUser: {}, unlockedByUser: {}, fixedByUser: {}, giftByUser: {}, seenEvents: {}, lastMessageByUser: {}, rules: [] };
+    const voiceBotDefaults = { power:{enabled:false,source:"gift",platform:"tiktok",targetKey:"",targetLabel:"",amount:1,pointCost:1000,activity:"follow",commandPrefix:".",consumePoints:true,powerRules:[]}, powerUsers:[], enabled: false, filter: "all", platforms:{tiktok:true,twitch:true,kick:true}, voiceKey: "verity", fixedDraftVoiceKey: "verity", lastRandomVoiceKey: "", sayDice: false, singSlashCommand: true, ignoreEmojis: true, ignoreSpecialChars: true, ignoreStickers: true, ignoreEmotes: true, onlySpanish: true, allowEnye: true, profanityFilter: true, noReadNames: false, antiSpamFilter: true, customFilterWords: [], activeTab: "recipients", volumeSearch: "", voiceVolumes: {}, pendingByUser: {}, unlockedByUser: {}, fixedByUser: {}, giftByUser: {}, seenEvents: {}, lastMessageByUser: {}, rules: [] };
     const voiceExpressionCatalog = {
       s: { marker: "[singing]", emotion: "singing", label: "Cantando" },
       a: { marker: "[angry]", emotion: "angry", label: "Enojo" },
@@ -3369,6 +3378,16 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
       return {
         enabled: Boolean(source.enabled),
         filter: source.filter === "supporters" ? "supporters" : source.filter === "followers" ? "followers" : source.filter === "moderators" ? "moderators" : source.filter === "custom" ? "custom" : "all",
+        // Opciones de plataforma del bot de voz: cada plataforma se puede leer
+        // por separado. Por defecto se leen todas (TikTok, Twitch y Kick).
+        platforms: (() => {
+          const sourcePlatforms = source.platforms && typeof source.platforms === "object" ? source.platforms : {};
+          return {
+            tiktok: sourcePlatforms.tiktok !== false,
+            twitch: sourcePlatforms.twitch !== false,
+            kick: sourcePlatforms.kick !== false,
+          };
+        })(),
         voiceKey: isVoiceKeyReference(source.voiceKey) ? source.voiceKey : "verity",
         fixedDraftVoiceKey: isVoiceKeyReference(source.fixedDraftVoiceKey) ? source.fixedDraftVoiceKey : (isVoiceKeyReference(source.voiceKey) ? source.voiceKey : "verity"),
         lastRandomVoiceKey: isVoiceKeyReference(source.lastRandomVoiceKey) ? source.lastRandomVoiceKey : "",
@@ -3684,6 +3703,7 @@ function adjustOverlayZoom(delta){
   const voice = selectedVoice();
   const voiceLabel = selectedVoiceLabel();
   const filterLabel = voiceFilterLabel(voiceBot.filter);
+  const platformsLabel = voicePlatformsLabel(voiceBot.platforms);
   const stateLabel = voiceBot.enabled ? "Encendido" : "Apagado";
   const flags = [
     voiceBot.sayDice ? "dice" : null,
@@ -3701,7 +3721,7 @@ function adjustOverlayZoom(delta){
   ].filter(Boolean).join(" · ");
   const fixedCount = Object.keys(voiceBot.fixedByUser || {}).length;
   const volume = voiceBot.voiceKey === RANDOM_VOICE_KEY ? "por voz" : `${getVoiceVolumePercent(voiceBot.voiceKey)}%`;
-  return `${stateLabel} · ${filterLabel} · Voz: ${voiceLabel} · Volumen: ${volume}${fixedCount ? ` · ${fixedCount} voz${fixedCount === 1 ? "" : "es"} fijada${fixedCount === 1 ? "" : "s"}` : ""}${flags ? ` · ${flags}` : ""}`;
+  return `${stateLabel} · ${platformsLabel} · ${filterLabel} · Voz: ${voiceLabel} · Volumen: ${volume}${fixedCount ? ` · ${fixedCount} voz${fixedCount === 1 ? "" : "es"} fijada${fixedCount === 1 ? "" : "s"}` : ""}${flags ? ` · ${flags}` : ""}`;
 }
 
 function voiceBotSummaryHtml(){
@@ -3712,6 +3732,7 @@ function voiceBotSummaryHtml(){
     { label: voiceBot.enabled ? "Bot encendido" : "Bot apagado", active: true, state: voiceBot.enabled ? "on" : "off" },
     { label: `Voz: ${voiceLabel}`, active: true, state: "info" },
     { label: volumeLabel, active: true, state: "info" },
+    { label: `Plataformas: ${voicePlatformsLabel(voiceBot.platforms).replace(/^Plataformas:\s*/, "")}`, active: true, state: "info" },
     { label: `Filtro global: ${voiceFilterLabel(voiceBot.filter)}`, active: true, state: "info" },
     { label: "Decir “dice”", active: voiceBot.sayDice, state: "on" },
     { label: "Sin emojis", active: voiceBot.ignoreEmojis, state: "on" },
@@ -4025,6 +4046,14 @@ function voiceBotSummaryHtml(){
     }
     function voiceUserKey(item){ return normalizeUsername(item?.uniqueId || item?.user || item?.displayName || item?.username || ""); }
     function voiceRuleItemKey(item){ return `${normalizeVoicePlatform(item?.platform || "tiktok")}:${normalizeUsername(item?.uniqueId || item?.username || item?.user || item?.displayName || "")}`; }
+    // Resumen legible de las plataformas que lee el bot de voz.
+    function voicePlatformsLabel(platforms){
+      const source = platforms && typeof platforms === "object" ? platforms : {};
+      const active = [["tiktok","TikTok"],["twitch","Twitch"],["kick","Kick"]].filter(([key])=>source[key]!==false).map(([,label])=>label);
+      if (!active.length) return "Plataformas: ninguna";
+      if (active.length === 3) return "Plataformas: todas";
+      return `Plataformas: ${active.join(", ")}`;
+    }
     function voiceFilterLabel(value){
       const filter = String(value || "all").toLowerCase();
       if (filter === "supporters") return "Solo donadores";
@@ -4064,7 +4093,16 @@ function voiceBotSummaryHtml(){
       // correctamente estas fuentes y valida sus reglas activas.
       return Boolean(resolveVoiceAssignment(item));
     }
+    // Opción de plataforma del bot de voz. Kick entra aquí con la misma lógica
+    // que TikTok y Twitch: si la plataforma está apagada, el bot no la lee.
+    function voicePlatformAllows(item){
+      const platforms = voiceBot.platforms && typeof voiceBot.platforms === "object" ? voiceBot.platforms : null;
+      if (!platforms) return true;
+      const platform = normalizeVoicePlatform(item?.platform || "tiktok");
+      return platforms[platform] !== false;
+    }
     function voiceFilterAllows(item){
+      if (!voicePlatformAllows(item)) return false;
       const filter = String(voiceBot.filter || "all").trim().toLowerCase();
       const individualAuthorization = hasIndividualVoiceAuthorization(item);
       switch (filter) {
@@ -5614,6 +5652,18 @@ function findMatchingVoiceRule(item){
       saveVoiceBot();
       syncVoiceBotUI();
     }
+    function toggleVoiceBotPlatform(platform){
+      const normalized = normalizeVoicePlatform(platform);
+      const current = voiceBot.platforms && typeof voiceBot.platforms === "object" ? voiceBot.platforms : { tiktok:true, twitch:true, kick:true };
+      const next = { tiktok: current.tiktok !== false, twitch: current.twitch !== false, kick: current.kick !== false };
+      next[normalized] = !next[normalized];
+      // Al menos una plataforma debe quedar activa: si se apagan todas, el bot no
+      // leería nada y parecería un fallo en vez de una opción.
+      if (!next.tiktok && !next.twitch && !next.kick) next[normalized] = true;
+      voiceBot = normalizeVoiceBotState({ ...voiceBot, platforms: next });
+      saveVoiceBot();
+      syncVoiceBotUI();
+    }
     function setVoiceBotFlag(flag, value){
       if (!["sayDice", "singSlashCommand", "ignoreEmojis", "ignoreSpecialChars", "ignoreStickers", "ignoreEmotes", "onlySpanish", "allowEnye", "antiSpamFilter", "profanityFilter", "noReadNames"].includes(flag)) return;
       voiceBot[flag] = Boolean(value);
@@ -5728,7 +5778,7 @@ function findMatchingVoiceRule(item){
       if (statusText) statusText.textContent = voiceBot.enabled ? "Bot encendido." : "Bot apagado.";
       if (summary) { summary.innerHTML = voiceBotSummaryHtml(); summary.title = voiceBotSummaryText(); }
       renderVoiceCustomFilterPanel({ customFilterInput, customFilterAddBtn, customFilterStatus, customFilterList, customFilterCount });
-      if (recipientsSummary) recipientsSummary.textContent = `Filtro global: ${voiceFilterLabel(voiceBot.filter)}. El selector por regalo o evento manda sobre la voz global cuando hay coincidencia.`;
+        if (recipientsSummary) recipientsSummary.textContent = `${voicePlatformsLabel(voiceBot.platforms)} · Filtro global: ${voiceFilterLabel(voiceBot.filter)}. El selector por regalo o evento manda sobre la voz global cuando hay coincidencia.`;
       if (fixedUserSelect) {
         fixedUserSelect.innerHTML = voiceOptionsHtml();
         fixedUserSelect.value = voiceBot.fixedDraftVoiceKey in voiceCatalog ? voiceBot.fixedDraftVoiceKey : voiceBot.voiceKey;
@@ -5740,6 +5790,12 @@ function findMatchingVoiceRule(item){
       filterButtons.forEach((el) => {
         const active = String(el.dataset.voiceFilter || "all") === voiceBot.filter;
         el.classList.toggle("is-active", active);
+      });
+      document.querySelectorAll("[data-voice-platform]").forEach((el) => {
+        const platform = normalizeVoicePlatform(el.dataset.voicePlatform || "tiktok");
+        const active = (voiceBot.platforms && typeof voiceBot.platforms === "object" ? voiceBot.platforms[platform] !== false : true);
+        el.classList.toggle("is-active", active);
+        el.setAttribute("aria-pressed", active ? "true" : "false");
       });
       flagButtons.forEach((el) => {
         const flag = String(el.dataset.voiceFlag || "");
@@ -7799,6 +7855,15 @@ function currentViewSettingsKey(){
       }
       updateOverlayStatus();
     });
+    // Kick: un moderador limpió el chatroom. Se vacía solo el chat de Kick para
+    // no borrar los mensajes de TikTok o Twitch que comparten el overlay.
+    socket.on('chatClear', (data) => {
+      const platform = String(data?.platform || '').toLowerCase();
+      const before = state.chat.length;
+      state.chat = platform ? state.chat.filter(item => String(item?.platform || '').toLowerCase() !== platform) : [];
+      if (before !== state.chat.length && view === 'chat') render();
+      updateOverlayStatus();
+    });
     socket.on('kickAvatarUpdate', (data) => {
       if (String(data?.platform || '').toLowerCase() !== 'kick') return;
       const username = String(data?.username || data?.uniqueId || '').trim().replace(/^@+/, '').toLowerCase();
@@ -7840,13 +7905,13 @@ function currentViewSettingsKey(){
       const type = String(raw?.type || raw?.eventType || raw?.kind || '').toLowerCase();
       const monetaryGift = type === 'gift' || type === 'bits' || raw?.activityKind === 'gift' || Number(raw?.amount || raw?.giftCoins || 0) > 0 || Boolean(raw?.currency);
       const activityKind = raw?.activityKind || (type === 'stats' ? 'stats' : (['sub','subscription','resub','subscription-gift'].includes(type) ? 'event' : monetaryGift ? 'gift' : 'event'));
-      const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : type === 'reward' ? 'Recompensa canjeada' : type === 'moderation-ban' ? 'Usuario baneado' : type === 'moderation-unban' ? 'Usuario desbaneado' : type === 'message-deleted' ? 'Mensaje eliminado' : type === 'pinned-message' ? 'Mensaje fijado' : type === 'pinned-message-deleted' ? 'Mensaje fijado retirado' : type === 'poll-update' ? 'Encuesta actualizada' : type === 'poll-delete' ? 'Encuesta finalizada' : type === 'stream-status' ? 'Estado del directo' : type === 'stream-metadata' ? 'Información del directo actualizada' : 'Evento Kick');
+      const action = raw?.action || (type === 'gift' ? 'Regalo' : type === 'sub' ? 'Suscripción' : type === 'resub' ? 'Suscripción renovada' : type === 'subscription-gift' ? 'Suscripciones regaladas' : type === 'bits' ? 'Bits' : type === 'raid' ? 'Raid' : type === 'host' ? 'Host' : type === 'follow' ? 'Nuevo seguidor' : type === 'reward' ? 'Recompensa canjeada' : type === 'moderation-ban' ? 'Usuario baneado' : type === 'moderation-unban' ? 'Usuario desbaneado' : type === 'message-deleted' ? 'Mensaje eliminado' : type === 'pinned-message' ? 'Mensaje fijado' : type === 'pinned-message-deleted' ? 'Mensaje fijado retirado' : type === 'poll-update' ? 'Encuesta actualizada' : type === 'poll-delete' ? 'Encuesta finalizada' : type === 'chat-clear' ? 'Chat limpiado' : type === 'stream-status' ? 'Estado del directo' : type === 'stream-metadata' ? 'Información del directo actualizada' : 'Evento Kick');
       return { ...raw, platform: String(raw?.platform || 'tiktok').toLowerCase(), type, activityKind, group:activityKind, displayName: raw?.displayName || raw?.nickname || raw?.user || raw?.username || raw?.uniqueId || 'Usuario', action };
     }
     function isOverlayGiftType(item){
       const t = String(item?.type || '').toLowerCase();
       const group = String(item?.activityKind || item?.group || '').toLowerCase();
-      if (['sub','subscription','resub','subscription-gift','follow','raid','host','reward','moderation-ban','moderation-unban','message-deleted','pinned-message','pinned-message-deleted','poll-update','poll-delete','stream-status','stream-metadata','stats'].includes(t)) return false;
+      if (['sub','subscription','resub','subscription-gift','follow','raid','host','reward','moderation-ban','moderation-unban','message-deleted','pinned-message','pinned-message-deleted','poll-update','poll-delete','chat-clear','chat-move','stream-status','stream-metadata','stats'].includes(t)) return false;
       if (t === 'bits') return true;
       if (t === 'gift') return group === 'gift' || Number(item?.amount || item?.giftCoins || 0) > 0 || Boolean(item?.currency);
       return false;
@@ -8042,6 +8107,13 @@ function currentViewSettingsKey(){
         event.preventDefault();
         event.stopPropagation();
         setVoiceBotFilter(String(filterBtn.dataset.voiceFilter || 'all'));
+        return;
+      }
+      const platformBtn = event.target?.closest?.('[data-voice-platform]');
+      if (platformBtn && document.getElementById('overlayVoiceModal')?.classList.contains('is-open')) {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleVoiceBotPlatform(String(platformBtn.dataset.voicePlatform || 'tiktok'));
         return;
       }
       const flagBtn = event.target?.closest?.('[data-voice-flag]');

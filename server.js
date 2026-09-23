@@ -1420,7 +1420,7 @@ app.get("/api/kick/oauth/callback", async (req, res) => {
     }
     database.deleteOAuthTransaction(state);
     if (error) {
-        const target = `/app.html?kick=denied&reason=${encodeURIComponent(String(req.query?.error_description || error))}`;
+        const target = `/?kick=denied&reason=${encodeURIComponent(String(req.query?.error_description || error))}`;
         return res.redirect(target);
     }
     const code = String(req.query?.code || '').trim();
@@ -1463,11 +1463,11 @@ app.get("/api/kick/oauth/callback", async (req, res) => {
             kickWebhookOwnerByBroadcaster.set(String(broadcasterId), String(transaction.userId));
             await ensureKickWebhookSubscriptions(broadcasterId, transaction.userId);
         }
-        const target = `/app.html?kick=authorized&channel=${encodeURIComponent(String(pending.channel || ''))}`;
+        const target = `/?kick=authorized&channel=${encodeURIComponent(String(pending.channel || ''))}`;
         return res.redirect(target);
     } catch (e) {
         console.error('[Kick OAuth callback]', e);
-        return res.redirect(`/app.html?kick=error&reason=${encodeURIComponent(String(e?.message || 'No se pudo autorizar Kick.').slice(0, 300))}`);
+        return res.redirect(`/?kick=error&reason=${encodeURIComponent(String(e?.message || 'No se pudo autorizar Kick.').slice(0, 300))}`);
     }
 });
 

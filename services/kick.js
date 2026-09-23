@@ -24,8 +24,15 @@ const USER_AGENT =
   "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 const KICK_BASE = "https://kick.com";
+// Kick serves its public chat/events through an anonymous Pusher app. The client
+// version below matches the one used by kick.com's own web bundle; it can be
+// overridden with KICK_PUSHER_URL if Kick ever rotates the key or the cluster.
+const KICK_PUSHER_VERSION = String(process.env.KICK_PUSHER_VERSION || "8.4.0-rc2").trim();
 const KICK_PUSHER_URL =
-  String(process.env.KICK_PUSHER_URL || "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false").trim();
+  String(process.env.KICK_PUSHER_URL || `wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=${KICK_PUSHER_VERSION}&flash=false`).trim();
+// How often unconfirmed public topics are re-sent. Kick silently drops stale
+// subscriptions on long sessions, so the topics are refreshed periodically.
+const KICK_RESUBSCRIBE_INTERVAL_MS = Number(process.env.KICK_RESUBSCRIBE_INTERVAL_MS || 45_000) || 45_000;
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
 const KICK_API_BASE = "https://api.kick.com/public/v1";
 const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -403,6 +410,8 @@ function normalizeEventType(name, data) {
   if (eventName === "moderation.banned" || eventName.includes("userbannedevent") || eventName.endsWith(".banned")) return "moderation-ban";
   if (eventName.includes("userunbannedevent") || eventName.endsWith(".unbanned")) return "moderation-unban";
   if (eventName.includes("messagedeletedevent") || eventName.includes("message.deleted")) return "message-deleted";
+  if (eventName.includes("chatroomclearevent") || eventName.includes("chatroom.clear") || eventName.includes("chatclear")) return "chat-clear";
+  if (eventName.includes("chatmovetosupportedchannel")) return "chat-move";
   if (eventName.includes("pinnedmessagecreated") || eventName.includes("pinned.message.created")) return "pinned-message";
   if (eventName.includes("pinnedmessagedeleted") || eventName.includes("pinned.message.deleted")) return "pinned-message-deleted";
   if (eventName.includes("pollupdate")) return "poll-update";
@@ -417,6 +426,7 @@ function normalizeEventType(name, data) {
     eventName.includes("kicksleaderboardupdated") ||
     eventName.includes("goalprogressupdate") ||
     eventName.includes("goalupdated") ||
+    eventName.includes("goalcreated") ||
     eventName.includes("goalachieved") ||
     eventName.includes("goalcanceled") ||
     eventName.includes("chatroomupdated") ||
@@ -499,6 +509,7 @@ function normalizeIncomingKickEvent(data, eventName) {
   let icon = "✨";
   let group = "system";
   let currency = "";
+  let statsPatch = null;
 
   switch (type) {
     case "chat":
@@ -651,14 +662,37 @@ function normalizeIncomingKickEvent(data, eventName) {
       group = "event";
       break;
     }
-    case "stats":
+    case "chat-clear":
+      action = "Chat limpiado";
+      message = "Un moderador limpió el chat de Kick.";
+      icon = "🧹";
+      group = "system";
+      sender.username = sender.username || "Moderación";
+      sender.displayName = sender.displayName || sender.username;
+      break;
+    case "stats": {
       // Aggregate counters are not individual user activity; keep them out of the
       // activity feed so we never fabricate "Usuario: actividad del canal" cards.
+      // The numbers are still useful: they feed the dashboard counters.
+      const livestream = payload?.livestream && typeof payload.livestream === "object" ? payload.livestream : null;
+      const viewers = Number(
+        payload?.viewer_count ?? payload?.viewers ?? livestream?.viewer_count ?? livestream?.viewers ?? payload?.viewerCount ?? NaN
+      );
+      const followers = Number(payload?.followers_count ?? payload?.followers ?? payload?.total ?? NaN);
+      const title = firstNonEmpty(livestream?.title, payload?.title, payload?.metadata?.title);
+      const isLiveValue = payload?.is_live ?? payload?.isLive ?? livestream?.is_live ?? undefined;
+      statsPatch = {
+        viewers: Number.isFinite(viewers) ? Math.max(0, viewers) : undefined,
+        followers: Number.isFinite(followers) ? Math.max(0, followers) : undefined,
+        title: title || undefined,
+        isLive: isLiveValue === undefined ? undefined : Boolean(isLiveValue),
+      };
       action = "";
       message = "";
       icon = "";
       group = "system";
       break;
+    }
     case "system":
       action = firstNonEmpty(payload?.action, payload?.title, "Actividad");
       message = firstNonEmpty(payload?.message, payload?.content, payload?.description, "Se produjo una actualización del canal.");
@@ -708,6 +742,7 @@ function normalizeIncomingKickEvent(data, eventName) {
     amount: amount || undefined,
     giftCoins: Number(payload?.gift_coins ?? payload?.coins ?? gift?.amount ?? payload?.amount ?? 0) || undefined,
     currency: currency || undefined,
+    statsPatch: statsPatch || undefined,
     data: payload,
   };
 }
@@ -784,6 +819,33 @@ async function fetchJson(url, { headers = {} } = {}) {
   return data;
 }
 
+async function curlText(url, { timeoutSeconds = 15, accept = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8" } = {}) {
+  const curl = process.platform === "win32" ? "curl.exe" : "curl";
+  const args = [
+    "--silent",
+    "--show-error",
+    "--location",
+    "--compressed",
+    "--http1.1",
+    "--max-time",
+    String(timeoutSeconds),
+    "--user-agent",
+    USER_AGENT,
+    "--header",
+    `accept: ${accept}`,
+    "--header",
+    "referer: https://kick.com/",
+    url,
+  ];
+  try {
+    const result = await execFileAsync(curl, args, { maxBuffer: 16 * 1024 * 1024, windowsHide: true });
+    return String(result?.stdout || "");
+  } catch (error) {
+    const detail = String(error?.stderr || error?.message || "curl falló").trim();
+    throw new Error(`No se pudo descargar ${url}: ${detail.slice(0, 300)}`);
+  }
+}
+
 async function curlJson(url, { method = "GET", body = null, timeoutSeconds = 20 } = {}) {
   const curl = process.platform === "win32" ? "curl.exe" : "curl";
   const args = [
@@ -833,11 +895,13 @@ async function getChannelInfo(channelName) {
   const slug = cleanChannel(channelName);
   if (!slug) throw new Error("El canal de Kick está vacío");
 
+  // v2 first: it is the endpoint kick.com uses and it returns the chatroom id,
+  // the channel id, the broadcaster user id and the livestream block in one call.
   const urls = [
-    `${KICK_BASE}/api/v1/channels/${encodeURIComponent(slug)}`,
-    `${KICK_BASE}/api/v1/${encodeURIComponent(slug)}/chatroom`,
-    `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}/chatroom`,
     `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}`,
+    `${KICK_BASE}/api/v1/channels/${encodeURIComponent(slug)}`,
+    `${KICK_BASE}/api/v2/channels/${encodeURIComponent(slug)}/chatroom`,
+    `${KICK_BASE}/api/v1/${encodeURIComponent(slug)}/chatroom`,
   ];
   const errors = [];
   let channelData = null;
@@ -869,10 +933,30 @@ async function getChannelInfo(channelName) {
     }
   }
 
+  // HTML fallback: the channel page embeds the same payload inside __NEXT_DATA__.
+  // This is what keeps a no-OAuth Kick connection working when the JSON endpoints
+  // are behind a Cloudflare challenge for this server's TLS fingerprint.
+  if (!chatroomId) {
+    try {
+      const html = await curlText(`${KICK_BASE}/${encodeURIComponent(slug)}`, { timeoutSeconds: 15 });
+      const parsed = parseKickChannelHtml(html, slug);
+      if (parsed?.chatroomId > 0) {
+        channelData = parsed.data || {};
+        chatroomId = parsed.chatroomId;
+        channelId = parsed.channelId;
+        user = parsed.user || {};
+      }
+    } catch (error) {
+      errors.push(String(error?.message || error));
+    }
+  }
+
   if (!chatroomId) {
     const detail = errors.find(Boolean);
     throw new Error(`Kick no devolvió un chatroom para @${slug}${detail ? `: ${detail}` : ''}`);
   }
+
+  const livestream = channelData?.livestream ?? null;
 
   // Normalize the shape expected by the rest of StreamFusion.
   return {
@@ -881,6 +965,7 @@ async function getChannelInfo(channelName) {
     slug,
     user: {
       ...(user && typeof user === 'object' ? user : {}),
+      id: Number(user?.id || channelData?.user_id || 0) || undefined,
       username: String(user?.username || user?.slug || slug),
       name: String(user?.name || user?.display_name || user?.username || slug),
       profile_picture: String(
@@ -888,8 +973,64 @@ async function getChannelInfo(channelName) {
         user?.avatar || user?.avatar_url || channelData?.profile_picture || channelData?.profile_pic || ''
       ).trim(),
     },
+    broadcaster_user_id: Number(channelData?.user_id || user?.id || 0) || undefined,
+    followers_count: Number(channelData?.followers_count || 0) || 0,
     chatroom: { id: chatroomId },
-    livestream: channelData?.livestream ?? null,
+    livestream,
+    is_live: Boolean(livestream?.is_live ?? livestream ?? channelData?.is_live),
+    viewer_count: Number(livestream?.viewer_count ?? livestream?.viewers ?? 0) || 0,
+    title: String(livestream?.title || channelData?.title || '').trim(),
+  };
+}
+
+// Extracts the chatroom/channel ids from kick.com's public channel page. The page
+// ships the payload inside <script id="__NEXT_DATA__">, and a direct regex is kept
+// as a second chance because malformed JSON happens during Kick's own rollouts.
+function parseKickChannelHtml(html, slug = "") {
+  const text = String(html || "");
+  if (!text) return null;
+
+  const fromObject = (data) => {
+    const page = data?.props?.pageProps ?? data;
+    const channel = page?.channel || page?.channelData || page?.data?.channel || data?.channel || {};
+    const chatroom = channel?.chatroom || page?.chatroom || {};
+    const chatroomId = Number(chatroom?.id || chatroom?.chatroom_id || 0);
+    if (!(chatroomId > 0)) return null;
+    const user = channel?.user || page?.user || {};
+    return {
+      chatroomId,
+      channelId: Number(channel?.id || channel?.channel_id || 0) || 0,
+      user,
+      data: { ...channel, chatroom, user, followers_count: Number(channel?.followers_count || 0) || 0 },
+    };
+  };
+
+  const nextData = /<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i.exec(text);
+  if (nextData?.[1]) {
+    try {
+      const parsed = fromObject(JSON.parse(nextData[1]));
+      if (parsed) return parsed;
+    } catch {
+      // fall through to the regex scan
+    }
+  }
+
+  const chatroomMatch = /"chatroom"\s*:\s*\{[^{}]*?"id"\s*:\s*(\d+)/i.exec(text);
+  const chatroomId = Number(chatroomMatch?.[1] || 0);
+  if (!(chatroomId > 0)) return null;
+  const channelIdMatch = /"channel_id"\s*:\s*(\d+)/i.exec(text) || /"id"\s*:\s*(\d+)\s*,\s*"slug"/i.exec(text);
+  const userIdMatch = /"user_id"\s*:\s*(\d+)/i.exec(text);
+  const usernameMatch = /"username"\s*:\s*"([^"]{1,60})"/i.exec(text);
+  const avatarMatch = /"profile_pic(?:ture)?"\s*:\s*"(https:[^"]+)"/i.exec(text);
+  return {
+    chatroomId,
+    channelId: Number(channelIdMatch?.[1] || 0) || 0,
+    user: {
+      id: Number(userIdMatch?.[1] || 0) || undefined,
+      username: String(usernameMatch?.[1] || slug || ""),
+      profile_picture: String(avatarMatch?.[1] || "").replace(/\\\//g, "/"),
+    },
+    data: { chatroom: { id: chatroomId }, user_id: Number(userIdMatch?.[1] || 0) || undefined },
   };
 }
 
@@ -1020,11 +1161,70 @@ function markRealtimeReady(client, reason = "realtime-ready") {
   const resolver = client.readyResolver;
   client.readyResolver = null;
   client.readyRejector = null;
+  // Chat is confirmed first; Kick's own channel events are added on top so that a
+  // rejected secondary topic can never tear down an otherwise healthy chat feed.
+  subscribeSecondaryChannels(client);
+  startSubscriptionWatchdog(client);
   if (resolver) resolver();
   notifyTransportState(client, true, reason);
 }
 
+// Public topics that carry Kick's channel events without any OAuth grant.
+//   chatrooms.{id}.v2 -> chat (primary, subscribed on open)
+//   chatroom_{id}     -> legacy/moderation frames for the same chatroom
+//   chatrooms.{id}    -> alternate naming still served by Kick
+//   channel_{id}      -> subs, gifted subs, KICKS gifts, hosts, goals, live status
+function buildSecondaryChannels(client) {
+  const list = [];
+  const chatroomId = Number(client?.chatroomId || 0);
+  const channelId = Number(client?.channelId || 0);
+  if (chatroomId > 0) {
+    list.push(`chatroom_${chatroomId}`);
+    list.push(`chatrooms.${chatroomId}`);
+  }
+  if (channelId > 0) list.push(`channel_${channelId}`);
+  return list;
+}
+
+function subscribeChannel(client, channel) {
+  const name = String(channel || "").trim();
+  if (!name) return false;
+  return send(client, { event: "pusher:subscribe", data: { auth: "", channel: name } });
+}
+
+function subscribeSecondaryChannels(client) {
+  const list = Array.isArray(client?.secondaryChannels) ? client.secondaryChannels : [];
+  if (!list.length || !client?.ws || client.ws.readyState !== 1) return;
+  for (const channel of list) {
+    if (client.failedChannels?.has(channel)) continue;
+    if (client.subscribedChannels?.has(channel)) continue;
+    subscribeChannel(client, channel);
+  }
+}
+
+function startSubscriptionWatchdog(client) {
+  stopSubscriptionWatchdog(client);
+  if (!(KICK_RESUBSCRIBE_INTERVAL_MS > 0)) return;
+  client.subscriptionTimer = setInterval(() => {
+    if (!isCurrentClient(client) || !client.ws || client.ws.readyState !== 1) return;
+    // Kick drops idle subscriptions silently; re-ask for anything unconfirmed.
+    if (client.chatroomChannel && !client.subscribedChannels?.has(client.chatroomChannel)) {
+      subscribeChannel(client, client.chatroomChannel);
+    }
+    subscribeSecondaryChannels(client);
+  }, KICK_RESUBSCRIBE_INTERVAL_MS);
+  client.subscriptionTimer?.unref?.();
+}
+
+function stopSubscriptionWatchdog(client) {
+  if (client?.subscriptionTimer) {
+    clearInterval(client.subscriptionTimer);
+    client.subscriptionTimer = null;
+  }
+}
+
 function closeSocket(client) {
+  stopSubscriptionWatchdog(client);
   markRealtimeNotReady(client);
   if (client.readyTimer) {
     clearTimeout(client.readyTimer);
@@ -1085,14 +1285,62 @@ function emitSystem(client, message, extra = {}) {
   });
 }
 
+function getLiveStats(client) {
+  if (!client.liveStats) {
+    client.liveStats = {
+      viewers: Number(client.channelInfo?.livestream?.viewer_count || client.channelInfo?.viewer_count || 0),
+      followers: Number(client.channelInfo?.followers_count || 0),
+      title: String(client.channelInfo?.livestream?.title || client.channelInfo?.title || ""),
+      isLive: Boolean(client.channelInfo?.livestream?.is_live || client.channelInfo?.is_live),
+    };
+  }
+  if (!client.counters) client.counters = { subs: 0, gifts: 0, follows: 0, raids: 0, hosts: 0 };
+  return client.liveStats;
+}
+
+// Kick's anonymous topics report aggregate live metadata. It is applied here so
+// the dashboard counters behave like the TikTok/Twitch ones.
+function applyStatsPatch(client, patch = {}) {
+  const stats = getLiveStats(client);
+  if (Number.isFinite(patch.viewers)) stats.viewers = Math.max(0, Number(patch.viewers));
+  if (Number.isFinite(patch.followers)) stats.followers = Math.max(0, Number(patch.followers));
+  if (patch.title) stats.title = String(patch.title);
+  if (patch.isLive !== undefined) stats.isLive = Boolean(patch.isLive);
+  emitStats(client);
+  return stats;
+}
+
+function bumpKickCounter(client, normalized) {
+  getLiveStats(client);
+  const counters = client.counters;
+  const type = String(normalized?.type || "");
+  const quantity = Math.max(1, Number(normalized?.quantity || 1) || 1);
+  if (type === "sub" || type === "resub") counters.subs += 1;
+  else if (type === "subscription-gift") counters.subs += quantity;
+  else if (type === "gift") counters.gifts += 1;
+  else if (type === "follow") counters.follows += 1;
+  else if (type === "raid") counters.raids += 1;
+  else if (type === "host") counters.hosts += 1;
+  else return false;
+  return true;
+}
+
 function emitStats(client) {
+  const stats = getLiveStats(client);
+  const counters = client.counters || { subs: 0, gifts: 0, follows: 0, raids: 0, hosts: 0 };
   emitScoped(client.io, client.ownerId, "stats", {
     kick: {
-      viewers: Number(client.channelInfo?.livestream?.viewer_count || 0),
+      viewers: Number(stats.viewers || 0),
       likes: 0,
-      followers: Number(client.channelInfo?.followers_count || 0),
-      subscriptions: 0,
-      gifts: 0,
+      followers: Number(stats.followers || 0),
+      subscriptions: Number(counters.subs || 0),
+      gifts: Number(counters.gifts || 0),
+      follows: Number(counters.follows || 0),
+      raids: Number(counters.raids || 0),
+      hosts: Number(counters.hosts || 0),
+      title: stats.title || undefined,
+      isLive: Boolean(stats.isLive),
+      eventsTopic: Boolean(client.channelTopicReady),
     },
   });
 }
@@ -1291,12 +1539,28 @@ function emitEvent(client, eventName, payload) {
     }
   }
 
+  // Kick's public topics report live metadata (viewers, followers, title) as
+  // aggregate frames. They update the dashboard counters without being rendered
+  // as fake user activity.
+  if (normalized?.statsPatch) {
+    applyStatsPatch(client, normalized.statsPatch);
+  }
+
+  if (normalized?.type === "chat-clear") {
+    emitScoped(client.io, client.ownerId, "chatClear", {
+      platform: "kick",
+      moderator: normalized?.username || undefined,
+      timestamp: normalized?.timestamp || Date.now(),
+    });
+  }
+
   if (normalized?.activityEligible === false) {
     // Aggregate channel counters are handled as stats, never as fake user activity.
     emitStats(client);
     return;
   }
   const enrichedPayload = awardPoints(client.ownerId, normalized) || normalized;
+  if (bumpKickCounter(client, normalized)) emitStats(client);
   emitScoped(client.io, client.ownerId, "event", enrichedPayload);
   recordEvent(client.ownerId, enrichedPayload);
   // Keep the generic event stream for Dashboard/TikTok/Twitch compatibility,
@@ -1359,6 +1623,20 @@ async function handleFrame(client, raw) {
     const expected = client.chatroomChannel || (client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : '');
     if (subscribedChannel && expected && subscribedChannel === expected) {
       markRealtimeReady(client, 'chatroom-subscription-ready');
+      return;
+    }
+    // A confirmed secondary topic means Kick's own channel events (subs, gifted
+    // subs, KICKS gifts, hosts, goals, bans, live status) are flowing anonymously.
+    if (subscribedChannel && Array.isArray(client.secondaryChannels) && client.secondaryChannels.includes(subscribedChannel)) {
+      const isChannelTopic = subscribedChannel.startsWith('channel_') || subscribedChannel.startsWith('channel.');
+      if (isChannelTopic && !client.channelTopicReady) {
+        client.channelTopicReady = true;
+        emitSystem(client, 'Eventos de Kick activos (subs, regalos, hosts y estado del directo) sin OAuth.', {
+          code: 'KICK_EVENTS_READY',
+          topic: subscribedChannel,
+        });
+      }
+      notifyTransportState(client, true, 'topic-subscribed');
     }
     return;
   }
@@ -1372,6 +1650,22 @@ async function handleFrame(client, raw) {
   ) return;
   if (eventName === 'pusher:error' || eventName === 'pusher:subscription_error') {
     const message = typeof data === 'object' ? JSON.stringify(data) : String(data || '');
+    const failedChannel = String(
+      frame?.channel ||
+      (data && typeof data === 'object' ? data?.channel || data?.error_data?.channel : '') ||
+      ''
+    ).trim();
+    const isPrimary = Boolean(failedChannel) && failedChannel === (client.chatroomChannel || '');
+    const isKnownSecondary = Boolean(failedChannel) && Array.isArray(client.secondaryChannels) && client.secondaryChannels.includes(failedChannel);
+
+    if (failedChannel && (isKnownSecondary || !isPrimary)) {
+      // Secondary topics are best effort. Kick rejects some of them depending on
+      // the channel; that must never interrupt chat, TTS, points or the overlay.
+      client.failedChannels?.add(failedChannel);
+      console.warn(`[Kick] topic rechazado (${failedChannel}); se omite sin cortar la sesión.`);
+      return;
+    }
+
     emitSystem(client, 'Kick devolvió un error de suscripción/realtime.', { detail: message.slice(0, 400) });
     if (!client.realtimeReady && isCurrentClient(client)) {
       const error = new Error(`Kick no pudo suscribir el realtime: ${message.slice(0, 240)}`);
@@ -1389,9 +1683,45 @@ async function handleFrame(client, raw) {
     await emitChat(client, data);
     return;
   }
+  // Kick moves some chatrooms to a "supported channel" id. When that happens the
+  // current subscription stops receiving chat, so the session is re-resolved.
+  if (normalizedEvent.includes('chatmovetosupportedchannel')) {
+    await handleChatroomMove(client, data);
+    return;
+  }
   // Everything else at this level is an application event. New Kick event names
   // should appear in Dashboard activity without needing a code change.
   emitEvent(client, eventName, data);
+}
+
+async function handleChatroomMove(client, data) {
+  const payload = data && typeof data === 'object' ? data : {};
+  const nextChatroomId = Number(
+    payload?.chatroom_id || payload?.chatroom?.id || payload?.new_chatroom_id ||
+    payload?.supported_channel_chatroom_id || payload?.id || 0
+  );
+  emitSystem(client, 'Kick movió este chat a otro chatroom; reconectando.', {
+    code: 'CHATROOM_MOVED',
+    chatroomId: nextChatroomId || undefined,
+  });
+  if (!isCurrentClient(client)) return;
+  if (nextChatroomId > 0 && nextChatroomId !== Number(client.chatroomId)) {
+    client.chatroomId = nextChatroomId;
+    client.chatroomChannel = `chatrooms.${nextChatroomId}.v2`;
+    client.channelInfo = { ...(client.channelInfo || {}), chatroom: { id: nextChatroomId } };
+  }
+  client.reconnectDelay = 2_000;
+  client.channelTopicReady = false;
+  closeSocket(client);
+  try {
+    await openSocket(client);
+    emitStats(client);
+  } catch (error) {
+    emitSystem(client, 'No se pudo reconectar tras el cambio de chatroom de Kick.', {
+      detail: String(error?.message || error).slice(0, 300),
+    });
+    scheduleReconnect(client);
+  }
 }
 
 function isCurrentClient(client) {
@@ -1487,12 +1817,16 @@ async function openWebSocketTransport(client, url, provider = "pusher") {
   client.ws = ws;
   client.provider = provider;
 
-  // Kick's live chat/activity stream is carried by this public chatroom channel.
-  // Do not mix in legacy channel names: a failed legacy subscription can poison
-  // an otherwise valid Pusher session and leave chat connected but activity dead.
+  // Kick's public realtime splits its traffic across several topics. The chatroom
+  // topic is the only one that gates readiness; the rest carry Kick's own channel
+  // events (subs, gifted subs, KICKS gifts, hosts, bans, pins, polls, goals and
+  // live status) and are subscribed right after the chatroom is confirmed.
   const chatroomChannel = client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : "";
   client.chatroomChannel = chatroomChannel;
   const channelList = chatroomChannel ? [chatroomChannel] : [];
+  client.secondaryChannels = buildSecondaryChannels(client).filter((name) => name && !channelList.includes(name));
+  client.failedChannels = new Set();
+  stopSubscriptionWatchdog(client);
 
   await new Promise((resolve, reject) => {
     let socketOpen = false;
@@ -1605,7 +1939,7 @@ async function discoverPusherUrl() {
         const match = text.match(/NEXT_PUBLIC_PUSHER_KEY[^}]*?default\(["']([a-f0-9]+)["']\)/i);
         if (match?.[1]) {
           discoveredPusherKey = match[1];
-          return `wss://ws-us2.pusher.com/app/${discoveredPusherKey}?protocol=7&client=js&version=7.6.0&flash=false`;
+          return `wss://ws-us2.pusher.com/app/${discoveredPusherKey}?protocol=7&client=js&version=${KICK_PUSHER_VERSION}&flash=false`;
         }
       } catch {}
     }
@@ -1712,6 +2046,10 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
     realtimeReady: false,
     chatroomChannel: `chatrooms.${chatroomId}.v2`,
     subscribedChannels: new Set(),
+    secondaryChannels: [],
+    failedChannels: new Set(),
+    channelTopicReady: false,
+    subscriptionTimer: null,
     readyTimer: null,
     readyResolver: null,
     readyRejector: null,
@@ -1817,6 +2155,11 @@ export function getState(ownerId) {
       broadcasterUserId: 0,
       chatroomId: 0,
       provider: '',
+      eventsTopics: false,
+      subscribedTopics: [],
+      failedTopics: [],
+      live: false,
+      viewers: 0,
     };
   }
   return {
@@ -1828,6 +2171,13 @@ export function getState(ownerId) {
     broadcasterUserId: client.broadcasterUserId,
     chatroomId: client.chatroomId,
     provider: client.provider || '',
+    // Anonymous event coverage: true when Kick confirmed the public channel topic
+    // that carries subs, gifts, hosts, bans and live status without OAuth.
+    eventsTopics: Boolean(client.channelTopicReady),
+    subscribedTopics: [...(client.subscribedChannels || [])],
+    failedTopics: [...(client.failedChannels || [])],
+    live: Boolean(client.liveStats?.isLive),
+    viewers: Number(client.liveStats?.viewers || 0),
   };
 }
 

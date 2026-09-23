@@ -1,0 +1,32 @@
+# Dependencias
+node_modules/
+
+# Datos locales (SQLite, uploads, cachés)
+data/
+Public/data/streamfusion.db*
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Secretos: nunca en Git
+.env
+.env.*
+!.env.example
+
+# Artefactos de build / deploy
+dist/
+build/
+.next/
+.nixpacks/
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Temporales del sistema y del editor
+.DS_Store
+Thumbs.db
+*.swp
+*~

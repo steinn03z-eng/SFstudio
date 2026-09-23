@@ -615,6 +615,7 @@
     const event = String(item?.event || item?.name || '').toLowerCase();
     const rawType = String(item?.type || '').toLowerCase();
     const data = item?.data && typeof item.data === 'object' ? item.data : item;
+    if (event.includes('chatroomclear') || event.includes('chatroom.clear') || rawType === 'chat-clear') return 'chat-clear';
     if (event.includes('follow') || event.includes('follower') || data?.follower) return 'follow';
     if (event.includes('subscription.gifts') || event.includes('giftedsubscriptions') || event.includes('subscriptiongifted') || data?.giftees || data?.gifted_users || data?.recipients) return 'subscription-gift';
     if (event.includes('subscription.renewal') || event.includes('subscriptionrenewal') || rawType === 'resub') return 'resub';
@@ -719,6 +720,8 @@
       entry.action = entry.action || 'Estado del directo'; entry.emoji = entry.emoji || '📡'; entry.message = entry.message || 'El estado del directo cambió.';
     } else if (type === 'stream-metadata') {
       entry.action = entry.action || 'Información del directo actualizada'; entry.emoji = entry.emoji || '📝'; entry.message = entry.message || 'Se actualizó la información del directo.';
+    } else if (type === 'chat-clear') {
+      entry.action = 'Chat limpiado'; entry.emoji = '🧹'; entry.message = entry.message || 'Un moderador limpió el chat de Kick.';
     } else if (type === 'stats') {
       entry.activityKind = 'stats'; entry.group = 'stats'; return entry;
     } else if (!entry.action || entry.action === 'Evento') {
@@ -810,6 +813,7 @@
     if (type==='pinned-message-deleted') return { icon:'📍', title:'MENSAJE FIJADO RETIRADO', message:item?.message || 'Se retiró un mensaje fijado.' };
     if (type==='poll-update') return { icon:'📊', title:'ENCUESTA ACTUALIZADA', message:item?.message || 'La encuesta fue actualizada.' };
     if (type==='poll-delete') return { icon:'📊', title:'ENCUESTA FINALIZADA', message:item?.message || 'La encuesta finalizó.' };
+    if (type==='chat-clear') return { icon:'🧹', title:'CHAT LIMPIADO', message:item?.message || 'Un moderador limpió el chat.' };
     if (type==='stream-status') return { icon:'📡', title:item?.action || 'ESTADO DEL DIRECTO', message:item?.message || 'El estado del directo cambió.' };
     if (type==='stream-metadata') return { icon:'📝', title:'DIRECTO ACTUALIZADO', message:item?.message || 'Se actualizó la información del directo.' };
     return { icon:'✨', title:String(item?.action || item?.event || 'EVENTO KICK').toUpperCase(), message:item?.message || `Evento de Kick: ${item?.action || item?.event || 'evento'}.` };
@@ -1239,17 +1243,23 @@
     });
   }
 
+  // Kick slug compartido por el panel y por la resolución del chatroom.
+  function kickSlug(channel){
+    return String(channel||'').trim().replace(/^@+/,'').replace(/^(?:https?:\/\/)?(?:www\.)?kick\.com\//i,'').split(/[?#/]/)[0].trim().toLowerCase();
+  }
+
   async function resolveKickChannelInBrowser(channel){
-    const slug=String(channel||'').trim().replace(/^@+/,'').replace(/^(?:https?:\/\/)?(?:www\.)?kick\.com\//i,'').split(/[?#/]/)[0].trim().toLowerCase();
+    const slug=kickSlug(channel);
     if(!slug) throw new Error('Escribe un canal de Kick, por ejemplo @nombre.');
 
     // Kick exposes the chatroom through several website endpoints. The v2 channel
-    // endpoint is sometimes protected by Cloudflare, so do not depend on it alone.
+    // endpoint is the one kick.com uses and returns every id at once, but it is
+    // sometimes protected by Cloudflare, so do not depend on it alone.
     const urls=[
+      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`,
       `https://kick.com/api/v1/channels/${encodeURIComponent(slug)}`,
-      `https://kick.com/api/v1/${encodeURIComponent(slug)}/chatroom`,
       `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}/chatroom`,
-      `https://kick.com/api/v2/channels/${encodeURIComponent(slug)}`
+      `https://kick.com/api/v1/${encodeURIComponent(slug)}/chatroom`,
     ];
 
     const pickNumber=(...values)=>{
@@ -1304,20 +1314,20 @@
       let payload=value;
       if(platform==='kick'){
         if(button) button.textContent='Resolviendo Kick…';
-        const resolved=await resolveKickChannelInBrowser(value);
-        payload={channel:resolved.slug, channelId:resolved.channelId, broadcasterUserId:resolved.broadcasterUserId, chatroomId:resolved.chatroomId, profile:resolved};
-        // Kick chat realtime can be opened anonymously, but official channel events
-        // (chat webhooks, follows, subs, KICKS gifts, rewards, etc.) require the
-        // channel owner's OAuth grant with events:subscribe. Authenticate first so
-        // the same connection powers dashboard, overlays and voice rules.
-        const oauth=await api('/api/kick/oauth/status');
-        if(!oauth?.connected || oauth?.readyForEvents===false){
-          localStorage.setItem('streamfusion.kick.pendingConnect.v1',JSON.stringify(payload));
-          if(button) button.textContent='Autorizando Kick…';
-          const auth=await api('/api/kick/oauth/start',{method:'POST',body:JSON.stringify(payload)});
-          if(!auth?.authorizationUrl) throw new Error(auth?.error||'No se pudo iniciar la autorización de Kick.');
-          window.location.href=auth.authorizationUrl;
-          return;
+        // Kick funciona SIN OAuth: el chat y los eventos públicos del canal se
+        // leen del realtime anónimo (Pusher), igual que TikTok y Twitch. La
+        // resolución del chatroom se intenta en el navegador y, si Kick la bloquea
+        // por CORS/Cloudflare, el servidor la reintenta por su cuenta.
+        let resolved=null;
+        try{
+          resolved=await resolveKickChannelInBrowser(value);
+        }catch(resolveError){
+          console.warn('[Kick] resolución en el navegador falló; el servidor la reintentará:',resolveError?.message||resolveError);
+        }
+        if(resolved){
+          payload={channel:resolved.slug, channelId:resolved.channelId, broadcasterUserId:resolved.broadcasterUserId, chatroomId:resolved.chatroomId, profile:resolved};
+        }else{
+          payload={channel:kickSlug(value)};
         }
       }
       ready.emit(emitEvent, payload, (ack) => {
@@ -1333,20 +1343,82 @@
   }
 
   function renderConnections() {
-    const card = (platform, label, placeholder) => {
+    const card = (platform, label, placeholder, extra = '') => {
       const a=state.accounts[platform]||{};
       const saved = settings.connectionProfiles?.[platform] || {};
       const profile = { ...saved, ...a, avatarUrl: a.avatarUrl || saved.avatarUrl };
       const accountAvatar = connectedAccountAvatarUrl(platform, profile);
-      return `<article class="card connection-card"><div class="connection-top"><span class="connection-avatar">${accountAvatar ? `<img src="${esc(accountAvatar)}" alt="">` : `<span class="account-avatar-initial large">${platformShort(platform)}</span>`}</span><div><p class="eyebrow">${label.toUpperCase()}</p><h3>${esc(profile.username || 'Sin conectar')}</h3><span class="status ${a.connected?'on':'off'}"><i></i>${a.connected?(a.live?'En directo':'Conectado'):'Desconectado'}</span></div></div><label>Cuenta<input id="${platform}Input" value="${esc(profile.username||'')}" placeholder="${placeholder}"></label><div class="row"><button class="btn primary" id="${platform}Connect">Conectar</button><button class="btn secondary" id="${platform}Disconnect">Desconectar</button></div><p class="muted">La foto de esta cuenta se conserva aunque desconectes el canal y se actualiza al conectar otro usuario.</p></article>`;
+      return `<article class="card connection-card"><div class="connection-top"><span class="connection-avatar">${accountAvatar ? `<img src="${esc(accountAvatar)}" alt="">` : `<span class="account-avatar-initial large">${platformShort(platform)}</span>`}</span><div><p class="eyebrow">${label.toUpperCase()}</p><h3>${esc(profile.username || 'Sin conectar')}</h3><span class="status ${a.connected?'on':'off'}"><i></i>${a.connected?(a.live?'En directo':'Conectado'):'Desconectado'}</span></div></div><label>Cuenta<input id="${platform}Input" value="${esc(profile.username||'')}" placeholder="${placeholder}"></label><div class="row"><button class="btn primary" id="${platform}Connect">Conectar</button><button class="btn secondary" id="${platform}Disconnect">Desconectar</button></div>${extra}<p class="muted">La foto de esta cuenta se conserva aunque desconectes el canal y se actualiza al conectar otro usuario.</p></article>`;
     };
-    $('view').innerHTML=`<div class="intro"><h2>Conecta tus canales</h2><p>La conexión es compartida por el sistema; el chat, eventos y overlays utilizan la misma fuente de eventos, pero conservan diseños independientes.</p></div><div class="connection-grid">${card('tiktok','TikTok','@usuario')}${card('twitch','Twitch','canal')}${card('kick','Kick','@canal')}</div><div class="notice">El avatar mostrado aquí se resuelve desde la plataforma cuando está disponible. La foto también se reutiliza en la barra superior y en los mensajes del dashboard.</div>`;
+    // Kick no necesita OAuth: el realtime público entrega chat y eventos del canal.
+    const kickExtra = `<div class="platform-extra"><p class="muted kick-mode-note">Kick funciona <strong>sin OAuth</strong>: chat, suscripciones, subs regaladas, regalos KICKS, hosts, baneos, mensajes fijados y estado del directo se leen del realtime público, igual que TikTok y Twitch.</p><p class="muted kick-oauth-state" id="kickOauthState">Comprobando vinculación opcional…</p><div class="row"><button class="link-btn" type="button" id="kickOauthLink">Vincular eventos oficiales (opcional)</button><button class="link-btn" type="button" id="kickOauthUnlink" hidden>Quitar vinculación</button></div></div>`;
+    $('view').innerHTML=`<div class="intro"><h2>Conecta tus canales</h2><p>La conexión es compartida por el sistema; el chat, eventos y overlays utilizan la misma fuente de eventos, pero conservan diseños independientes.</p></div><div class="connection-grid">${card('tiktok','TikTok','@usuario')}${card('twitch','Twitch','canal')}${card('kick','Kick','@canal',kickExtra)}</div><div class="notice">El avatar mostrado aquí se resuelve desde la plataforma cuando está disponible. La foto también se reutiliza en la barra superior y en los mensajes del dashboard.</div>`;
     $('tiktokConnect').onclick=()=>connectPlatform('tiktok','tiktokInput','connectTikTok','tiktokConnect');
     $('tiktokDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectTikTok');}catch(err){toast('TikTok',err?.message||'No se pudo desconectar.','err');}};
     $('twitchConnect').onclick=()=>connectPlatform('twitch','twitchInput','connectTwitch','twitchConnect');
     $('twitchDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectTwitch');}catch(err){toast('Twitch',err?.message||'No se pudo desconectar.','err');}};
     $('kickConnect').onclick=()=>connectPlatform('kick','kickInput','connectKick','kickConnect');
     $('kickDisconnect').onclick=async()=>{try{const ready=await waitForSocketReady();ready.emit('disconnectKick');}catch(err){toast('Kick',err?.message||'No se pudo desconectar.','err');}};
+    $('kickOauthLink').onclick=()=>startKickOptionalOAuth();
+    $('kickOauthUnlink').onclick=async()=>{
+      try{
+        await api('/api/kick/oauth/revoke',{method:'POST'});
+        toast('Kick','Vinculación OAuth retirada. Kick sigue funcionando sin OAuth.','ok');
+        refreshKickOAuthState();
+      }catch(err){ toast('Kick',err?.message||'No se pudo retirar la vinculación.','err'); }
+    };
+    void refreshKickOAuthState();
+  }
+
+  // La vinculación OAuth es un extra opcional (webhooks oficiales de Kick). Nunca
+  // bloquea la conexión: sin ella el canal sigue recibiendo chat y eventos públicos.
+  async function refreshKickOAuthState(){
+    const note=$('kickOauthState');
+    const link=$('kickOauthLink');
+    const unlink=$('kickOauthUnlink');
+    if(!note) return;
+    try{
+      const status=await api('/api/kick/oauth/status');
+      if(status?.connected){
+        note.textContent=`Vinculación OAuth activa${status?.scope?` · permisos: ${String(status.scope).split(/\s+/).filter(Boolean).join(', ')}`:''}. Aporta los webhooks oficiales (incluye follows individuales).`;
+        note.classList.add('ok');
+        if(link) link.hidden=true;
+        if(unlink) unlink.hidden=false;
+      }else if(status?.redirectConfigured===false){
+        note.textContent='OAuth opcional no disponible: falta KICK_OAUTH_REDIRECT_URI en el servidor. Kick funciona igual sin OAuth.';
+        if(link) link.hidden=true;
+      }else{
+        note.textContent='Sin vinculación OAuth. No es necesaria: Kick entrega chat y eventos por el realtime público.';
+        if(link) link.hidden=false;
+        if(unlink) unlink.hidden=true;
+      }
+    }catch(err){
+      note.textContent='Sin vinculación OAuth. No es necesaria: Kick entrega chat y eventos por el realtime público.';
+      if(link) link.hidden=false;
+    }
+  }
+
+  async function startKickOptionalOAuth(){
+    const input=$('kickInput');
+    const value=String(input?.value||'').trim();
+    if(!value){ toast('Kick','Escribe el canal antes de vincular (es opcional).','err'); input?.focus(); return; }
+    const button=$('kickOauthLink');
+    try{
+      if(button){ button.disabled=true; button.textContent='Resolviendo Kick…'; }
+      let resolved=null;
+      try{ resolved=await resolveKickChannelInBrowser(value); }catch{}
+      const payload=resolved
+        ? {channel:resolved.slug,channelId:resolved.channelId,broadcasterUserId:resolved.broadcasterUserId,chatroomId:resolved.chatroomId,profile:resolved}
+        : {channel:kickSlug(value)};
+      localStorage.setItem('streamfusion.kick.pendingConnect.v1',JSON.stringify(payload));
+      if(button) button.textContent='Autorizando Kick…';
+      const auth=await api('/api/kick/oauth/start',{method:'POST',body:JSON.stringify(payload)});
+      if(!auth?.authorizationUrl) throw new Error(auth?.error||'No se pudo iniciar la autorización de Kick.');
+      window.location.href=auth.authorizationUrl;
+    }catch(err){
+      toast('Kick',err?.message||'No se pudo iniciar la vinculación opcional.','err');
+      if(button){ button.disabled=false; button.textContent='Vincular eventos oficiales (opcional)'; }
+    }
   }
 
   const markSelectedOption = (opts, value) => {
@@ -4090,6 +4162,13 @@
     });
     startDashboardFeedCleanup();
     socket.on('chat',d=>acceptChat(d||{}));
+    // Kick avisa cuando un moderador limpia el chatroom: vaciamos solo esa plataforma.
+    socket.on('chatClear',d=>{
+      const platform=String(d?.platform||'').toLowerCase();
+      const before=state.chat.length;
+      state.chat=platform?state.chat.filter(x=>String(x?.platform||'').toLowerCase()!==platform):[];
+      if(before!==state.chat.length){ if(page==='dashboard') updateDashboardFeeds(); toast(platformLabel(platform||'kick'),'Un moderador limpió el chat.'); }
+    });
     socket.on('kickAvatarUpdate',d=>{
       if(String(d?.platform||'').toLowerCase()!=='kick') return;
       const username=normalizeUsername(d?.username||d?.uniqueId||'').toLowerCase();
@@ -4206,8 +4285,8 @@
       }catch(error){ toast('Kick',error?.message||'No se pudo reanudar la conexión.','err'); }
       return;
     }
-    if(result==='denied') toast('Kick','La autorización fue cancelada. El chat realtime no se conectó porque no se concedieron los eventos oficiales.','err');
-    else if(result==='error') toast('Kick',params.get('reason')||'No se pudo completar la autorización.','err');
+    if(result==='denied') toast('Kick','La vinculación opcional fue cancelada. Kick sigue funcionando sin OAuth: conecta el canal normalmente.','err');
+    else if(result==='error') toast('Kick',`${params.get('reason')||'No se pudo completar la vinculación opcional.'} Kick sigue funcionando sin OAuth.`,'err');
   }
 
   async function startApp(){

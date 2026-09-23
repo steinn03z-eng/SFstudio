@@ -7,7 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "check": "node --check server.js && node --check services/kick.js && node --check services/music.js && node --check services/points.js && node --check services/roulette.js && node --check Public/app.js && node --check Public/announcement-overlay.js"
+    "check": "node --check server.js && node --check services/kick.js && node --check services/music.js && node --check services/points.js && node --check services/roulette.js && node --check Public/app.js && node --check Public/announcement-overlay.js",
+    "test:kick": "node scripts/test-kick-noauth.mjs",
+    "test:kick:e2e": "node scripts/test-kick-e2e.mjs",
+    "test": "npm run test:kick && npm run test:kick:e2e"
   },
   "dependencies": {
     "better-sqlite3": "^12.4.1",
