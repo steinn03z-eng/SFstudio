@@ -6,16 +6,13 @@
  *   - emit chat/event/stats/system through the shared Socket.IO emitter
  *   - feed the existing points/music/roulette/database hooks
  *
- * It uses Kick's current anonymous realtime chat transport (no user OAuth):
- * a realtime descriptor selects Kick's Centrifugo WebSocket endpoint, then the
- * adapter subscribes to the channel chatroom. No Kick user login is requested.
+ * It uses Kick's anonymous realtime chat transport (no user OAuth):
+ * the existing public Pusher transport is opened directly and the adapter
+ * subscribes to the channel chatroom/activity channels. No Kick user login is requested.
  */
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import os from "node:os";
-import path from "node:path";
-import { mkdtemp, rm } from "node:fs/promises";
 import { recordChat, recordEvent } from "./live-history.js";
 
 const execFileAsync = promisify(execFile);
@@ -26,12 +23,8 @@ const USER_AGENT =
   "(KHTML, like Gecko) Chrome/153.0.0.0 Safari/537.36";
 
 const KICK_BASE = "https://kick.com";
-const KICK_REALTIME_WS_URL =
-  String(process.env.KICK_REALTIME_WS_URL || "wss://websockets.kick.com/viewer/v1/connect").trim();
-const KICK_CLIENT_TOKEN = String(
-  process.env.KICK_CLIENT_TOKEN ||
-  "e1393935a959b4020a4491574f6490129f678acdaa92760471263db43487f823",
-).trim();
+const KICK_PUSHER_URL =
+  String(process.env.KICK_PUSHER_URL || "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=8.4.0&flash=false").trim();
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
 const KICK_API_BASE = "https://api.kick.com/public/v1";
 const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
@@ -930,71 +923,6 @@ async function getRealtimeDescriptor(channelId) {
   return { provider: String(preferred?.provider || '').toLowerCase(), url };
 }
 
-async function fetchRealtimeViewerToken() {
-  if (!KICK_CLIENT_TOKEN) throw new Error("Falta KICK_CLIENT_TOKEN para el gateway realtime de Kick.");
-
-  const curl = process.platform === "win32" ? "curl.exe" : "curl";
-  const tmpDir = await mkdtemp(path.join(os.tmpdir(), "streamfusion-kick-"));
-  const cookieJar = path.join(tmpDir, "cookies.txt");
-  const baseArgs = [
-    "--silent",
-    "--show-error",
-    "--location",
-    "--compressed",
-    "--http1.1",
-    "--max-time",
-    "15",
-    "--user-agent",
-    USER_AGENT,
-    "--header",
-    "accept: application/json, text/plain, */*",
-    "--header",
-    "accept-language: en-US,en;q=0.9",
-    "--header",
-    "referer: https://kick.com/",
-    "--header",
-    "origin: https://kick.com",
-  ];
-
-  try {
-    // Kick's current viewer token endpoint expects the same lightweight web
-    // session context as kick.com. Keep the cookie jar only for the two
-    // requests below; it is deleted immediately afterwards.
-    try {
-      await execFileAsync(curl, [
-        ...baseArgs,
-        "--cookie-jar", cookieJar,
-        "--output", process.platform === "win32" ? "NUL" : "/dev/null",
-        `${KICK_BASE}/`,
-      ], { maxBuffer: 2 * 1024 * 1024, windowsHide: true });
-    } catch {
-      // Some deployments block the landing page but still allow the token call.
-      // The token request below remains authoritative.
-    }
-
-    const result = await execFileAsync(curl, [
-      ...baseArgs,
-      "--cookie", cookieJar,
-      "--cookie-jar", cookieJar,
-      "--header", `X-CLIENT-TOKEN: ${KICK_CLIENT_TOKEN}`,
-      "https://websockets.kick.com/viewer/v1/token",
-    ], { maxBuffer: 2 * 1024 * 1024, windowsHide: true });
-    const text = String(result?.stdout || "").trim();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch {}
-    const token = String(data?.data?.token || data?.token || "").trim();
-    if (!token) {
-      const detail = String(data?.message || data?.error || result?.stderr || text || "respuesta vacía").trim();
-      throw new Error(`Kick no devolvió token realtime (${detail.slice(0, 240)}).`);
-    }
-    return token;
-  } catch (error) {
-    throw new Error(String(error?.message || error || "No se pudo obtener el token realtime de Kick."));
-  } finally {
-    await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 function clearReconnectTimer(client) {
   if (client.reconnectTimer) {
     clearTimeout(client.reconnectTimer);
@@ -1002,7 +930,48 @@ function clearReconnectTimer(client) {
   }
 }
 
+function clearTransportReadyWait(client, error = null) {
+  if (client.readyTimer) {
+    clearTimeout(client.readyTimer);
+    client.readyTimer = null;
+  }
+  const rejector = client.readyRejector;
+  const resolver = client.readyResolver;
+  client.readyResolver = null;
+  client.readyRejector = null;
+  if (error && rejector) rejector(error);
+  return { rejector, resolver };
+}
+
+function markRealtimeNotReady(client) {
+  client.realtimeReady = false;
+  if (client.subscribedChannels?.clear) client.subscribedChannels.clear();
+}
+
+function markRealtimeReady(client, reason = "realtime-ready") {
+  if (!isCurrentClient(client)) return;
+  client.realtimeReady = true;
+  if (client.readyTimer) {
+    clearTimeout(client.readyTimer);
+    client.readyTimer = null;
+  }
+  const resolver = client.readyResolver;
+  client.readyResolver = null;
+  client.readyRejector = null;
+  if (resolver) resolver();
+  notifyTransportState(client, true, reason);
+}
+
 function closeSocket(client) {
+  markRealtimeNotReady(client);
+  if (client.readyTimer) {
+    clearTimeout(client.readyTimer);
+    client.readyTimer = null;
+  }
+  const rejector = client.readyRejector;
+  client.readyResolver = null;
+  client.readyRejector = null;
+  if (rejector) rejector(new Error("La conexión realtime de Kick fue cerrada."));
   if (!client.ws) return;
   try {
     client.ws.onclose = null;
@@ -1318,22 +1287,41 @@ async function handleFrame(client, raw) {
   if (!eventName) return;
 
   // Heartbeats must be handled before the generic control-frame filter.
-  // Otherwise a pusher:ping would be discarded without a pusher:pong response,
-  // eventually causing Kick to close an otherwise healthy realtime connection.
   if (eventName === 'pusher:ping') { sendPusherPong(client); return; }
   if (eventName.toLowerCase() === 'ping') { send(client, { type: 'pong' }); return; }
+
+  if (eventName === 'pusher:subscription_succeeded') {
+    const subscribedChannel = String(
+      frame?.channel ||
+      (data && typeof data === 'object' ? data.channel : '') ||
+      ''
+    ).trim();
+    if (subscribedChannel) client.subscribedChannels?.add(subscribedChannel);
+    const chatPrefix = client.chatroomId ? `chatrooms.${client.chatroomId}` : '';
+    if (subscribedChannel && chatPrefix && subscribedChannel.startsWith(chatPrefix)) {
+      markRealtimeReady(client, 'chatroom-subscription-ready');
+    }
+    return;
+  }
 
   const controlType = eventName.toLowerCase();
   if (["ack", "pong", "subscribe", "unsubscribe", "channel_handshake", "connection_established"].includes(controlType)) return;
   if (
     eventName === 'pusher:pong' ||
     eventName === 'pusher:connection_established' ||
-    eventName === 'pusher:subscription_succeeded' ||
     eventName.startsWith('pusher_internal:')
   ) return;
-  if (eventName === 'pusher:error') {
+  if (eventName === 'pusher:error' || eventName === 'pusher:subscription_error') {
     const message = typeof data === 'object' ? JSON.stringify(data) : String(data || '');
-    emitSystem(client, 'Kick devolvió un error de transporte.', { detail: message.slice(0, 400) });
+    emitSystem(client, 'Kick devolvió un error de suscripción/realtime.', { detail: message.slice(0, 400) });
+    if (!client.realtimeReady && isCurrentClient(client)) {
+      const error = new Error(`Kick no pudo suscribir el realtime: ${message.slice(0, 240)}`);
+      const rejector = client.readyRejector;
+      client.readyRejector = null;
+      client.readyResolver = null;
+      if (client.readyTimer) { clearTimeout(client.readyTimer); client.readyTimer = null; }
+      rejector?.(error);
+    }
     return;
   }
 
@@ -1345,6 +1333,10 @@ async function handleFrame(client, raw) {
   // Everything else at this level is an application event. New Kick event names
   // should appear in Dashboard activity without needing a code change.
   emitEvent(client, eventName, data);
+}
+
+function isCurrentClient(client) {
+  return Boolean(client && !client.manualDisconnect && clients.get(client.ownerId) === client);
 }
 
 function scheduleReconnect(client) {
@@ -1419,56 +1411,82 @@ function notifyTransportState(client, realtimeConnected, reason = "") {
   }
 }
 
-async function openWebSocketTransport(client, url, provider = "kick-viewer-gateway") {
+async function openWebSocketTransport(client, url, provider = "pusher") {
   const WS = globalThis.WebSocket;
   if (typeof WS !== "function") {
     throw new Error("La versión de Node no expone WebSocket global. Usa Node.js 22+ para Kick.");
   }
 
+  if (!isCurrentClient(client)) {
+    throw new Error("La sesión de Kick ya no está activa.");
+  }
+
+  markRealtimeNotReady(client);
+  clearTransportReadyWait(client);
+
   const ws = new WS(url);
   client.ws = ws;
   client.provider = provider;
 
+  const chatroomPrefix = client.chatroomId ? `chatrooms.${client.chatroomId}` : "";
+  const channels = new Set([
+    chatroomPrefix ? `${chatroomPrefix}.v2` : "",
+    chatroomPrefix,
+    client.chatroomId ? `chatroom_${client.chatroomId}` : "",
+    client.chatroomId ? `chatroom.${client.chatroomId}` : "",
+  ]);
+  if (client.channelId) {
+    channels.add(`channel.${client.channelId}`);
+    channels.add(`channel_${client.channelId}`);
+    channels.add(`channel_${client.channelId}_v2`);
+    channels.add(`predictions-channel-${client.channelId}`);
+  }
+  const channelList = [...channels].filter(Boolean);
+
   await new Promise((resolve, reject) => {
+    let socketOpen = false;
     let settled = false;
-    const settle = (fn, value) => {
+
+    const finish = (fn, value) => {
       if (settled) return;
       settled = true;
+      if (client.readyTimer) {
+        clearTimeout(client.readyTimer);
+        client.readyTimer = null;
+      }
+      client.readyResolver = null;
+      client.readyRejector = null;
       fn(value);
     };
 
+    client.readyResolver = () => {
+      finish(resolve);
+    };
+    client.readyRejector = (error) => {
+      finish(reject, error);
+    };
+    client.readyTimer = setTimeout(() => {
+      if (!client.realtimeReady) {
+        finish(reject, new Error("Kick abrió el WebSocket pero no confirmó la suscripción al chatroom."));
+        try { ws.close(); } catch {}
+      }
+    }, 12_000);
+
     ws.onopen = () => {
       if (!isCurrentClient(client)) {
+        finish(reject, new Error("La sesión de Kick fue reemplazada o desconectada."));
         try { ws.close(); } catch {}
-        settle(reject, new Error("La sesión de Kick fue reemplazada o desconectada."));
         return;
       }
+      socketOpen = true;
       client.reconnectDelay = 5_000;
-
-      // The canonical Kick chat channel is chatrooms.<chatroomId>.v2. Keep the
-      // broadcaster channel as a companion subscription for activity frames.
-      const channels = new Set([
-        client.chatroomId ? `chatrooms.${client.chatroomId}.v2` : "",
-        client.channelId ? `channel.${client.channelId}` : "",
-      ].filter(Boolean));
-      for (const channel of channels) {
+      for (const channel of channelList) {
         send(client, {
           event: "pusher:subscribe",
           data: { auth: "", channel },
         });
       }
-
-      // Kick's current viewer gateway accepts the same Pusher subscribe frame
-      // and uses this handshake to bind the realtime session to the channel.
-      if (client.channelId) {
-        send(client, {
-          type: "channel_handshake",
-          data: { message: { channelId: client.channelId } },
-        });
-      }
       startPing(client);
-      notifyTransportState(client, true, "realtime-connected");
-      settle(resolve);
     };
 
     ws.onmessage = (messageEvent) => {
@@ -1480,69 +1498,70 @@ async function openWebSocketTransport(client, url, provider = "kick-viewer-gatew
     ws.onerror = (event) => {
       const error = new Error("Error de WebSocket realtime de Kick");
       error.cause = event;
-      settle(reject, error);
+      if (!socketOpen || !client.realtimeReady) {
+        finish(reject, error);
+      } else {
+        emitSystem(client, "Kick devolvió un error de transporte realtime.", { detail: String(event || "").slice(0, 240) });
+      }
     };
 
     ws.onclose = (event) => {
       stopPing(client);
       client.ws = null;
+      client.realtimeReady = false;
       if (!settled) {
-        settle(reject, new Error(`Kick WebSocket cerrado durante la conexión (${event?.code || 0})`));
+        finish(reject, new Error(`Kick WebSocket cerrado durante la conexión (${event?.code || 0})`));
         return;
       }
+      if (!isCurrentClient(client)) return;
       notifyTransportState(client, false, "realtime-closed");
-      emitSystem(client, "La conexión realtime de Kick se cerró; intentando reconectar.", {
+      emitSystem(client, "La conexión de Kick se cerró; intentando reconectar.", {
         code: event?.code || 0,
         reason: event?.reason || "",
       });
       scheduleReconnect(client);
     };
   });
-}
 
-function isCurrentClient(client) {
-  return Boolean(client && !client.manualDisconnect && clients.get(client.ownerId) === client);
+  if (!client.realtimeReady) {
+    throw new Error("Kick no confirmó el chatroom realtime.");
+  }
+  notifyTransportState(client, true, "realtime-ready");
 }
 
 async function openSocket(client) {
-  if (!isCurrentClient(client)) throw new Error("La sesión de Kick ya no está activa.");
   closeSocket(client);
   stopPing(client);
+  if (!isCurrentClient(client)) throw new Error("La sesión de Kick ya no está activa.");
 
-  let gatewayError = null;
+  let pusherError = null;
   try {
-    // The viewer token is short-lived/single-use. It is intentionally fetched on
-    // every connection attempt so automatic reconnects never recycle an old token.
-    const token = await fetchRealtimeViewerToken();
-    if (!isCurrentClient(client)) throw new Error("La sesión de Kick fue reemplazada o desconectada.");
-    const url = `${KICK_REALTIME_WS_URL}?token=${encodeURIComponent(token)}`;
-    await openWebSocketTransport(client, url, "kick-viewer-gateway");
+    await openWebSocketTransport(client, KICK_PUSHER_URL, "pusher");
     return;
   } catch (error) {
-    gatewayError = error;
+    pusherError = error;
     closeSocket(client);
     stopPing(client);
   }
 
-  // Some deployments still expose Kick's realtime descriptor endpoint. It is a
-  // compatibility fallback only; the current viewer gateway remains primary.
+  // Optional compatibility fallback. It is deliberately secondary: the primary
+  // anonymous transport does not require OAuth or a Kick API application.
   if (client.channelId > 0 && isCurrentClient(client)) {
     try {
       const descriptor = await getRealtimeDescriptor(client.channelId);
-      if (!isCurrentClient(client)) throw new Error("La sesión de Kick fue reemplazada o desconectada.");
       const url = String(descriptor?.url || "").trim();
       if (url) {
         await openWebSocketTransport(client, url, descriptor.provider || "realtime-descriptor");
         return;
       }
     } catch (fallbackError) {
-      const primary = String(gatewayError?.message || gatewayError || "gateway realtime error").slice(0, 220);
+      const primary = String(pusherError?.message || pusherError || "Pusher realtime error").slice(0, 220);
       const fallback = String(fallbackError?.message || fallbackError || "descriptor realtime error").slice(0, 220);
-      throw new Error(`Kick realtime no disponible. Gateway: ${primary}. Fallback: ${fallback}.`);
+      throw new Error(`Kick realtime no disponible. Pusher: ${primary}. Fallback: ${fallback}.`);
     }
   }
 
-  throw new Error(String(gatewayError?.message || gatewayError || "No se pudo abrir el realtime de Kick."));
+  throw new Error(String(pusherError?.message || pusherError || "No se pudo abrir el realtime de Kick."));
 }
 
 export async function connect(channelName, io, ownerId, resolvedInfo = null) {
@@ -1590,6 +1609,11 @@ export async function connect(channelName, io, ownerId, resolvedInfo = null) {
     reconnectTimer: null,
     reconnectDelay: 5_000,
     manualDisconnect: false,
+    realtimeReady: false,
+    subscribedChannels: new Set(),
+    readyTimer: null,
+    readyResolver: null,
+    readyRejector: null,
     seenMessageIds: new Set(),
     seenMessageFingerprints: new Map(),
     seenEventKeys: new Map(),
@@ -1669,6 +1693,7 @@ export function disconnect(ownerId) {
 
   client.manualDisconnect = true;
   clearReconnectTimer(client);
+  markRealtimeNotReady(client);
   stopPing(client);
   closeSocket(client);
   clients.delete(id);
@@ -1676,7 +1701,7 @@ export function disconnect(ownerId) {
 
 export function isConnected(ownerId) {
   const client = clients.get(ownerKey(ownerId));
-  return Boolean(client?.ws && client.ws.readyState === 1);
+  return Boolean(client?.realtimeReady && client?.ws && client.ws.readyState === 1);
 }
 
 export function getState(ownerId) {
@@ -1684,6 +1709,7 @@ export function getState(ownerId) {
   if (!client) {
     return {
       connected: false,
+      realtimeReady: false,
       sessionActive: false,
       channel: "",
       channelId: 0,
@@ -1694,6 +1720,7 @@ export function getState(ownerId) {
   }
   return {
     connected: isConnected(ownerId),
+    realtimeReady: Boolean(client.realtimeReady),
     sessionActive: !client.manualDisconnect && clients.has(ownerKey(ownerId)),
     channel: client.channelName,
     channelId: client.channelId,
