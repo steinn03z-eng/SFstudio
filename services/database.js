@@ -139,28 +139,6 @@ CREATE TABLE IF NOT EXISTS user_library_files (
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS platform_oauth_tokens (
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    platform TEXT NOT NULL,
-    access_token TEXT NOT NULL,
-    refresh_token TEXT NOT NULL DEFAULT '',
-    expires_at INTEGER NOT NULL DEFAULT 0,
-    scope TEXT NOT NULL DEFAULT '',
-    external_user_id TEXT NOT NULL DEFAULT '',
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY(user_id, platform)
-);
-
-CREATE TABLE IF NOT EXISTS oauth_transactions (
-    state TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    platform TEXT NOT NULL,
-    code_verifier TEXT NOT NULL,
-    redirect_uri TEXT NOT NULL,
-    payload TEXT NOT NULL DEFAULT '{}',
-    created_at INTEGER NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS user_voices (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -361,67 +339,6 @@ export function getSession(token) {
 }
 
 export function deleteSession(token) { if (token) db.prepare("DELETE FROM user_sessions WHERE token=?").run(String(token)); }
-
-export function savePlatformOAuthToken(userId, platform, token = {}) {
-    const uid = String(userId || '').trim();
-    const key = String(platform || '').trim().toLowerCase();
-    const accessToken = String(token.accessToken || '').trim();
-    if (!uid || !key || !accessToken) return null;
-    const refreshToken = String(token.refreshToken || '').trim();
-    const expiresAt = Math.max(0, Number(token.expiresAt || 0) || 0);
-    const scope = String(token.scope || '').trim();
-    const externalUserId = String(token.externalUserId || '').trim();
-    db.prepare(`
-        INSERT INTO platform_oauth_tokens(user_id,platform,access_token,refresh_token,expires_at,scope,external_user_id,updated_at)
-        VALUES(?,?,?,?,?,?,?,CURRENT_TIMESTAMP)
-        ON CONFLICT(user_id,platform) DO UPDATE SET
-            access_token=excluded.access_token,
-            refresh_token=CASE WHEN excluded.refresh_token<>'' THEN excluded.refresh_token ELSE platform_oauth_tokens.refresh_token END,
-            expires_at=excluded.expires_at,
-            scope=CASE WHEN excluded.scope<>'' THEN excluded.scope ELSE platform_oauth_tokens.scope END,
-            external_user_id=CASE WHEN excluded.external_user_id<>'' THEN excluded.external_user_id ELSE platform_oauth_tokens.external_user_id END,
-            updated_at=CURRENT_TIMESTAMP
-    `).run(uid,key,accessToken,refreshToken,expiresAt,scope,externalUserId);
-    return getPlatformOAuthToken(uid,key);
-}
-
-export function getPlatformOAuthToken(userId, platform) {
-    const uid = String(userId || '').trim();
-    const key = String(platform || '').trim().toLowerCase();
-    if (!uid || !key) return null;
-    const row = db.prepare(`SELECT user_id as userId, platform, access_token as accessToken, refresh_token as refreshToken, expires_at as expiresAt, scope, external_user_id as externalUserId, updated_at as updatedAt FROM platform_oauth_tokens WHERE user_id=? AND platform=?`).get(uid,key);
-    return row || null;
-}
-
-export function deletePlatformOAuthToken(userId, platform) {
-    const uid = String(userId || '').trim();
-    const key = String(platform || '').trim().toLowerCase();
-    if (!uid || !key) return false;
-    return db.prepare('DELETE FROM platform_oauth_tokens WHERE user_id=? AND platform=?').run(uid,key).changes > 0;
-}
-
-export function createOAuthTransaction({ state, userId, platform, codeVerifier, redirectUri, payload = {} }) {
-    const cleanState = String(state || '').trim();
-    const uid = String(userId || '').trim();
-    if (!cleanState || !uid) throw new Error('OAuth state inválido.');
-    db.prepare(`INSERT INTO oauth_transactions(state,user_id,platform,code_verifier,redirect_uri,payload,created_at) VALUES(?,?,?,?,?,?,?)`).run(cleanState,uid,String(platform||'').trim().toLowerCase(),String(codeVerifier||''),String(redirectUri||''),safeJsonStringify(payload),Date.now());
-}
-
-export function getOAuthTransaction(state) {
-    const row = db.prepare(`SELECT state,user_id as userId,platform,code_verifier as codeVerifier,redirect_uri as redirectUri,payload,created_at as createdAt FROM oauth_transactions WHERE state=?`).get(String(state || '').trim());
-    if (!row) return null;
-    return { ...row, payload: safeJsonParse(row.payload, {}) };
-}
-
-export function deleteOAuthTransaction(state) {
-    if (!state) return;
-    db.prepare('DELETE FROM oauth_transactions WHERE state=?').run(String(state).trim());
-}
-
-export function pruneOAuthTransactions(maxAgeMs = 15 * 60 * 1000) {
-    const cutoff = Date.now() - Math.max(60_000, Number(maxAgeMs) || 900_000);
-    db.prepare('DELETE FROM oauth_transactions WHERE created_at < ?').run(cutoff);
-}
 
 export function getUserSettings(userId) {
     const row = db.prepare("SELECT data FROM user_settings WHERE user_id=?").get(userId);

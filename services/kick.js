@@ -14,7 +14,6 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { recordChat, recordEvent } from "./live-history.js";
-import * as database from "./database.js";
 
 const execFileAsync = promisify(execFile);
 const clients = new Map();
@@ -102,68 +101,6 @@ async function getKickAppAccessToken() {
   })().finally(() => { kickAppTokenPromise = null; });
 
   return kickAppTokenPromise;
-}
-
-async function refreshKickUserAccessToken(ownerId, stored) {
-  const refreshToken = String(stored?.refreshToken || '').trim();
-  if (!refreshToken || !KICK_CLIENT_ID || !KICK_CLIENT_SECRET) return null;
-  const body = new URLSearchParams({
-    grant_type: 'refresh_token',
-    refresh_token: refreshToken,
-    client_id: KICK_CLIENT_ID,
-    client_secret: KICK_CLIENT_SECRET,
-  });
-  const response = await fetch(KICK_OAUTH_TOKEN_URL, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body,
-  });
-  const text = await response.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch {}
-  if (!response.ok || !data?.access_token) {
-    throw new Error(`Kick OAuth refresh HTTP ${response.status}: ${data?.error || data?.message || text.slice(0, 200)}`);
-  }
-  return database.savePlatformOAuthToken(ownerId, 'kick', {
-    accessToken: data.access_token,
-    refreshToken: data.refresh_token || refreshToken,
-    expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000,
-    scope: data.scope || stored?.scope || '',
-    externalUserId: stored?.externalUserId || '',
-  });
-}
-
-export async function getKickUserAccessToken(ownerId, requiredScope = 'events:subscribe') {
-  const uid = ownerKey(ownerId);
-  if (!uid || !KICK_CLIENT_ID || !KICK_CLIENT_SECRET) return '';
-  let stored = database.getPlatformOAuthToken(uid, 'kick');
-  if (!stored) return '';
-  const scopeSet = new Set(String(stored.scope || '').split(/\s+/).filter(Boolean));
-  if (requiredScope && scopeSet.size && !scopeSet.has(requiredScope)) return '';
-  const safetyMs = 60_000;
-  if (stored.accessToken && Number(stored.expiresAt || 0) > Date.now() + safetyMs) return String(stored.accessToken);
-  try {
-    stored = await refreshKickUserAccessToken(uid, stored) || stored;
-    return Number(stored.expiresAt || 0) > Date.now() ? String(stored.accessToken || '') : '';
-  } catch (error) {
-    console.warn('[Kick] No se pudo renovar el OAuth del usuario:', error?.message || error);
-    return '';
-  }
-}
-
-export function saveKickUserToken(ownerId, token = {}) {
-  return database.savePlatformOAuthToken(ownerId, 'kick', token);
-}
-
-export function getKickOAuthTokenInfo(ownerId) {
-  const row = database.getPlatformOAuthToken(ownerId, 'kick');
-  if (!row) return { connected: false, scope: '', expiresAt: 0, externalUserId: '' };
-  return {
-    connected: Boolean(row.accessToken),
-    scope: String(row.scope || ''),
-    expiresAt: Number(row.expiresAt || 0),
-    externalUserId: String(row.externalUserId || ''),
-  };
 }
 
 async function kickPublicApi(pathname, options = {}) {
