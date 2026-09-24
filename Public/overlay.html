@@ -2831,7 +2831,7 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     </div>
   </div>
   <script>
-    window.SFSTUDIO_OVERLAY_BUILD = "2026-09-24-kick-r3";
+    window.SFSTUDIO_OVERLAY_BUILD = "2026-09-24-kick-r4";
     console.info("[SFstudio] overlay build", window.SFSTUDIO_OVERLAY_BUILD);
     const overlayParams = new URLSearchParams(location.search);
     const overlayKey = overlayParams.get("overlayKey") || "";
@@ -6940,6 +6940,12 @@ function currentViewSettingsKey(){
       return giftCatalogPromise;
     }
     function lookupGiftCatalog(name) { const key = normalizeGiftKey(name); return key ? (giftCatalogIndex.get(key) || null) : null; }
+    const overlayKickAvatarCache = new Map();
+    function overlayKickAvatarKey(username, userId = 0){
+      const name = String(username || '').trim().replace(/^@+/, '').toLowerCase();
+      const id = Number(userId);
+      return `${Number.isFinite(id) && id > 0 ? Math.trunc(id) : ''}:${name}`;
+    }
     function avatarForItem(item){
       const candidates = [
         item?.avatar,item?.avatarUrl,item?.profilePictureUrl,item?.profile_picture_url,item?.profile_picture,item?.profilepic,item?.profile_pic,item?.profile_thumb,item?.profile_thumb_url,item?.avatar_url,
@@ -6988,11 +6994,35 @@ function currentViewSettingsKey(){
     }
 
     function enrichOverlayAvatar(item){
-      // Avatar enrichment is optional. Never make the overlay perform extra Kick
-      // profile requests, because a failed avatar lookup must not affect chat,
-      // events, or gifts rendering. Server-side kickAvatarUpdate can still patch
-      // an avatar later when a real profile picture is available.
-      return false;
+      const platform = String(item?.platform || '').toLowerCase();
+      if (platform !== 'kick') return false;
+      const username = String(item?.username || item?.user || item?.displayName || '').trim().replace(/^@+/, '');
+      if (!username) return false;
+      const parsedId = Number(item?.userId || item?.uniqueId || 0);
+      const userId = Number.isFinite(parsedId) && parsedId > 0 ? Math.trunc(parsedId) : 0;
+      const channel = String(item?.channel || settings?.connectionProfiles?.kick?.username || settings?.accounts?.kick?.username || window.__KICK_CHANNEL__ || '').trim().replace(/^@+/, '');
+      const params = new URLSearchParams({ username });
+      if (channel) params.set('channel', channel);
+      if (userId) params.set('userId', String(userId));
+      const key = `${username.toLowerCase()}:${userId}:${channel.toLowerCase()}`;
+      if (!window.__kickOverlayAvatarPending) window.__kickOverlayAvatarPending = new Set();
+      if (window.__kickOverlayAvatarPending.has(key)) return false;
+      window.__kickOverlayAvatarPending.add(key);
+      fetch(`/api/kick-avatar?${params.toString()}`, { credentials:'same-origin', cache:'force-cache' })
+        .then((response) => {
+          if (!response.ok) return '';
+          return response.url || `/api/kick-avatar?${params.toString()}`;
+        })
+        .then((url) => {
+          if (!url) return;
+          item.avatar = url;
+          item.avatarUrl = url;
+          item.profilePictureUrl = url;
+          applyAvatarToOverlayDom(item, url);
+        })
+        .catch(() => {})
+        .finally(() => window.__kickOverlayAvatarPending.delete(key));
+      return true;
     }
     function kickAvatarProbeUrl(item){
       // Deprecated client-side probe. Avatar retrieval must never be a dependency

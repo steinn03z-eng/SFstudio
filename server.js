@@ -1774,22 +1774,39 @@ function isKickDefaultAvatarUrl(value) {
 }
 
 function extractKickProfileImageFromHtml(html) {
-    const text = String(html || '')
-        .replace(/\\\\//g, '/')
-        .replace(/\u002F/gi, '/')
-        .replace(/\u0026/gi, '&');
-    const patterns = [
-        /https?:\/\/(?:www\.)?files\.kick\.com\/images\/user\/\d+\/profile_image\/[^\"'\s<]+/gi,
-        /https?:\/\/(?:www\.)?d2egosedh0nm8l\.cloudfront\.net\/images\/user\/\d+\/profile_image\/[^\"'\s<]+/gi,
-        /\"profilepic\"\s*:\s*\"([^\"]+)\"/gi,
-        /\"profile_picture\"\s*:\s*\"([^\"]+)\"/gi,
-        /property=[\"']og:image(?:secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']/gi,
+    const raw = String(html || '');
+    const variants = [
+        raw,
+        raw.replace(/\\\//g, '/'),
+        raw.replace(/\\u002F/gi, '/').replace(/\\u0026/gi, '&'),
+        raw.replace(/&amp;/gi, '&').replace(/\\\//g, '/'),
     ];
-    for (const re of patterns) {
-        const match = re.exec(text);
-        if (!match) continue;
-        const candidate = String(match[1] || match[0] || '').replace(/\\\\//g, '/');
-        if (/^https?:\/\//i.test(candidate) && /profile_image|og:image/i.test(candidate)) return candidate;
+    const patterns = [
+        /https?:\/\/(?:www\.)?files\.kick\.com\/images\/user\/\d+\/profile_image\/[^\"'\s<)]+/gi,
+        /https?:\/\/(?:www\.)?d2egosedh0nm8l\.cloudfront\.net\/images\/user\/\d+\/profile_image\/[^\"'\s<)]+/gi,
+        /[\"'](?:profile_picture|profile_pic|profilepic|profilePicture|profile_picture_url|profilepic_url)[\"']\s*:\s*[\"']([^\"']+)[\"']/gi,
+        /https?:\/\/files\.kick\.com\/images\/user\/[^\"'\s<)]+/gi,
+        /[?&]url=(https?%3A%2F%2F[^&\"']*files\.kick\.com[^&\"']*)/gi,
+        /<meta[^>]+(?:property|name)=[\"']og:image(?:secure_url)?[\"'][^>]+content=[\"']([^\"']+)[\"']/gi,
+        /<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+(?:property|name)=[\"']og:image(?:secure_url)?[\"']/gi,
+    ];
+    for (const text of variants) {
+        for (const re of patterns) {
+            re.lastIndex = 0;
+            const match = re.exec(text);
+            if (!match) continue;
+            let candidate = String(match[1] || match[0] || '').trim();
+            try { candidate = decodeURIComponent(candidate); } catch {}
+            candidate = candidate.replace(/\\\//g, '/').replace(/&amp;/gi, '&');
+            try {
+                const parsed = new URL(candidate);
+                const nested = parsed.searchParams.get('url');
+                if (nested) candidate = nested;
+            } catch {}
+            if (/^https?:\/\//i.test(candidate) && /(?:files\.kick\.com|d2egosedh0nm8l\.cloudfront\.net)/i.test(candidate) && /(?:profile_image|images\/user)/i.test(candidate)) {
+                return candidate;
+            }
+        }
     }
     return '';
 }
@@ -1798,16 +1815,17 @@ async function resolveKickUserAvatarViaCurl(username, channelName = "") {
     const clean = cleanUser(username);
     const channel = cleanUser(channelName);
     if (!clean) return '';
-    const urls = [];
-    if (channel) {
-        urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(channel)}/${encodeURIComponent(clean)}`);
-    }
-    urls.push(
+    const urls = [
         `https://kick.com/api/v1/users/${encodeURIComponent(clean)}`,
         `https://kick.com/api/v2/channels/users/${encodeURIComponent(clean)}`,
-    );
-    // Kick's public profile page embeds the real profile image URL even when the
-    // realtime chat event only exposes a default-avatar URL or no image field.
+    ];
+    if (channel) {
+        // Compatibility fallback; ordinary chatters often return 404 here.
+        urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(channel)}/${encodeURIComponent(clean)}`);
+    }
+    // No user OAuth is required for this page scrape. We only use a public profile
+    // page as an avatar discovery source; the actual image is served through our
+    // same-origin /api/kick-avatar proxy.
     const profilePages = [
         `https://kick.com/${encodeURIComponent(clean)}`,
         `https://www.kick.com/${encodeURIComponent(clean)}`,
