@@ -1,66 +1,21 @@
-# Configuración de Kick en StreamFusion
+# Kick — modo realtime público (sin OAuth)
 
-Esta versión separa el login OAuth de Kick de la configuración pública y utiliza el token OAuth del propietario del canal para registrar los eventos oficiales.
+Esta versión NO utiliza Kick OAuth para conectar el canal. El streamer solo introduce su canal de Kick.
 
-## Variables de entorno
+## Cómo funciona
 
-Configura en el servidor:
+1. El navegador resuelve el `chatroomId` desde Kick.
+2. StreamFusion abre el WebSocket público de Kick/Pusher.
+3. Se suscribe anónimamente a `chatrooms.<chatroomId>.v2`.
+4. Los mensajes de chat y los eventos que Kick publique por ese transporte se normalizan en el mismo bus que Twitch/TikTok.
+5. Overlay Chat, Overlay Eventos, Overlay Regalos, puntos, música y reglas del bot de voz reciben el mismo payload normalizado.
 
-```env
-KICK_CLIENT_ID=TU_CLIENT_ID
-KICK_CLIENT_SECRET=TU_CLIENT_SECRET
-KICK_WEBHOOK_ENABLED=true
-KICK_WEBHOOK_URL=https://TU_DOMINIO/api/kick/webhook
-KICK_OAUTH_REDIRECT_URI=https://TU_DOMINIO/api/kick/oauth/callback
-KICK_PUBLIC_BASE_URL=https://TU_DOMINIO
-```
+No necesitas `KICK_CLIENT_ID`, `KICK_CLIENT_SECRET`, `KICK_OAUTH_REDIRECT_URI` ni autorización OAuth del streamer para este modo.
 
-`KICK_OAUTH_REDIRECT_URI` debe coincidir exactamente con la URL registrada en Kick Developer. La URL pública del webhook debe apuntar a:
+**Qué llega sin OAuth:** el adaptador usa el realtime público de Kick para chat y las actividades que Kick publique en ese canal (por ejemplo FollowEvent, SubscriptionEvent, GiftedSubscriptionsEvent y otros eventos realtime disponibles). Los overlays consumen todos esos eventos mediante Socket.IO. Las Kicks/gifts monetarias (`kicks.gifted`) no se pueden garantizar mediante el transporte público; Kick actualmente puede no publicar ese evento allí. No se simula ni se inventa un regalo si Kick no lo entrega.
 
-`POST /api/kick/webhook`
+## Importante sobre la API oficial
 
-## Flujo
+Kick documenta `events:subscribe` como un scope OAuth de usuario para webhooks oficiales. Ese mecanismo no se utiliza en este proyecto porque el diseño de StreamFusion aquí es realtime público sin OAuth.
 
-1. En StreamFusion escribe el canal de Kick y pulsa **Conectar**.
-2. StreamFusion resuelve el canal/chatroom y abre la autorización OAuth de Kick.
-3. Kick devuelve el código al callback con PKCE.
-4. El servidor guarda el access/refresh token en su propia tabla privada (`platform_oauth_tokens`), no dentro de `user_settings`.
-5. El servidor registra los eventos oficiales con el scope `events:subscribe`.
-6. El chat realtime llega por el WebSocket público del chatroom.
-7. Chat y eventos se emiten a `user:<id>`; por eso dashboard y overlays reciben la misma fuente sin duplicarse.
-
-## Eventos cubiertos
-
-- `chat.message.sent`
-- `channel.followed`
-- `channel.subscription.new`
-- `channel.subscription.renewal`
-- `channel.subscription.gifts`
-- `channel.reward.redemption.updated`
-- `livestream.status.updated`
-- `livestream.metadata.updated`
-- `moderation.banned`
-- `kicks.gifted`
-
-Los eventos de Kick se normalizan a tipos internos: `chat`, `follow`, `sub`, `resub`, `subscription-gift`, `gift`, `reward`, `raid`, `host` y eventos de sistema/moderación.
-
-## Bot de voz
-
-Kick usa únicamente sus eventos válidos en el selector de reglas:
-
-- Follow
-- Suscripción
-- Renovación
-- Suscripciones regaladas
-- Raid
-- Host
-- Recompensa
-- Regalo
-
-No se muestran como eventos de Kick los conceptos exclusivos de TikTok (likes, shares, joins) ni los Bits de Twitch.
-
-## Diagnóstico
-
-El dashboard puede consultar `/api/kick/oauth/status` para saber si la cuenta está autorizada y si el token tiene `events:subscribe`.
-
-Una suscripción a `kicks.gifted` se registra cuando está disponible, pero la entrega final de ese webhook depende del servicio de eventos de Kick. Si Kick no entrega ese webhook, el código no puede inventarlo; el resto de rutas permanece operativo.
+El transporte Pusher público no forma parte de la API pública oficial documentada, por lo que Kick podría cambiarlo sin aviso.

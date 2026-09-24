@@ -1306,6 +1306,7 @@
         if(button) button.textContent='Resolviendo Kick…';
         const resolved=await resolveKickChannelInBrowser(value);
         payload={channel:resolved.slug, channelId:resolved.channelId, broadcasterUserId:resolved.broadcasterUserId, chatroomId:resolved.chatroomId, profile:resolved};
+        // Kick se conecta por realtime público; no requiere OAuth del streamer.
       }
       ready.emit(emitEvent, payload, (ack) => {
         if(ack?.ok){ toast(platformLabel(platform), ack.message || 'Conexión iniciada.'); }

@@ -2831,6 +2831,8 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
     </div>
   </div>
   <script>
+    window.SFSTUDIO_OVERLAY_BUILD = "2026-09-24-kick-r3";
+    console.info("[SFstudio] overlay build", window.SFSTUDIO_OVERLAY_BUILD);
     const overlayParams = new URLSearchParams(location.search);
     const overlayKey = overlayParams.get("overlayKey") || "";
     const overlayOwner = overlayParams.get("owner") || "";
@@ -2877,18 +2879,32 @@ body.overlay-mode.overlay-view-chat .overlayList .overlayItem.stream-row .badge 
         { value: "role", label: "Rol" },
       ],
     };
+    const voiceRuleEventPresetsByPlatform = {
+      tiktok: ["follow", "like", "share", "join", "sub", "system"],
+      twitch: ["follow", "sub", "resub", "raid", "host", "system"],
+      kick: ["follow", "sub", "resub", "subscription-gift", "raid", "host", "reward", "system"],
+    };
     const voiceRulePresetMap = {
-      event: ["follow", "like", "share", "join", "raid", "sub", "system"],
       role: ["broadcaster", "moderator", "vip", "subscriber", "founder", "verified", "staff", "premium"],
       bits: ["1", "10", "50", "100", "500", "1000"],
     };
+    function voiceRulePresetOptions(platform, kind){
+      const p=normalizeVoicePlatform(platform);
+      if(kind === "event") return voiceRuleEventPresetsByPlatform[p] || voiceRuleEventPresetsByPlatform.tiktok;
+      return voiceRulePresetMap[kind] || [];
+    }
     const voiceRuleLabels = {
       follow: "Siguió",
       like: "Like",
       share: "Compartió",
       join: "Primera unión",
       raid: "Raid",
+      host: "Host",
       sub: "Suscripción",
+      resub: "Renovación",
+      "subscription-gift": "Suscripciones regaladas",
+      reward: "Recompensa",
+      gift: "Regalo",
       system: "Sistema",
       broadcaster: "Streamer",
       moderator: "Moderador",
@@ -4074,7 +4090,12 @@ function voiceBotSummaryHtml(){
         share: "🗣",
         join: "👻",
         raid: "⚡",
+        host: "📣",
         sub: "⭐",
+        resub: "🔄",
+        "subscription-gift": "🎟️",
+        reward: "🎟️",
+        gift: "🎁",
         system: "🛠️",
         broadcaster: "🎙️",
         moderator: "🛡️",
@@ -4095,7 +4116,7 @@ function voiceBotSummaryHtml(){
     }
     function voiceEventBadgeEmoji(item){
       const key = voiceEventKey(item);
-      const map = { follow: "👤", like: "❤️", share: "🗣", join: "👻", raid: "⚡", sub: "⭐", system: "🛠️" };
+      const map = { follow: "👤", like: "❤️", share: "🗣", join: "👻", raid: "⚡", host: "📣", sub: "⭐", resub: "🔄", "subscription-gift": "🎟️", reward: "🎟️", gift: "🎁", system: "🛠️" };
       return map[key] || "";
     }
     function voiceAssignmentPriority(kind){
@@ -5297,14 +5318,20 @@ function resolveVoiceRuleList(){
     }
     function normalizeMatchKey(value){ return normalizeUsername(value).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ""); }
     function voiceEventKey(item){
-      const type = normalizeTypeName(item?.type || item?.action || item?.group || item?.event || "");
+      const raw = normalizeTypeName(item?.type || item?.event || item?.action || item?.group || "");
+      const type = raw.replace(/\s+/g, "-");
       if (!type) return "";
+      if (type.includes("subscription-gift") || type.includes("giftedsubscriptions") || type.includes("subscriptiongift")) return "subscription-gift";
+      if (type.includes("resub") || type.includes("subscription.renewal") || type.includes("subscription-renewal")) return "resub";
+      if (type === "sub" || type.includes("subscription.new") || type.includes("subscription-new") || type === "subscription") return "sub";
       if (type.includes("follow")) return "follow";
       if (type.includes("like")) return "like";
-      if (type.includes("share") || type.includes("share")) return "share";
+      if (type.includes("share")) return "share";
       if (type.includes("join") || type.includes("member")) return "join";
-      if (type.includes("raid") || type.includes("host")) return "raid";
-      if (type.includes("sub") || type.includes("subscription") || type.includes("resub")) return "sub";
+      if (type.includes("raid")) return "raid";
+      if (type.includes("host")) return "host";
+      if (type.includes("reward") || type.includes("redemption")) return "reward";
+      if (type === "gift" || type.includes("kicks.gift")) return "gift";
       if (type.includes("system")) return "system";
       return type;
     }
@@ -5626,13 +5653,13 @@ function findMatchingVoiceRule(item){
       if (kind === "gift") {
         return [kind, query, (giftCatalogItems || []).map((item) => [item?.id,item?.key,item?.name,item?.alt,item?.image,item?.icon,item?.thumb,item?.url,item?.imageUrl].map(v => String(v || "")).join("~")).join("|")].join("::");
       }
-      if (kind === "bits") return [kind, query, voiceRulePresetMap.bits.join("|")].join("::");
+      if (kind === "bits") return [kind, query, voiceRulePresetOptions(voiceRuleDraft.platform, kind).join("|")].join("::");
       return kind;
     }
 
     function getVoiceRulePresetSignature(){
       const kind = String(voiceRuleDraft.kind || "");
-      const options = voiceRulePresetMap[kind] || [];
+      const options = voiceRulePresetOptions(voiceRuleDraft.platform, kind);
       return [kind, ...options.map((key) => `${key}:${voiceRuleLabels[key] || key}:${voiceRuleBadgeForPreset(kind, key) || ""}`)].join("::");
     }
 
@@ -5931,7 +5958,7 @@ function findMatchingVoiceRule(item){
         return;
       }
       if (voiceRuleDraft.kind === "bits") {
-        const presets = voiceRulePresetMap.bits.map((v) => ({ key: String(v), label: `${v} bits`, image: "" }));
+        const presets = voiceRulePresetOptions(voiceRuleDraft.platform, "bits").map((v) => ({ key: String(v), label: `${v} bits`, image: "" }));
         counter.textContent = `${presets.length} opciones`;
         grid.innerHTML = presets.map((item) => {
           const active = String(voiceRuleDraft.targetKey || "") === String(item.key);
@@ -5950,7 +5977,7 @@ function findMatchingVoiceRule(item){
         grid.innerHTML = `<div class="overlayVoiceHelp">Esta sección se usa para regalos o bits. Usa la búsqueda de arriba.</div>`;
         return;
       }
-      const options = voiceRulePresetMap[kind] || [];
+      const options = voiceRulePresetOptions(voiceRuleDraft.platform, kind);
       grid.innerHTML = options.map((key) => {
         const label = voiceRuleLabels[key] || key;
         const badge = voiceRuleBadgeForPreset(kind, key);
@@ -5993,7 +6020,7 @@ function findMatchingVoiceRule(item){
       voiceRuleDraft.voiceKey = snap.voiceKey in voiceCatalog ? snap.voiceKey : "verity";
       voiceRuleDraft.targetLabel = snap.label;
       if (!voiceRuleDraft.targetKey && voiceRuleDraft.kind !== "gift" && voiceRuleDraft.kind !== "bits") {
-        const preset = (voiceRulePresetMap[voiceRuleDraft.kind] || [])[0];
+        const preset = voiceRulePresetOptions(voiceRuleDraft.platform, voiceRuleDraft.kind)[0];
         if (preset) {
           voiceRuleDraft.targetKey = preset;
           voiceRuleDraft.targetLabel = voiceRuleLabels[preset] || preset;
@@ -6925,52 +6952,6 @@ function currentViewSettingsKey(){
       }
       return '';
     }
-    const overlayKickAvatarCache = new Map();
-    const overlayKickAvatarPending = new Map();
-    function overlayKickAvatarKey(username,userId=''){ const id=Number(userId)>0?String(Math.trunc(Number(userId))):''; return `${String(username||'').trim().replace(/^@+/,'').toLowerCase()}|${id}`; }
-    async function resolveOverlayKickAvatar(username, userId = ""){
-      const clean=String(username||'').trim().replace(/^@+/,'').toLowerCase();
-      const cacheKey=overlayKickAvatarKey(username,userId);
-      if(!clean && !(Number(userId)>0)) return '';
-      if(overlayKickAvatarCache.has(cacheKey)) return overlayKickAvatarCache.get(cacheKey)||'';
-      if(overlayKickAvatarPending.has(cacheKey)) return overlayKickAvatarPending.get(cacheKey);
-      const promise=(async()=>{
-        const kickSession = loadOverlaySession()?.kick || {};
-        const kickChannel = String(kickSession.username || settings.connectionProfiles?.kick?.username || '').trim().replace(/^@+/, '');
-        const urls=[];
-        if(kickChannel){
-          try{
-            const itemUserId = Number(userId)>0 ? Number(userId) : 0; const idParam=itemUserId>0?`&userId=${encodeURIComponent(String(Math.trunc(itemUserId)))}`:''; const proxy=`/api/kick-avatar?username=${encodeURIComponent(clean)}&channel=${encodeURIComponent(kickChannel)}${idParam}`;
-            const pr=await fetch(proxy,{credentials:'same-origin',cache:'no-store',method:'HEAD'});
-            if(pr.ok){ overlayKickAvatarCache.set(cacheKey,proxy); return proxy; }
-          }catch{}
-        }
-        if(kickChannel){
-          urls.push(`https://kick.com/api/v1/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
-          urls.push(`https://kick.com/channels/${encodeURIComponent(kickChannel)}/${encodeURIComponent(clean)}`);
-        }
-        urls.push(`https://kick.com/api/v1/users/${encodeURIComponent(clean)}`);
-        for(const url of urls){
-          try{
-            const r=await fetch(url,{credentials:'omit',cache:'no-store',headers:{Accept:'application/json, text/plain, */*'}});
-            if(!r.ok) continue;
-            const data=await r.json().catch(()=>null);
-            const profile=data?.user||data?.data?.user||data?.data||data?.profile||data||{};
-            const avatar=String(profile?.profile_picture||profile?.profilepic||profile?.profile_pic||profile?.profilePicture||profile?.profile_picture_url||profile?.profilepic_url||profile?.avatar||profile?.avatar_url||profile?.picture||profile?.picture_url||data?.profile_picture||data?.profilepic||data?.profile_picture_url||data?.profilepic_url||data?.profile_pic||data?.avatar||data?.avatar_url||'').trim();
-            if(/^https?:\/\//i.test(avatar) && !/default-profile-pictures|default-avatar[-_]/i.test(avatar)){ overlayKickAvatarCache.set(cacheKey,avatar); return avatar; }
-          }catch{}
-        }
-        try{
-          const channelParam = kickChannel ? `&channel=${encodeURIComponent(kickChannel)}` : '';
-          const userParam = Number(userId)>0 ? `&userId=${encodeURIComponent(String(Math.trunc(Number(userId))))}` : '';
-          const r=await fetch(`/api/avatar?platform=kick&username=${encodeURIComponent(clean)}${channelParam}${userParam}`,{credentials:'same-origin',cache:'no-store'});
-          if(r.ok){ const data=await r.json(); const avatar=String(data?.avatarUrl||'').trim(); if(/^https?:\/\//i.test(avatar) && !/default-profile-pictures|default-avatar[-_]/i.test(avatar)){ overlayKickAvatarCache.set(cacheKey,avatar); return avatar; } }
-        }catch{}
-        return '';
-      })().finally(()=>overlayKickAvatarPending.delete(cacheKey));
-      overlayKickAvatarPending.set(cacheKey,promise);
-      return promise;
-    }
     function applyAvatarToOverlayDom(item, avatar){
       const url = String(avatar || '').trim();
       if(!url || /default-profile-pictures|default-avatar[-_]/i.test(url)) return false;
@@ -6978,53 +6959,55 @@ function currentViewSettingsKey(){
       const chatKey = chatItemKey(item);
       const feedKind = String(item?.group || item?.activityKind || '').toLowerCase()==='gift' ? 'gift' : 'event';
       const feedKey = overlayFeedItemKey(item, feedKind);
+      const mountImage = (container, alt='Usuario') => {
+        if(!container) return false;
+        let img = container.querySelector('img');
+        if(!img){
+          img = document.createElement('img');
+          img.loading = 'lazy';
+          img.referrerPolicy = 'no-referrer';
+          img.alt = alt;
+          container.prepend(img);
+        }
+        const same = img.getAttribute('src') === url;
+        if(!same){ img.src=url; changed=true; }
+        img.style.display='';
+        img.classList.remove('broken');
+        const fallback = container.querySelector('.chat-avatar-empty');
+        fallback?.classList.add('hidden');
+        return true;
+      };
       if(view === 'chat' && list){
         const node = list.querySelector(`.overlayItem[data-chat-key="${CSS.escape(chatKey)}"]`);
-        const img = node?.querySelector('.chat-avatar img');
-        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
-        if(img?.parentElement){ img.parentElement.querySelector('.chat-avatar-empty')?.classList.add('hidden'); }
+        if(node) mountImage(node.querySelector('.chat-avatar'), String(item?.displayName || item?.username || 'Usuario'));
       } else if(list){
         const node = list.querySelector(`.overlayItem[data-feed-key="${CSS.escape(feedKey)}"]`);
-        const img = node?.querySelector('img');
-        if(img && img.getAttribute('src') !== url){ img.src=url; img.style.display=''; img.classList.remove('broken'); changed=true; }
+        if(node) mountImage(node.querySelector('.activity-user-avatar'), String(item?.displayName || item?.username || 'Usuario'));
       }
       return changed;
     }
 
     function enrichOverlayAvatar(item){
-      const platform=String(item?.platform||'').toLowerCase();
-      if(platform!=='kick') return;
-      const currentAvatar = avatarForItem(item);
-      const currentText = String(currentAvatar || '');
-      if(currentAvatar && !/default-profile-pictures|default-avatar[-_]/i.test(currentText)) return;
-      const username=item?.username||item?.uniqueId||item?.user||item?.displayName||'';
-      const userId = Number(item?.userId)>0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId)>0 ? String(Math.trunc(Number(item.uniqueId))) : '');
-      if(!username) return;
-      resolveOverlayKickAvatar(username,userId).then((url)=>{
-        if(!url) return;
-        item.avatar=item.avatarUrl=item.profilePictureUrl=url;
-        // Do not call render(): updating one avatar must not rebuild the overlay.
-        applyAvatarToOverlayDom(item, url);
-      });
+      // Avatar enrichment is optional. Never make the overlay perform extra Kick
+      // profile requests, because a failed avatar lookup must not affect chat,
+      // events, or gifts rendering. Server-side kickAvatarUpdate can still patch
+      // an avatar later when a real profile picture is available.
+      return false;
     }
     function kickAvatarProbeUrl(item){
-      if(String(item?.platform||'').toLowerCase()!=='kick') return '';
-      const username=normalizeUsername(item?.username||item?.user||item?.displayName||'');
-      const userId=Number(item?.userId||0)>0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId||0)>0 ? String(Math.trunc(Number(item.uniqueId))) : '');
-      const kickSession=loadOverlaySession()?.kick||{};
-      const channel=normalizeUsername(kickSession.username || settings.connectionProfiles?.kick?.username || '');
-      if(!username && !userId) return '';
-      const params=[]; if(username) params.push(`username=${encodeURIComponent(username)}`); if(channel) params.push(`channel=${encodeURIComponent(channel)}`); if(userId) params.push(`userId=${encodeURIComponent(userId)}`);
-      return `/api/kick-avatar?${params.join('&')}`;
+      // Deprecated client-side probe. Avatar retrieval must never be a dependency
+      // of overlay rendering and must not call undocumented Kick profile URLs.
+      return '';
     }
     function avatarFallbackMarkup(item, name){
       const platform=String(item?.platform||'tiktok').toLowerCase();
-      const letter=String(name||item?.username||item?.user||platform||'U').trim().charAt(0).toUpperCase() || platformShort(platform);
-      const identity = avatarIdentity(item);
+      const displayName=String(name||item?.username||item?.user||item?.displayName||platform||'U').trim() || 'U';
+      const letter=displayName.charAt(0).toUpperCase() || platformShort(platform);
+      const identity = String(item?.userId || item?.uniqueId || item?.username || item?.user || displayName || '').trim();
       const avatarUserId = Number(item?.userId || 0) > 0 ? String(Math.trunc(Number(item.userId))) : (Number(item?.uniqueId || 0) > 0 ? String(Math.trunc(Number(item.uniqueId))) : '');
-      const probe=kickAvatarProbeUrl(item);
-      const fallback=`<span class="${probe?'hidden ':''}chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserId)}" aria-label="${esc(name)}">${esc(letter)}</span>`;
-      return probe ? `<img src="${esc(probe)}" alt="${esc(name)}" class="kick-avatar-probe" loading="lazy" onerror="this.style.display='none';this.nextElementSibling?.classList.remove('hidden')">${fallback}` : fallback;
+      // This function is deliberately self-contained. A missing helper or failed
+      // network lookup must never prevent the message/activity card from rendering.
+      return `<span class="chat-avatar-empty avatar-initial-fallback" data-platform="${esc(platform)}" data-avatar-platform="${esc(platform)}" data-avatar-user="${esc(identity)}" data-avatar-user-id="${esc(avatarUserId)}" aria-label="${esc(displayName)}">${esc(letter)}</span>`;
     }
     function timeLabel(ts){ return new Date(ts || Date.now()).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false }); }
     function platformTag(platform){ return `<span class="platformTag ${platform}">${platformShort(platform)}</span>`; }

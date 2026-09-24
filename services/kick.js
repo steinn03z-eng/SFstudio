@@ -8,7 +8,7 @@
  *
  * It uses Kick's anonymous realtime chat transport (no user OAuth):
  * the existing public Pusher transport is opened directly and the adapter
- * subscribes to the channel chatroom/activity channels. No Kick user login is requested.
+ * subscribes anonymously to the public chatroom channel. No Kick user login is requested.
  */
 
 import { execFile } from "node:child_process";
@@ -26,18 +26,10 @@ const KICK_BASE = "https://kick.com";
 const KICK_PUSHER_URL =
   String(process.env.KICK_PUSHER_URL || "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679?protocol=7&client=js&version=7.6.0&flash=false").trim();
 const KICK_REALTIME_CONNECTION_URL = "https://web.kick.com/api/v1/realtime/channels";
-const KICK_API_BASE = "https://api.kick.com/public/v1";
-const KICK_OAUTH_TOKEN_URL = "https://id.kick.com/oauth/token";
-const KICK_CLIENT_ID = String(process.env.KICK_CLIENT_ID || "").trim();
-const KICK_CLIENT_SECRET = String(process.env.KICK_CLIENT_SECRET || "").trim();
-let kickAppToken = "";
-let kickAppTokenExpiresAt = 0;
-let kickAppTokenPromise = null;
 const kickUserApiCache = new Map();
 const kickUserApiInflight = new Map();
 const globalSeenChatIds = new Map();
 const globalSeenEventIds = new Map();
-const webhookSeenIds = new Map();
 
 function cleanChannel(value) {
   let channel = String(value || "").trim();
@@ -71,81 +63,6 @@ function trimSeenMap(map, ttlMs, maxSize = 5000) {
     if (first === undefined) break;
     map.delete(first);
   }
-}
-
-async function getKickAppAccessToken() {
-  if (!KICK_CLIENT_ID || !KICK_CLIENT_SECRET) return "";
-  if (kickAppToken && Date.now() < kickAppTokenExpiresAt - 60_000) return kickAppToken;
-  if (kickAppTokenPromise) return kickAppTokenPromise;
-
-  kickAppTokenPromise = (async () => {
-    const body = new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: KICK_CLIENT_ID,
-      client_secret: KICK_CLIENT_SECRET,
-    });
-    const response = await fetch(KICK_OAUTH_TOKEN_URL, {
-      method: "POST",
-      headers: { "content-type": "application/x-www-form-urlencoded", accept: "application/json" },
-      body,
-    });
-    const text = await response.text();
-    let data = null;
-    try { data = text ? JSON.parse(text) : null; } catch {}
-    if (!response.ok || !data?.access_token) {
-      throw new Error(`Kick App Access Token HTTP ${response.status}: ${data?.error || data?.message || text.slice(0, 200)}`);
-    }
-    kickAppToken = String(data.access_token);
-    kickAppTokenExpiresAt = Date.now() + Number(data.expires_in || 3600) * 1000;
-    return kickAppToken;
-  })().finally(() => { kickAppTokenPromise = null; });
-
-  return kickAppTokenPromise;
-}
-
-async function kickPublicApi(pathname, options = {}) {
-  const token = await getKickAppAccessToken();
-  if (!token) return null;
-  const response = await fetch(`${KICK_API_BASE}${pathname}`, {
-    method: options.method || "GET",
-    headers: { accept: "application/json", authorization: `Bearer ${token}`, ...(options.headers || {}) },
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
-  });
-  const text = await response.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch {}
-  if (!response.ok) throw new Error(`Kick API HTTP ${response.status}: ${data?.message || data?.error || text.slice(0, 200)}`);
-  return data;
-}
-
-async function getKickUserById(userId) {
-  const id = Number(userId);
-  if (!Number.isFinite(id) || id <= 0) return null;
-  const key = String(Math.trunc(id));
-  const cached = kickUserApiCache.get(key);
-  if (cached) {
-    const ttl = cached.profile ? 86_400_000 : 15_000;
-    if (Date.now() - cached.updatedAt < ttl) return cached.profile || null;
-  }
-  if (kickUserApiInflight.has(key)) return kickUserApiInflight.get(key);
-  const promise = (async () => {
-    try {
-      const data = await kickPublicApi(`/users?id=${encodeURIComponent(key)}`);
-      const profile = Array.isArray(data?.data) ? data.data.find((u) => Number(u?.user_id) === id) : null;
-      if (profile) {
-        kickUserApiCache.set(key, { profile, updatedAt: Date.now() });
-        return profile;
-      }
-    } catch (error) {
-      // Official API enrichment is optional; legacy website fallback remains below.
-    }
-    // Do not cache a failed/unauthenticated lookup for a long period:
-    // credentials can be added/reloaded and Kick can transiently reject requests.
-    kickUserApiCache.set(key, { profile: null, updatedAt: Date.now() });
-    return null;
-  })().finally(() => kickUserApiInflight.delete(key));
-  kickUserApiInflight.set(key, promise);
-  return promise;
 }
 
 function normalizeBadges(badges) {
@@ -329,13 +246,13 @@ function normalizeEventType(name, data) {
   if (eventName === "chat.message.sent" || eventName.includes("chatmessage")) return "chat";
 
   // Explicit event names: current official webhook names + historical realtime names.
-  if (eventName === "channel.followed" || eventName.endsWith("\\events\\channelfollowedevent") || eventName.endsWith("followedevent")) return "follow";
-  if (eventName === "channel.subscription.gifts" || eventName.includes("giftedsubscriptions") || eventName.includes("subscriptiongifted")) return "subscription-gift";
+  if (eventName === "channel.followed" || eventName.endsWith("\\events\\channelfollowedevent") || (eventName.endsWith("followedevent") || eventName.endsWith("followevent"))) return "follow";
+  if (eventName === "channel.subscription.gifts" || eventName.includes("giftedsubscriptions") || eventName.includes("subscriptiongifted") || eventName.endsWith("giftedsubscriptionsevent")) return "subscription-gift";
   if (eventName === "channel.subscription.renewal" || eventName.includes("subscriptionrenewal")) return "resub";
   if (eventName === "channel.subscription.new" || eventName.includes("subscriptionevent") || eventName.includes("subscription.new")) return "sub";
-  if (eventName === "kicks.gifted" || eventName.includes("kicks.gift") || eventName.includes("kicksgifted")) return "gift";
+  if (eventName === "kicks.gifted" || eventName.includes("kicks.gift") || eventName.includes("kicksgifted") || eventName.endsWith("giftevent")) return "gift";
   if (eventName.includes("streamhost") || eventName.includes("stream.host") || eventName.endsWith("hostevent")) return "host";
-  if (eventName === "channel.raid" || eventName.includes("raid")) return "raid";
+  if (eventName === "channel.raid" || eventName.includes("raid") || eventName.endsWith("raidevent")) return "raid";
   if (eventName === "channel.reward.redemption.updated" || eventName.includes("rewardredeem") || eventName.includes("reward.redemption") || eventName.includes("rewardredeemed") || eventName.includes("redemption")) return "reward";
   if (eventName === "moderation.banned" || eventName.includes("userbannedevent") || eventName.endsWith(".banned")) return "moderation-ban";
   if (eventName.includes("userunbannedevent") || eventName.endsWith(".unbanned")) return "moderation-unban";
@@ -858,14 +775,6 @@ async function lookupKickUserAvatar(channelName, username, userId = "") {
   if (userAvatarInflight.has(key)) return userAvatarInflight.get(key);
 
   const promise = (async () => {
-    // Prefer the official Public API when the chat/event payload contains a user id.
-    // App Access Tokens are server-to-server and do not require a Kick login from the streamer.
-    const officialProfile = await getKickUserById(userId);
-    const officialAvatar = String(officialProfile?.profile_picture || officialProfile?.profile_picture_url || '').trim();
-    if (isRealKickAvatar(officialAvatar)) {
-      rememberKickAvatarLocal(channel, user, userId, officialAvatar);
-      return officialAvatar;
-    }
 
     const endpoints = [
       // The web client exposes the viewer profile in the context of the channel.
@@ -1370,28 +1279,6 @@ function webhookClient(ownerId, io, channelName = "", broadcasterUserId = 0) {
   return client;
 }
 
-export async function handleWebhookEvent(ownerId, io, eventName, payload, meta = {}) {
-  const data = payload && typeof payload === "object" ? payload : {};
-  const broadcaster = data?.broadcaster && typeof data.broadcaster === "object" ? data.broadcaster : {};
-  const channel = cleanChannel(meta.channelSlug || broadcaster?.channel_slug || data?.channel_slug || "");
-  const broadcasterUserId = Number(meta.broadcasterUserId || broadcaster?.user_id || 0);
-  const client = webhookClient(ownerId, io, channel, broadcasterUserId);
-  if (!client) return { ok: true, ignored: true, reason: "Kick session is not active." };
-  const messageId = String(meta.messageId || "").trim();
-  if (messageId) {
-    trimSeenMap(webhookSeenIds, 86_400_000, 10_000);
-    if (webhookSeenIds.has(messageId)) return { ok: true, duplicate: true };
-    webhookSeenIds.set(messageId, Date.now());
-  }
-  const lower = String(eventName || "").toLowerCase();
-  if (lower === "chat.message.sent" || lower.includes("chatmessage")) {
-    await emitChat(client, data);
-    return { ok: true, type: "chat" };
-  }
-  emitEvent(client, eventName, data);
-  return { ok: true, type: "event" };
-}
-
 function notifyTransportState(client, realtimeConnected, reason = "") {
   try {
     globalThis.__STREAMFUSION_KICK_TRANSPORT_HOOK__?.(client.ownerId, {
@@ -1773,4 +1660,4 @@ export function isSessionActive(ownerId) {
   return Boolean(client && !client.manualDisconnect);
 }
 
-export { cleanChannel, getChannelInfo, lookupKickUserAvatar, getKickAppAccessToken, getKickUserById, normalizeEvent, normalizeIncomingKickEvent };
+export { cleanChannel, getChannelInfo, lookupKickUserAvatar, normalizeEvent, normalizeIncomingKickEvent };

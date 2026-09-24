@@ -11,7 +11,7 @@ import cors from "cors";
 import fs from "node:fs";
 import { spawn } from "node:child_process";
 import ffmpegStatic from "ffmpeg-static";
-import { randomBytes, randomUUID, createPublicKey, createVerify } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import * as database from "./services/database.js";
 import * as liveSession from "./services/live-session.js";
@@ -40,103 +40,8 @@ const __dirname = path.dirname(__filename);
 const FISH_AUDIO_API_KEY = process.env.FISH_AUDIO_API_KEY || "";
 const FISH_AUDIO_MODEL = process.env.FISH_AUDIO_MODEL || "s2.1-pro-free";
 const FISH_AUDIO_VOICE_CHANGER_WS = process.env.FISH_AUDIO_VOICE_CHANGER_WS || "";
-const KICK_CLIENT_ID = String(process.env.KICK_CLIENT_ID || "").trim();
-const KICK_CLIENT_SECRET = String(process.env.KICK_CLIENT_SECRET || "").trim();
-const KICK_WEBHOOK_ENABLED = String(process.env.KICK_WEBHOOK_ENABLED || "true").toLowerCase() !== "false";
-const KICK_WEBHOOK_URL = String(
-    process.env.KICK_WEBHOOK_URL ||
-    (process.env.RAILWAY_PUBLIC_DOMAIN ? `https://${String(process.env.RAILWAY_PUBLIC_DOMAIN).replace(/^https?:\/\//, '').replace(/\/$/, '')}/api/kick/webhook` : '')
-).trim();
-const KICK_OFFICIAL_WEBHOOK_EVENTS = [
-    'chat.message.sent',
-    'channel.followed',
-    'channel.subscription.new',
-    'channel.subscription.renewal',
-    'channel.subscription.gifts',
-    'channel.reward.redemption.updated',
-    'livestream.status.updated',
-    'livestream.metadata.updated',
-    'moderation.banned',
-    'kicks.gifted',
-];
-const kickWebhookSubscriptionEnsure = new Map();
-const KICK_WEBHOOK_PUBLIC_KEY = String(process.env.KICK_WEBHOOK_PUBLIC_KEY || `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq/+l1WnlRrGSolDMA+A8
-6rAhMbQGmQ2SapVcGM3zq8ANXjnhDWocMqfWcTd95btDydITa10kDvHzw9WQOqp2
-MZI7ZyrfzJuz5nhTPCiJwTwnEtWft7nV14BYRDHvlfqPUaZ+1KR4OCaO/wWIk/rQ
-L/TjY0M70gse8rlBkbo2a8rKhu69RQTRsoaf4DVhDPEeSeI5jVrRDGAMGL3cGuyY
-6CLKGdjVEM78g3JfYOvDU/RvfqD7L89TZ3iN94jrmWdGz34JNlEI5hqK8dd7C5EF
-BEbZ5jgB8s8ReQV8H+MkuffjdAj3ajDDX3DOJMIut1lBrUVD1AaSrGCKHooWoL2e
-twIDAQAB
------END PUBLIC KEY-----`).trim();
-const kickWebhookOwnerByBroadcaster = new Map();
-const kickWebhookHealthByBroadcaster = new Map();
 const kickLiveStatusByOwner = new Map();
-const kickWebhookEventSeen = new Map();
-const kickWebhookPublicKey = createPublicKey(KICK_WEBHOOK_PUBLIC_KEY);
 
-function setKickWebhookHealth(broadcasterUserId, patch = {}) {
-    const broadcasterId = Number(broadcasterUserId || 0);
-    if (!Number.isFinite(broadcasterId) || broadcasterId <= 0) return null;
-    const key = String(Math.trunc(broadcasterId));
-    const current = kickWebhookHealthByBroadcaster.get(key) || {
-        enabled: false,
-        ownerId: '',
-        checkedAt: 0,
-        lastEventAt: 0,
-        reason: 'unknown',
-    };
-    const next = { ...current, ...patch, broadcasterUserId: broadcasterId };
-    kickWebhookHealthByBroadcaster.set(key, next);
-    return next;
-}
-
-function clearKickWebhookHealth(broadcasterUserId, ownerId = '') {
-    const broadcasterId = Number(broadcasterUserId || 0);
-    if (!Number.isFinite(broadcasterId) || broadcasterId <= 0) return;
-    const key = String(Math.trunc(broadcasterId));
-    const current = kickWebhookHealthByBroadcaster.get(key);
-    if (!current) return;
-    if (ownerId && String(current.ownerId || '') !== String(ownerId)) return;
-    kickWebhookHealthByBroadcaster.delete(key);
-}
-
-function getKickWebhookHealth(broadcasterUserId) {
-    const broadcasterId = Number(broadcasterUserId || 0);
-    if (!Number.isFinite(broadcasterId) || broadcasterId <= 0) return null;
-    return kickWebhookHealthByBroadcaster.get(String(Math.trunc(broadcasterId))) || null;
-}
-
-function isKickWebhookMappingCurrent(broadcasterUserId, ownerId) {
-    const broadcasterId = Number(broadcasterUserId || 0);
-    const id = String(ownerId || '').trim();
-    if (!broadcasterId || !id) return false;
-    return String(kickWebhookOwnerByBroadcaster.get(String(Math.trunc(broadcasterId))) || '') === id;
-}
-
-function markKickWebhookEvent(broadcasterUserId, ownerId) {
-    const health = getKickWebhookHealth(broadcasterUserId);
-    if (!health) return;
-    if (ownerId && String(health.ownerId || '') !== String(ownerId)) return;
-    setKickWebhookHealth(broadcasterUserId, { enabled: true, lastEventAt: Date.now(), reason: 'event-received' });
-}
-
-function removeKickWebhookMappings(ownerId, broadcasterUserId = 0) {
-    const id = String(ownerId || '').trim();
-    const target = String(Number(broadcasterUserId || 0) || 0);
-    for (const [broadcasterId, mappedOwnerId] of kickWebhookOwnerByBroadcaster) {
-        if (target !== '0' && broadcasterId === target) {
-            kickWebhookOwnerByBroadcaster.delete(broadcasterId);
-            clearKickWebhookHealth(Number(broadcasterId), id || undefined);
-            continue;
-        }
-        if (id && String(mappedOwnerId) === id) {
-            kickWebhookOwnerByBroadcaster.delete(broadcasterId);
-            clearKickWebhookHealth(Number(broadcasterId), id);
-        }
-    }
-    if (id) kickLiveStatusByOwner.delete(id);
-}
 
 
 const accountStateDefaults = {
@@ -215,26 +120,14 @@ const io = new Server(server, {
     connectTimeout: 15000,
 });
 
-function kickWebhookCanCarrySession(broadcasterUserId) {
-    const broadcasterId = Number(broadcasterUserId || 0);
-    if (!KICK_WEBHOOK_ENABLED || !KICK_WEBHOOK_URL || !KICK_CLIENT_ID || !KICK_CLIENT_SECRET || !Number.isFinite(broadcasterId) || broadcasterId <= 0) {
-        return false;
-    }
-    const health = getKickWebhookHealth(broadcasterId);
-    const mappedOwner = kickWebhookOwnerByBroadcaster.get(String(Math.trunc(broadcasterId)));
-    return Boolean(health?.enabled && health?.ownerId && String(mappedOwner || '') === String(health.ownerId));
-}
 
 globalThis.__STREAMFUSION_KICK_TRANSPORT_HOOK__ = (ownerId, state = {}) => {
     const id = String(ownerId || '').trim();
     if (!id) return;
     const current = getUserAccountState(id, 'kick');
     const realtimeConnected = Boolean(state?.realtimeConnected);
-    const webhookAvailable = Boolean(state?.sessionActive && kickWebhookCanCarrySession(state?.broadcasterUserId));
-    const connected = Boolean(state?.sessionActive && (realtimeConnected || webhookAvailable));
-    const mode = realtimeConnected
-        ? (current.live ? 'live' : 'waiting')
-        : (webhookAvailable ? 'webhook-reconnecting' : 'reconnecting');
+    const connected = Boolean(state?.sessionActive && realtimeConnected);
+    const mode = realtimeConnected ? (current.live ? 'live' : 'waiting') : 'reconnecting';
     emitAccountState('kick', {
         connected,
         realtimeConnected,
@@ -261,8 +154,7 @@ globalThis.__STREAMFUSION_KICK_STATE_HOOK__ = (ownerId, normalized = {}) => {
     kickLiveStatusByOwner.set(id, { live: Boolean(explicitLive), timestamp: incomingTimestamp });
 
     const transport = kick.getState(id);
-    const webhookAvailable = Boolean(transport?.sessionActive && kickWebhookCanCarrySession(transport?.broadcasterUserId));
-    const connected = Boolean(transport?.sessionActive && (transport?.connected || webhookAvailable));
+    const connected = Boolean(transport?.sessionActive && transport?.connected);
 
     if (explicitLive) {
         liveSession.begin(id, 'kick');
@@ -274,7 +166,7 @@ globalThis.__STREAMFUSION_KICK_STATE_HOOK__ = (ownerId, normalized = {}) => {
         connected,
         realtimeConnected: Boolean(transport?.connected),
         live: Boolean(explicitLive),
-        mode: explicitLive ? 'live' : (transport?.connected ? 'waiting' : 'webhook-reconnecting'),
+        mode: explicitLive ? 'live' : (transport?.connected ? 'waiting' : 'reconnecting'),
         clearFeeds: false,
         stateReason: explicitLive ? 'live-started' : 'live-ended',
     }, id);
@@ -1269,6 +1161,14 @@ app.use(
     })
 );
 app.use(express.json({ limit: "12mb", verify: (req, _res, buf) => { if (String(req.path || "") === "/api/kick/webhook") req.rawBody = Buffer.from(buf); } }));
+// The generated overlay contains live code. Never serve an old browser-cached
+// copy after deploying a chat/activity fix. Static assets keep normal caching.
+app.get("/overlay.html", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.sendFile(path.join(__dirname, "Public", "overlay.html"));
+});
 app.use(express.static(path.join(__dirname, "Public")));
 
 function bearerToken(req) {
@@ -1354,47 +1254,6 @@ function resolveOverlayHistoryOwner(req) {
     const owner = database.getUserByOverlayKey(overlayKey);
     return owner?.id && String(owner.id) === ownerId ? String(owner.id) : "";
 }
-
-app.post("/api/kick/webhook", async (req, res) => {
-    const raw = Buffer.isBuffer(req.body) ? req.body : (Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {})));
-    if (KICK_WEBHOOK_ENABLED && !verifyKickWebhook({ ...req, rawBody: raw })) return res.status(401).json({ ok: false, error: "Firma de webhook de Kick inválida." });
-    let payload = {};
-    try { payload = JSON.parse(raw.toString("utf8") || "{}"); } catch { return res.status(400).json({ ok: false, error: "Webhook JSON inválido." }); }
-    const eventName = String(req.get("Kick-Event-Type") || payload?.event || "").trim().toLowerCase();
-    const messageId = String(req.get("Kick-Event-Message-Id") || payload?.id || payload?.message_id || payload?.gift_transaction_id || "").trim();
-    if (!eventName) return res.status(400).json({ ok: false, error: "Falta Kick-Event-Type." });
-    const broadcasterId = Number(payload?.broadcaster?.user_id || payload?.broadcaster_user_id || payload?.channel?.broadcaster_user_id || 0) || 0;
-    let ownerId = broadcasterId ? kickWebhookOwnerByBroadcaster.get(String(broadcasterId)) || "" : "";
-    if (!ownerId && broadcasterId) {
-        try { ownerId = database.findUserIdByKickBroadcasterUserId?.(broadcasterId) || ""; } catch {}
-    }
-    if (ownerId) {
-        const sessionState = kick.getState(ownerId);
-        const sessionBroadcasterId = Number(sessionState?.broadcasterUserId || 0) || 0;
-        if (!sessionState?.sessionActive || (broadcasterId > 0 && sessionBroadcasterId > 0 && sessionBroadcasterId !== broadcasterId)) {
-            ownerId = "";
-        }
-    }
-    if (!ownerId) {
-        return res.status(202).json({ ok: true, ignored: true, reason: "Broadcaster no está asociado a una sesión StreamFusion activa." });
-    }
-    if (messageId) {
-        const now = Date.now();
-        for (const [key, at] of kickWebhookEventSeen) if (now - at > 86_400_000) kickWebhookEventSeen.delete(key);
-        if (kickWebhookEventSeen.has(messageId)) return res.json({ ok: true, duplicate: true });
-        kickWebhookEventSeen.set(messageId, now);
-    }
-    markKickWebhookEvent(broadcasterId, ownerId);
-    try {
-        const result = await kick.handleWebhookEvent(ownerId, io, eventName, payload, {
-            messageId, broadcasterUserId: broadcasterId, channelSlug: payload?.broadcaster?.channel_slug || payload?.channel_slug || "",
-        });
-        return res.json(result);
-    } catch (error) {
-        console.error("[Kick webhook]", error);
-        return res.status(500).json({ ok: false, error: "No se pudo procesar el evento de Kick." });
-    }
-});
 
 app.get("/api/live-history", (req, res, next) => {
     const ownerId = resolveOverlayHistoryOwner(req);
@@ -2017,121 +1876,6 @@ function kickAvatarFromCache(username, userId = 0) {
     const key = cleanUser(username).toLowerCase();
     const byName = key ? kickAvatarCache.get(key) : null;
     return byName?.avatarUrl && !isKickDefaultAvatarUrl(byName.avatarUrl) ? byName.avatarUrl : "";
-}
-
-async function ensureKickWebhookSubscriptions(broadcasterUserId, ownerId = "") {
-    const broadcasterId = Number(broadcasterUserId);
-    const boundOwnerId = String(ownerId || '').trim();
-    if (!KICK_WEBHOOK_ENABLED || !KICK_CLIENT_ID || !KICK_CLIENT_SECRET || !broadcasterId) return { enabled: false, reason: 'missing-config' };
-    if (boundOwnerId && !isKickWebhookMappingCurrent(broadcasterId, boundOwnerId)) return { enabled: false, reason: 'session-not-current' };
-    const key = String(broadcasterId);
-    const existingPromise = kickWebhookSubscriptionEnsure.get(key);
-    if (existingPromise) {
-        const result = await existingPromise;
-        if (result?.enabled && boundOwnerId && isKickWebhookMappingCurrent(broadcasterId, boundOwnerId)) {
-            const mappedOwnerId = String(kickWebhookOwnerByBroadcaster.get(key) || '').trim();
-            if (mappedOwnerId) {
-                setKickWebhookHealth(broadcasterId, {
-                    enabled: true,
-                    ownerId: mappedOwnerId,
-                    checkedAt: Date.now(),
-                    reason: 'subscription-shared-result',
-                });
-            }
-            return result;
-        }
-        return result;
-    }
-
-    const task = (async () => {
-        const token = await kick.getKickAppAccessToken();
-        if (!token) return { enabled: false, reason: 'no-app-token' };
-        const headers = { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' };
-        let existing = [];
-        try {
-            const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers });
-            if (response.ok) {
-                const body = await response.json().catch(() => ({}));
-                existing = Array.isArray(body?.data) ? body.data : Array.isArray(body?.subscriptions) ? body.subscriptions : [];
-            }
-        } catch (error) {
-            console.warn('[Kick] No se pudieron consultar las suscripciones de eventos:', error?.message || error);
-        }
-        const activeNames = new Set(existing.map((item) => String(item?.name || item?.event || '').toLowerCase()).filter(Boolean));
-        const missing = KICK_OFFICIAL_WEBHOOK_EVENTS.filter((name) => !activeNames.has(name));
-        if (!missing.length) {
-            const mappedOwnerId = String(kickWebhookOwnerByBroadcaster.get(key) || '').trim();
-            if (mappedOwnerId) {
-                setKickWebhookHealth(broadcasterId, {
-                    enabled: true,
-                    ownerId: mappedOwnerId,
-                    checkedAt: Date.now(),
-                    reason: 'subscription-present',
-                });
-            }
-            return { enabled: Boolean(mappedOwnerId), created: 0, existing: existing.length, reason: mappedOwnerId ? undefined : 'no-active-session' };
-        }
-
-        const response = await fetch('https://api.kick.com/public/v1/events/subscriptions', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                broadcaster_user_id: broadcasterId,
-                method: 'webhook',
-                events: missing.map((name) => ({ name, version: 1 })),
-            }),
-        });
-        const body = await response.text();
-        if (!response.ok) throw new Error(`HTTP ${response.status}: ${body.slice(0, 300)}`);
-        const mappedOwnerId = String(kickWebhookOwnerByBroadcaster.get(key) || '').trim();
-        if (!mappedOwnerId) {
-            return { enabled: false, reason: 'no-active-session' };
-        }
-        setKickWebhookHealth(broadcasterId, {
-            enabled: true,
-            ownerId: mappedOwnerId,
-            checkedAt: Date.now(),
-            reason: 'subscription-created',
-        });
-        console.log(`[Kick] Webhooks asegurados para ${broadcasterId}: ${missing.join(', ')}`);
-        return { enabled: true, created: missing.length, existing: existing.length };
-    })().catch((error) => {
-        const mappedOwnerId = String(kickWebhookOwnerByBroadcaster.get(key) || '').trim();
-        if (mappedOwnerId && (!boundOwnerId || mappedOwnerId === boundOwnerId)) {
-            setKickWebhookHealth(broadcasterId, {
-                enabled: false,
-                ownerId: mappedOwnerId,
-                checkedAt: Date.now(),
-                reason: String(error?.message || error).slice(0, 300),
-            });
-        }
-        console.warn(`[Kick] No se pudieron registrar webhooks para ${broadcasterId}:`, error?.message || error);
-        return { enabled: false, reason: String(error?.message || error) };
-    }).finally(() => {
-        kickWebhookSubscriptionEnsure.delete(key);
-    });
-    kickWebhookSubscriptionEnsure.set(key, task);
-    return task;
-}
-
-function verifyKickWebhook(req) {
-    const body = Buffer.isBuffer(req.rawBody) ? req.rawBody : Buffer.from(JSON.stringify(req.body || {}));
-    const messageId = String(req.get("Kick-Event-Message-Id") || "").trim();
-    const timestamp = String(req.get("Kick-Event-Message-Timestamp") || "").trim();
-    const signature = String(req.get("Kick-Event-Signature") || "").trim();
-    if (!messageId || !timestamp || !signature) return false;
-
-    const timestampMs = Date.parse(timestamp);
-    const maxSkewMs = Math.max(60_000, Number(process.env.KICK_WEBHOOK_MAX_SKEW_MS || 600_000));
-    if (!Number.isFinite(timestampMs) || Math.abs(Date.now() - timestampMs) > maxSkewMs) return false;
-
-    const signed = Buffer.from(`${messageId}.${timestamp}.${body.toString("utf8")}`, "utf8");
-    try {
-        const verifier = createVerify("RSA-SHA256");
-        verifier.update(signed);
-        verifier.end();
-        return verifier.verify(kickWebhookPublicKey, Buffer.from(signature, "base64"));
-    } catch { return false; }
 }
 
 async function handleKickUserAvatarLookup(username, userId = 0, channel = "") {
@@ -3668,26 +3412,11 @@ app.get("/api/realtime-voice/config", (req, res) => {
 });
 
 app.get("/api/kick/official-status", requireUser, async (req, res) => {
-    const hasAppCredentials = Boolean(KICK_CLIENT_ID && KICK_CLIENT_SECRET);
     const kickProfile = getSavedConnectionProfile(req.user.id, "kick");
-    let appToken = false;
-    let subscriptions = null;
-    let error = "";
-    if (hasAppCredentials) {
-        try {
-            appToken = Boolean(await kick.getKickAppAccessToken());
-            const broadcasterId = Number(kickProfile?.broadcasterUserId || 0);
-            if (appToken && broadcasterId > 0) {
-                const token = await kick.getKickAppAccessToken();
-                const response = await fetch(`https://api.kick.com/public/v1/events/subscriptions?broadcaster_user_id=${encodeURIComponent(broadcasterId)}`, { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } });
-                const body = await response.json().catch(() => ({}));
-                subscriptions = response.ok ? (Array.isArray(body?.data) ? body.data : []) : null;
-                if (!response.ok) error = `HTTP ${response.status}`;
-            }
-        } catch (e) { error = String(e?.message || e); }
-    }
-    res.json({ ok:true, officialApi:{ configured:hasAppCredentials, token:appToken, broadcasterUserId:Number(kickProfile?.broadcasterUserId||0)||0, subscriptions, webhookUrlConfigured:Boolean(KICK_WEBHOOK_URL), error } });
+    const state = kick.getState(req.user.id) || {};
+    res.json({ ok: true, officialApi: { configured: false, oauthConnected: false, scopes: "", expiresAt: 0, broadcasterUserId: Number(kickProfile?.broadcasterUserId || state?.broadcasterUserId || 0) || 0, subscriptions: null, webhookUrlConfigured: false, oauthRedirectConfigured: false, error: "Kick funciona mediante realtime público; no se usa OAuth ni webhooks autenticados.", realtimeConnected: Boolean(state?.connected), realtimeProvider: String(state?.provider || "pusher") } });
 });
+
 
 app.get("/api/status", (req, res) => {
     res.json({
@@ -3909,7 +3638,6 @@ io.on("connection", (socket) => {
             if (!cleanChannel) throw new Error("Escribe un canal de Kick, por ejemplo @nombre.");
 
             const ownerId = String(socket.user.id);
-            removeKickWebhookMappings(ownerId);
             try { kick.disconnect(ownerId); } catch {}
 
             emitAccountState("kick", {
@@ -3950,19 +3678,10 @@ io.on("connection", (socket) => {
             }
             const finalAvatar = String(info?.avatarUrl || avatarUrl || "");
             saveConnectionProfile(socket.user.id, "kick", { username: info?.username || resolvedUsername, avatarUrl: finalAvatar, channelId: Number(info?.channelId || request.channelId || 0) || 0, broadcasterUserId: Number(info?.broadcasterUserId || request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0, chatroomId: Number(info?.chatroomId || request.chatroomId || 0) || 0 });
-            const broadcasterId = Number(info?.broadcasterUserId || request.broadcasterUserId || profile?.broadcasterUserId || 0) || 0;
-            let webhookStatus = { enabled: false, reason: 'not-attempted' };
-            if (broadcasterId > 0) {
-                removeKickWebhookMappings(socket.user.id);
-                kickWebhookOwnerByBroadcaster.set(String(broadcasterId), String(socket.user.id));
-                webhookStatus = await ensureKickWebhookSubscriptions(broadcasterId, socket.user.id);
-            }
-
             const realtimeConnected = Boolean(info?.realtimeConnected);
-            const webhookAvailable = Boolean(webhookStatus?.enabled) && kickWebhookCanCarrySession(broadcasterId);
-            const transportAvailable = Boolean(realtimeConnected || webhookAvailable);
+            const transportAvailable = realtimeConnected;
             const live = Boolean(info?.isLive);
-            const mode = realtimeConnected ? (live ? "live" : "waiting") : webhookAvailable ? "webhook-reconnecting" : "reconnecting";
+            const mode = realtimeConnected ? (live ? "live" : "waiting") : "reconnecting";
 
             emitAccountState("kick", {
                 username: String(info?.username || resolvedUsername), avatarUrl: finalAvatar,
@@ -3971,7 +3690,7 @@ io.on("connection", (socket) => {
                 live: transportAvailable ? live : false,
                 mode,
                 clearFeeds: false,
-                stateReason: realtimeConnected ? "connected" : webhookAvailable ? "webhook-fallback" : "realtime-unavailable"
+                stateReason: realtimeConnected ? "connected" : "realtime-unavailable"
             }, socket.user.id);
             if (transportAvailable) {
                 liveSession.begin(socket.user.id, "kick");
@@ -3979,16 +3698,13 @@ io.on("connection", (socket) => {
 
             if (realtimeConnected) {
                 socket.emit("system", { message: `Kick conectado a @${String(info?.username || resolvedUsername)}.` });
-            } else if (webhookAvailable) {
-                socket.emit("system", { message: `Kick conectado a @${String(info?.username || resolvedUsername)} mediante webhooks; el realtime está reintentando.` });
             } else {
-                socket.emit("system", { message: `Kick no tiene un transporte activo todavía; se seguirá intentando conectar el realtime.` });
+                socket.emit("system", { message: `Kick está intentando reconectar el realtime de @${String(info?.username || resolvedUsername)}.` });
             }
-            if (typeof ack === "function") ack({ ok: transportAvailable, message: realtimeConnected ? "Kick conectado." : webhookAvailable ? "Kick conectado mediante webhooks; realtime reintentando." : "Kick en reconexión." });
+            if (typeof ack === "function") ack({ ok: transportAvailable, message: realtimeConnected ? "Kick conectado." : "Kick en reconexión." });
         } catch (err) {
             const failedOwnerId = socket.user?.id || "";
             try { kick.disconnect(failedOwnerId); } catch {}
-            removeKickWebhookMappings(failedOwnerId);
             globalThis.__STREAMFUSION_LIVE_END_HOOK__?.(failedOwnerId, "kick");
             const savedProfile = getSavedConnectionProfile(socket.user?.id || "", "kick");
             emitAccountState("kick", {
@@ -4053,7 +3769,6 @@ io.on("connection", (socket) => {
         try {
             const ownerId = socket.user?.id || "";
             kick.disconnect(ownerId);
-            removeKickWebhookMappings(ownerId);
             globalThis.__STREAMFUSION_LIVE_END_HOOK__?.(ownerId, "kick");
             const savedProfile = getSavedConnectionProfile(socket.user?.id || "", "kick");
             emitAccountState("kick", {
